@@ -1,20 +1,22 @@
 'use client';
-import { useRef, useState } from 'react';
-import { useCurrentAccount, useCurrentWallet } from '@mysten/dapp-kit';
-import { Transaction } from '@mysten/sui/transactions';
+import { useRef, useState, useMemo } from 'react';
+import { useCurrentAccount, useCurrentWallet, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from '@mysten/sui/jsonRpc';
+import { WalrusClient, WalrusFile } from '@mysten/walrus';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
+const SUI_NETWORK = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
+const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
+const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const TATUM_RPC = process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || getJsonRpcFullnodeUrl('testnet');
 
 interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
 
 async function extractText(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-
-  // Text-based: read directly in browser
   const textExts = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'jsx', 'tsx', 'py', 'html', 'htm', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'sql', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'env', 'log'];
-  const isText = file.type.startsWith('text/') || textExts.includes(ext);
-  if (isText) {
+  if (file.type.startsWith('text/') || textExts.includes(ext)) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
@@ -22,38 +24,23 @@ async function extractText(file: File): Promise<string> {
       reader.readAsText(file);
     });
   }
-
-  // Binary formats — send to extract endpoint (these are typically < 10MB)
   if (['pdf', 'docx', 'xlsx', 'xls'].includes(ext)) {
     try {
       const form = new FormData();
       form.append('file', file);
       const res = await fetch('/api/extract', { method: 'POST', body: form });
-      if (res.ok) {
-        const { content } = await res.json();
-        return content ?? '';
-      }
-    } catch {
-      // fall through
-    }
+      if (res.ok) return (await res.json()).content ?? '';
+    } catch { /* fall through */ }
   }
-
   return '';
 }
 
-async function uploadToWalrus(file: File): Promise<string> {
-  const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=5`, {
-    method: 'PUT',
-    body: file,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Walrus upload failed (${res.status}): ${text.slice(0, 120)}`);
-  }
+// REST fallback for when Walrus SDK flow fails
+async function uploadToWalrusREST(file: File): Promise<string> {
+  const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=5`, { method: 'PUT', body: file });
+  if (!res.ok) throw new Error(`Walrus upload failed (${res.status}): ${(await res.text()).slice(0, 120)}`);
   const data = await res.json();
-  const blobId =
-    data.newlyCreated?.blobObject?.blobId ??
-    data.alreadyCertified?.blobId;
+  const blobId = data.newlyCreated?.blobObject?.blobId ?? data.alreadyCertified?.blobId;
   if (!blobId) throw new Error('Walrus returned no blobId');
   return blobId;
 }
@@ -67,9 +54,13 @@ export function FileUpload({ onUploaded, compact }: Props) {
 
   const account = useCurrentAccount();
   const { currentWallet } = useCurrentWallet();
-  const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
-  const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
-  const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+
+  // WalrusClient backed by Tatum RPC — created once, reused across uploads
+  const walrusClient = useMemo(() => {
+    const suiClient = new SuiJsonRpcClient({ url: TATUM_RPC, network: SUI_NETWORK });
+    return new WalrusClient({ network: SUI_NETWORK, suiClient });
+  }, []);
 
   const steps = [
     'Uploading to Walrus...',
@@ -84,13 +75,54 @@ export function FileUpload({ onUploaded, compact }: Props) {
     setStepIdx(0);
 
     try {
-      // Step 1 — upload directly to Walrus from browser (no Vercel size limit)
-      const blobId = await uploadToWalrus(file);
+      // ── Step 1: Walrus upload ────────────────────────────────────────────
+      // Primary: Walrus SDK writeFilesFlow (proper on-chain registration, user-owned blobs)
+      // Fallback: REST PUT to publisher
+      let blobId: string;
+      let txDigest: string | undefined;
 
-      // Step 2 — extract text + AI summary
+      const canWalletSign = !!(account && currentWallet?.features['sui:signAndExecuteTransaction']);
+
+      if (account && canWalletSign) {
+        try {
+          const fileBytes = new Uint8Array(await file.arrayBuffer());
+          const flow = walrusClient.writeFilesFlow({
+            files: [WalrusFile.from({ contents: fileBytes, identifier: file.name })],
+          });
+
+          await flow.encode();
+
+          // Register blob on Sui (user signs — proves ownership)
+          const registerTx = flow.register({ owner: account.address, epochs: 5, deletable: false });
+          const registerResult = await signAndExecute({ transaction: registerTx, chain: SUI_CHAIN });
+          txDigest = registerResult.digest;
+          console.log('[walrus-sdk] registered, tx:', txDigest);
+
+          // Upload data directly from browser to Walrus storage nodes
+          await flow.upload({ digest: txDigest });
+          console.log('[walrus-sdk] data uploaded to storage nodes');
+
+          // Certify blob on Sui (user signs — finalises storage proof)
+          const certifyTx = flow.certify();
+          const certifyResult = await signAndExecute({ transaction: certifyTx, chain: SUI_CHAIN });
+          console.log('[walrus-sdk] certified, tx:', certifyResult.digest);
+
+          const files = await flow.listFiles();
+          blobId = files[0].blobId;
+          console.log('[walrus-sdk] blobId:', blobId);
+
+        } catch (sdkErr) {
+          console.warn('[walrus-sdk] flow failed, falling back to REST:', sdkErr);
+          blobId = await uploadToWalrusREST(file);
+        }
+      } else {
+        // No wallet or old wallet API — use REST
+        blobId = await uploadToWalrusREST(file);
+      }
+
+      // ── Step 2: AI summary ───────────────────────────────────────────────
       setStepIdx(1);
       const content = await extractText(file);
-
       let summary = 'No text content could be extracted from this file.';
       if (content.trim()) {
         const res = await fetch('/api/summarize', {
@@ -98,47 +130,12 @@ export function FileUpload({ onUploaded, compact }: Props) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content }),
         });
-        const data = await res.json();
-        summary = data.summary ?? summary;
+        summary = (await res.json()).summary ?? summary;
       }
 
-      // Step 3 — on-chain registration
-      // Try user wallet signing first (new sui:signAndExecuteTransaction feature).
-      // Fall back to server-side signing if wallet doesn't support new API or has no gas.
+      // ── Step 3: On-chain registration ────────────────────────────────────
+      // Only needed if Walrus SDK flow didn't already record a tx (i.e. REST fallback was used)
       setStepIdx(2);
-      let txDigest: string | undefined;
-
-      const newSignFeature = currentWallet?.features['sui:signAndExecuteTransaction'] as
-        | { signAndExecuteTransaction: (input: unknown) => Promise<{ digest: string }> }
-        | undefined;
-
-      if (account && PACKAGE_ID && newSignFeature) {
-        // Wallet supports new API — user signs their own transaction
-        try {
-          const tx = new Transaction();
-          tx.moveCall({
-            target: `${PACKAGE_ID}::vault::register`,
-            arguments: [
-              tx.pure.string(blobId),
-              tx.pure.string(file.name),
-              tx.pure.string(file.type || 'application/octet-stream'),
-              tx.pure.u64(file.size),
-            ],
-          });
-          console.log('[chain] user signing on', SUI_CHAIN);
-          const result = await newSignFeature.signAndExecuteTransaction({
-            transaction: tx,
-            account,
-            chain: SUI_CHAIN,
-          });
-          txDigest = result.digest;
-          console.log('[chain] user-signed tx:', txDigest);
-        } catch (clientErr) {
-          console.warn('[chain] user signing failed, falling back to server:', clientErr);
-        }
-      }
-
-      // Server-side fallback (deployment wallet) — always runs if user signing didn't produce a digest
       if (!txDigest) {
         try {
           const res = await fetch('/api/register', {
@@ -161,6 +158,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
         }
       }
 
+      // ── Done ─────────────────────────────────────────────────────────────
       setStepIdx(3);
       onUploaded({
         id: crypto.randomUUID(),
@@ -246,40 +244,21 @@ export function FileUpload({ onUploaded, compact }: Props) {
           opacity: loading ? 0.8 : 1,
         }}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          className="hidden"
-          onChange={e => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
-            e.target.value = '';
-          }}
-        />
+        <input ref={inputRef} type="file" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
 
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-            <div style={{
-              width: '44px', height: '44px', borderRadius: '50%',
-              border: '3px solid var(--border)', borderTopColor: 'var(--purple)',
-              animation: 'spin 0.7s linear infinite',
-            }} />
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', border: '3px solid var(--border)', borderTopColor: 'var(--purple)', animation: 'spin 0.7s linear infinite' }} />
             <p style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: '15px' }}>{steps[stepIdx]}</p>
             <div style={{ width: '200px', height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: '2px', transition: 'width 0.4s ease',
-                width: `${((stepIdx + 1) / steps.length) * 100}%`,
-                background: 'linear-gradient(90deg, var(--purple), var(--mint))',
-              }} />
+              <div style={{ height: '100%', borderRadius: '2px', transition: 'width 0.4s ease', width: `${((stepIdx + 1) / steps.length) * 100}%`, background: 'linear-gradient(90deg, var(--purple), var(--mint))' }} />
             </div>
             <p style={{ fontSize: '12px', color: 'var(--text-3)' }}>Step {stepIdx + 1} of {steps.length}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '56px', height: '56px', borderRadius: '12px',
-              background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
@@ -293,11 +272,8 @@ export function FileUpload({ onUploaded, compact }: Props) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {['Walrus Storage', 'Sui Blockchain', 'Groq AI'].map(tag => (
-                <span key={tag} style={{
-                  fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px',
-                  background: 'white', border: '1px solid var(--border)', color: 'var(--text-2)',
-                }}>{tag}</span>
+              {['Walrus SDK', 'Tatum RPC', 'Groq AI'].map(tag => (
+                <span key={tag} style={{ fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', background: 'white', border: '1px solid var(--border)', color: 'var(--text-2)' }}>{tag}</span>
               ))}
             </div>
             {!account && (
@@ -310,10 +286,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
       </div>
 
       {error && (
-        <div style={{
-          marginTop: '12px', padding: '12px 16px', borderRadius: '10px', fontSize: '13px',
-          background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444',
-        }}>
+        <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444' }}>
           ⚠ {error}
         </div>
       )}
