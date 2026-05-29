@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
 import { WalletButton } from '@/components/WalletButton';
+import { LogoMark } from '@/components/Logo';
 
 const STORAGE_KEY = 'chainmind_vault';
 function loadVault(): VaultItem[] {
@@ -101,10 +102,7 @@ export default function Home() {
         zIndex: 40,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ display: 'flex', gap: '3px' }}>
-            <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'var(--purple)' }} />
-            <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'var(--mint)' }} />
-          </div>
+          <LogoMark size={30} />
           <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.02em', color: 'var(--text-1)' }}>ChainMind</span>
           <span style={{
             fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
