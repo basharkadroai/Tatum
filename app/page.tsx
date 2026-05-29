@@ -1,9 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
-import { VaultCard } from '@/components/VaultCard';
-import { QAModal } from '@/components/QAModal';
 import { WalletButton } from '@/components/WalletButton';
 
 const STORAGE_KEY = 'chainmind_vault';
@@ -13,17 +11,73 @@ function loadVault(): VaultItem[] {
 }
 function saveVault(items: VaultItem[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
 
+function fileIcon(type: string, name: string) {
+  const ext = name.split('.').pop()?.toLowerCase();
+  if (ext === 'pdf') return '📕';
+  if (ext === 'md' || ext === 'mdx') return '📝';
+  if (ext === 'json') return '🗂';
+  if (ext === 'csv') return '📊';
+  if (ext === 'docx' || ext === 'doc') return '📘';
+  if (ext === 'xlsx' || ext === 'xls') return '📗';
+  if (type.startsWith('image/')) return '🖼';
+  if (type.startsWith('text/')) return '📄';
+  return '📦';
+}
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1048576).toFixed(1)} MB`;
+}
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+type Message = { role: 'user' | 'ai'; text: string };
+
 export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
-  const [activeItem, setActiveItem] = useState<VaultItem | null>(null);
+  const [selected, setSelected] = useState<VaultItem | null>(null);
   const [search, setSearch] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [qaInput, setQaInput] = useState('');
+  const [qaLoading, setQaLoading] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => { setVault(loadVault()); }, []);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { setMessages([]); setQaInput(''); setSummaryExpanded(true); }, [selected?.id]);
 
   function handleUploaded(item: VaultItem) {
     setVault(prev => { const next = [item, ...prev]; saveVault(next); return next; });
+    setSelected(item);
   }
   function handleDelete(id: string) {
     setVault(prev => { const next = prev.filter(i => i.id !== id); saveVault(next); return next; });
+    if (selected?.id === id) setSelected(null);
+  }
+
+  async function sendMessage(text?: string) {
+    const q = (text ?? qaInput).trim();
+    if (!q || qaLoading || !selected) return;
+    setQaInput('');
+    setMessages(m => [...m, { role: 'user', text: q }]);
+    setQaLoading(true);
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: selected.content, question: q }),
+      });
+      const data = await res.json();
+      setMessages(m => [...m, { role: 'ai', text: data.answer || data.error || 'No answer.' }]);
+    } catch {
+      setMessages(m => [...m, { role: 'ai', text: 'Failed to reach AI.' }]);
+    } finally {
+      setQaLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
   }
 
   const filtered = vault.filter(item =>
@@ -32,124 +86,295 @@ export default function Home() {
     item.summary.toLowerCase().includes(search.toLowerCase())
   );
 
-  return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--white)' }}>
+  const network = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
+  const aggregator = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
+  const suiExplorer = network === 'mainnet' ? 'https://suivision.xyz' : 'https://testnet.suivision.xyz';
 
-      {/* ── Nav ── */}
-      <header className="sticky top-0 z-40 px-8 py-4 flex items-center justify-between"
-        style={{ background: 'rgba(255,255,255,0.95)', borderBottom: '1px solid var(--border)', backdropFilter: 'blur(8px)' }}>
-        <div className="flex items-center gap-2">
-          <div className="flex gap-0.5">
-            <div className="w-3 h-3 rounded-sm" style={{ background: 'var(--purple)' }} />
-            <div className="w-3 h-3 rounded-sm" style={{ background: 'var(--mint)' }} />
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--white)' }}>
+
+      {/* ── Header ── */}
+      <header style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 20px', height: '56px', flexShrink: 0,
+        borderBottom: '1px solid var(--border)', background: 'var(--white)',
+        zIndex: 40,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '3px' }}>
+            <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'var(--purple)' }} />
+            <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'var(--mint)' }} />
           </div>
-          <span className="font-bold text-lg tracking-tight" style={{ color: 'var(--text-1)' }}>
-            ChainMind
+          <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.02em', color: 'var(--text-1)' }}>ChainMind</span>
+          <span style={{
+            fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+            background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid #c7d2fe',
+          }}>
+            Sui {network}
           </span>
         </div>
         <WalletButton />
       </header>
 
-      {/* ── Hero + Upload (all above the fold) ── */}
-      <section className="px-8 pt-14 pb-12 max-w-3xl mx-auto w-full text-center">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium mb-6"
-          style={{ background: '#eef2ff', color: 'var(--purple)', border: '1px solid #c7d2fe' }}>
-          Built on Sui · Powered by Walrus + Tatum
-        </div>
+      {/* ── Body ── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-        <h1 className="text-5xl font-black leading-tight tracking-tight mb-4">
-          <span className="grad-text">Decentralized</span>
-          <br />
-          <span style={{ color: 'var(--text-1)' }}>AI Knowledge Vault</span>
-        </h1>
-
-        <p className="text-lg max-w-xl mx-auto leading-relaxed mb-8" style={{ color: 'var(--text-2)' }}>
-          Upload any document. Store it forever on{' '}
-          <strong style={{ color: 'var(--purple)' }}>Walrus</strong>.
-          Your local AI summarizes it and answers your questions.
-        </p>
-
-        {/* Upload zone — right here, no scrolling needed */}
-        <FileUpload onUploaded={handleUploaded} />
-      </section>
-
-      {/* ── Feature cards ── */}
-      <section className="px-8 pb-14 max-w-6xl mx-auto w-full">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="dot-bg rounded-2xl p-8 relative overflow-hidden"
-            style={{ border: '1px solid var(--border)', background: 'var(--white)' }}>
-            <h3 className="text-2xl font-black mb-4" style={{ color: 'var(--text-1)' }}>Store<br />Forever</h3>
-            <ul className="space-y-2 text-sm" style={{ color: 'var(--text-2)' }}>
-              <li>· Permanent Walrus storage</li>
-              <li>· Decentralized blob IDs</li>
-              <li>· Erasure-coded resilience</li>
-              <li>· Verifiable on-chain</li>
-            </ul>
-            <div className="absolute bottom-4 right-4 opacity-10 text-7xl">🗄</div>
+        {/* ── Sidebar ── */}
+        <aside style={{
+          width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column',
+          borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
+          overflow: 'hidden',
+        }}>
+          {/* Upload button */}
+          <div style={{ padding: '14px 14px 10px' }}>
+            <FileUpload onUploaded={handleUploaded} compact />
           </div>
 
-          <div className="card-purple rounded-2xl p-8 relative overflow-hidden">
-            <h3 className="text-2xl font-black mb-4 text-white">AI<br />Summaries</h3>
-            <ul className="space-y-2 text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>
-              <li>· Powered by Groq AI</li>
-              <li>· llama-3.3-70b-versatile</li>
-              <li>· PDF, TXT, MD, CSV, JSON</li>
-              <li>· Instant on upload</li>
-            </ul>
-            <div className="absolute bottom-4 right-4 opacity-20 text-7xl">🧠</div>
-          </div>
-
-          <div className="card-teal rounded-2xl p-8 relative overflow-hidden">
-            <h3 className="text-2xl font-black mb-4 text-white">Ask<br />Anything</h3>
-            <ul className="space-y-2 text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>
-              <li>· Chat with your documents</li>
-              <li>· RAG-style Q&amp;A</li>
-              <li>· Context-aware answers</li>
-              <li>· Sub-second responses</li>
-            </ul>
-            <div className="absolute bottom-4 right-4 opacity-20 text-7xl">💬</div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Vault ── */}
-      {vault.length > 0 && (
-        <section className="px-8 pb-20 max-w-6xl mx-auto w-full">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-black" style={{ color: 'var(--text-1)' }}>Your Vault</h2>
-              <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>
-                {vault.length} file{vault.length !== 1 ? 's' : ''} stored on Walrus
-              </p>
-            </div>
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-3)' }}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search vault..."
-                className="pl-9 pr-4 py-2 rounded-xl text-sm outline-none w-52 transition-all"
-                style={{ background: 'var(--off-white)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                onFocus={e => (e.target.style.borderColor = 'var(--purple)')}
-                onBlur={e => (e.target.style.borderColor = 'var(--border)')}
-              />
-            </div>
-          </div>
-
-          {filtered.length === 0
-            ? <p className="text-sm" style={{ color: 'var(--text-3)' }}>No files match your search.</p>
-            : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filtered.map(item => (
-                  <VaultCard key={item.id} item={item} onAsk={setActiveItem} onDelete={handleDelete} />
-                ))}
+          {/* Search */}
+          {vault.length > 0 && (
+            <div style={{ padding: '0 14px 10px' }}>
+              <div style={{ position: 'relative' }}>
+                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }}
+                  width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+                </svg>
+                <input
+                  value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search files..."
+                  style={{
+                    width: '100%', padding: '7px 10px 7px 28px', borderRadius: '8px',
+                    fontSize: '12px', border: '1px solid var(--border)',
+                    background: 'var(--white)', color: 'var(--text-1)', outline: 'none',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = 'var(--purple)')}
+                  onBlur={e => (e.target.style.borderColor = 'var(--border)')}
+                />
               </div>
-            )}
-        </section>
-      )}
+            </div>
+          )}
 
-      {activeItem && <QAModal item={activeItem} onClose={() => setActiveItem(null)} />}
+          {/* File list label */}
+          {vault.length > 0 && (
+            <div style={{ padding: '4px 16px 6px', fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
+            </div>
+          )}
+
+          {/* File list */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
+            {filtered.length === 0 && search && (
+              <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
+            )}
+            {filtered.map(item => (
+              <div
+                key={item.id}
+                onClick={() => setSelected(item)}
+                className={`file-item${selected?.id === item.id ? ' active' : ''}`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  padding: '9px 10px', borderRadius: '9px', cursor: 'pointer',
+                  borderLeft: selected?.id === item.id ? '3px solid var(--purple)' : '3px solid transparent',
+                  animation: 'fadeUp 0.2s ease',
+                }}
+              >
+                <span style={{ fontSize: '18px', flexShrink: 0 }}>{fileIcon(item.fileType, item.filename)}</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{
+                    fontSize: '12px', fontWeight: 600, color: 'var(--text-1)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{item.filename}</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '1px' }}>
+                    {formatBytes(item.sizeBytes)} · {formatDate(item.uploadedAt)}
+                  </p>
+                </div>
+                {item.txDigest && (
+                  <div title="Recorded on Sui" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--purple)', flexShrink: 0 }} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--text-3)' }}>
+            Powered by Walrus · Tatum · Groq
+          </div>
+        </aside>
+
+        {/* ── Main Panel ── */}
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--white)' }}>
+
+          {!selected ? (
+            /* Empty state */
+            vault.length === 0 ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '32px' }}>
+                <div style={{ textAlign: 'center', maxWidth: '480px' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🧠</div>
+                  <h1 style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-1)', letterSpacing: '-0.03em', marginBottom: '10px', lineHeight: 1.2 }}>
+                    Your <span className="grad-text">AI Knowledge Vault</span>
+                  </h1>
+                  <p style={{ fontSize: '15px', color: 'var(--text-2)', lineHeight: 1.6 }}>
+                    Upload any document — stored forever on <strong style={{ color: 'var(--purple)' }}>Walrus</strong>, summarized by AI, and verifiable on <strong style={{ color: 'var(--mint-dark)' }}>Sui</strong>.
+                  </p>
+                </div>
+                <div style={{ width: '100%', maxWidth: '480px' }}>
+                  <FileUpload onUploaded={handleUploaded} />
+                </div>
+                <div style={{ display: 'flex', gap: '24px', fontSize: '12px', color: 'var(--text-3)', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {['PDF, DOCX, XLSX, TXT, MD, JSON, CSV', 'Permanent Walrus storage', 'On-chain ownership via Sui'].map(t => (
+                    <span key={t} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ color: 'var(--mint)' }}>✓</span> {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontSize: '32px' }}>👈</div>
+                <p style={{ fontSize: '15px', color: 'var(--text-2)', fontWeight: 500 }}>Select a file to view it</p>
+                <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>Or upload a new one using the sidebar</p>
+              </div>
+            )
+          ) : (
+            /* File detail + Q&A */
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
+              {/* File header */}
+              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0, background: 'var(--white)' }}>
+                <span style={{ fontSize: '24px' }}>{fileIcon(selected.fileType, selected.filename)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selected.filename}
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '3px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{formatBytes(selected.sizeBytes)} · {formatDate(selected.uploadedAt)}</span>
+                    <a href={`${aggregator}/v1/blobs/${selected.blobId}`} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
+                      onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                      onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
+                      🗄 {selected.blobId.slice(0, 16)}…
+                    </a>
+                    {selected.txDigest && (
+                      <a href={`${suiExplorer}/txblock/${selected.txDigest}`} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
+                        onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                        onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
+                        ⛓ {selected.txDigest.slice(0, 16)}…
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDelete(selected.id)}
+                  title="Remove from vault"
+                  style={{ padding: '6px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '14px', flexShrink: 0 }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.color = '#ef4444'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                >✕</button>
+              </div>
+
+              {/* Summary (collapsible) */}
+              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--off-white)' }}>
+                <button
+                  onClick={() => setSummaryExpanded(s => !s)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: summaryExpanded ? '10px' : 0 }}
+                >
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Summary</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-3)', transform: summaryExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', display: 'inline-block' }}>▼</span>
+                </button>
+                {summaryExpanded && (
+                  <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: '1.65', animation: 'fadeUp 0.2s ease' }}>
+                    {selected.summary}
+                  </p>
+                )}
+              </div>
+
+              {/* Chat messages */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {messages.length === 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>Ask anything about this document</p>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {['What is this about?', 'What are the key points?', 'Summarize in one sentence.'].map(q => (
+                        <button key={q} onClick={() => sendMessage(q)} style={{
+                          fontSize: '12px', padding: '6px 12px', borderRadius: '20px',
+                          background: 'var(--off-white)', border: '1px solid var(--border)',
+                          color: 'var(--text-2)', cursor: 'pointer', transition: 'border-color 0.15s',
+                        }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                        >{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {messages.map((m, i) => (
+                  <div key={i} style={{
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: m.role === 'user' ? 'flex-end' : 'flex-start',
+                    animation: 'fadeUp 0.2s ease',
+                  }}>
+                    {m.role === 'ai' && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI</span>
+                    )}
+                    <div style={{
+                      maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                      fontSize: '13px', lineHeight: '1.6',
+                      background: m.role === 'user' ? 'var(--purple)' : 'var(--off-white)',
+                      color: m.role === 'user' ? 'white' : 'var(--text-1)',
+                      border: m.role === 'ai' ? '1px solid var(--border)' : 'none',
+                    }}>
+                      {m.text}
+                    </div>
+                  </div>
+                ))}
+
+                {qaLoading && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI</span>
+                    <div style={{ padding: '12px 16px', borderRadius: '14px 14px 14px 4px', background: 'var(--off-white)', border: '1px solid var(--border)', display: 'flex', gap: '5px' }}>
+                      {[0, 150, 300].map(d => (
+                        <div key={d} style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--purple)', animation: `bounce 1s ease ${d}ms infinite` }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input bar */}
+              <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', flexShrink: 0, background: 'var(--white)' }}>
+                <input
+                  ref={inputRef}
+                  value={qaInput}
+                  onChange={e => setQaInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                  placeholder="Ask anything about this document..."
+                  style={{
+                    flex: 1, padding: '10px 14px', borderRadius: '10px', fontSize: '13px',
+                    border: '1px solid var(--border)', outline: 'none', color: 'var(--text-1)',
+                    background: 'var(--off-white)', transition: 'border-color 0.15s',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = 'var(--purple)')}
+                  onBlur={e => (e.target.style.borderColor = 'var(--border)')}
+                />
+                <button
+                  onClick={() => sendMessage()}
+                  disabled={qaLoading || !qaInput.trim()}
+                  style={{
+                    padding: '10px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
+                    background: 'var(--purple)', color: 'white', border: 'none', cursor: 'pointer',
+                    opacity: qaLoading || !qaInput.trim() ? 0.4 : 1, transition: 'opacity 0.15s',
+                    flexShrink: 0,
+                  }}
+                >Ask</button>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      <style>{`@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} } @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }`}</style>
     </div>
   );
 }

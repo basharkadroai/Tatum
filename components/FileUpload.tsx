@@ -9,7 +9,7 @@ const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
 const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
 const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
 
-interface Props { onUploaded: (item: VaultItem) => void; }
+interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
 
 async function extractText(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
@@ -61,7 +61,7 @@ async function uploadToWalrus(file: File): Promise<string> {
   return blobId;
 }
 
-export function FileUpload({ onUploaded }: Props) {
+export function FileUpload({ onUploaded, compact }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -145,6 +145,47 @@ export function FileUpload({ onUploaded }: Props) {
     } finally {
       setTimeout(() => setLoading(false), 500);
     }
+  }
+
+  if (compact) {
+    return (
+      <div>
+        <input ref={inputRef} type="file" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+        <button
+          onClick={() => !loading && inputRef.current?.click()}
+          disabled={loading}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
+            background: loading ? 'var(--purple-bg)' : 'var(--purple)',
+            color: loading ? 'var(--purple)' : 'white',
+            border: loading ? '1px solid #c7d2fe' : 'none',
+            cursor: loading ? 'default' : 'pointer', transition: 'all 0.15s',
+          }}
+        >
+          {loading ? (
+            <>
+              <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #c7d2fe', borderTopColor: 'var(--purple)', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px' }}>{steps[stepIdx]}</span>
+            </>
+          ) : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Upload File
+            </>
+          )}
+        </button>
+        {error && (
+          <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444' }}>
+            ⚠ {error.slice(0, 100)}
+          </div>
+        )}
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
   }
 
   function onDrop(e: React.DragEvent) {
