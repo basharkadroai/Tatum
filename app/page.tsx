@@ -91,8 +91,8 @@ export default function Home() {
           <div className="card-purple rounded-2xl p-8 relative overflow-hidden">
             <h3 className="text-2xl font-black mb-4 text-white">AI<br />Summaries</h3>
             <ul className="space-y-2 text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>
-              <li>· 100% local — no API cost</li>
-              <li>· Runs on Ollama</li>
+              <li>· Powered by Groq AI</li>
+              <li>· llama-3.3-70b-versatile</li>
               <li>· PDF, TXT, MD, CSV, JSON</li>
               <li>· Instant on upload</li>
             </ul>
@@ -105,7 +105,7 @@ export default function Home() {
               <li>· Chat with your documents</li>
               <li>· RAG-style Q&amp;A</li>
               <li>· Context-aware answers</li>
-              <li>· Works fully offline</li>
+              <li>· Sub-second responses</li>
             </ul>
             <div className="absolute bottom-4 right-4 opacity-20 text-7xl">💬</div>
           </div>

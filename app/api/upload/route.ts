@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadToWalrus } from '@/lib/walrus';
-import { summarize } from '@/lib/ollama';
+import { summarize } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   console.log('[upload] request received');
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       console.log(`[upload] summary received (${summary.length} chars)`);
     } catch (err) {
       console.error('[upload] Ollama summarize failed:', err);
-      summary = 'AI summary unavailable — Ollama not running or model not loaded.';
+      summary = 'AI summary unavailable — check Groq API key.';
     }
   }
 

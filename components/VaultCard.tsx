@@ -62,15 +62,28 @@ export function VaultCard({ item, onAsk, onDelete }: Props) {
 
       {/* Footer */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', paddingTop: '4px', borderTop: '1px solid var(--border)' }}>
-        <a
-          href={`${aggregator}/v1/blobs/${item.blobId}`}
-          target="_blank" rel="noopener noreferrer"
-          style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
-          onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-          onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
-        >
-          {item.blobId.slice(0, 16)}…
-        </a>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+          <a
+            href={`${aggregator}/v1/blobs/${item.blobId}`}
+            target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
+            onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+            onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+          >
+            🗄 {item.blobId.slice(0, 14)}…
+          </a>
+          {item.txDigest && (
+            <a
+              href={`https://testnet.suivision.xyz/txblock/${item.txDigest}`}
+              target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+              onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+            >
+              ⛓ {item.txDigest.slice(0, 14)}…
+            </a>
+          )}
+        </div>
         <button onClick={() => onAsk(item)}
           style={{
             background: 'var(--purple)', color: 'white', border: 'none', borderRadius: '8px',
