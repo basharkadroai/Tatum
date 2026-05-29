@@ -5,6 +5,8 @@ import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
+const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
 
 interface Props { onUploaded: (item: VaultItem) => void; }
 
@@ -52,12 +54,17 @@ export function FileUpload({ onUploaded }: Props) {
               tx.pure.u64(file.size),
             ],
           });
-          const result = await signAndExecute({ transaction: tx });
+          console.log(`[chain] signing on ${SUI_CHAIN}, package=${PACKAGE_ID}`);
+          const result = await signAndExecute({ transaction: tx, chain: SUI_CHAIN });
           txDigest = result.digest;
           console.log('[chain] blobId registered on Sui:', txDigest);
-        } catch (chainErr) {
-          console.error('[chain] on-chain registration failed:', chainErr);
-          setError(`On-chain step failed: ${String(chainErr).slice(0, 120)} — file was still saved to Walrus.`);
+        } catch (chainErr: unknown) {
+          const msg = chainErr instanceof Error ? chainErr.message : String(chainErr);
+          const detail = typeof chainErr === 'object' && chainErr !== null
+            ? JSON.stringify(chainErr, Object.getOwnPropertyNames(chainErr)).slice(0, 200)
+            : String(chainErr);
+          console.error('[chain] on-chain registration failed:', msg, detail);
+          setError(`On-chain step failed: ${msg} — file was still saved to Walrus.`);
         }
       } else if (!account) {
         console.warn('[chain] wallet not connected — skipping on-chain step');

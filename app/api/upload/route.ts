@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     if (file.type === 'application/pdf') {
       console.log('[upload] parsing PDF...');
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse');
+      const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse/lib/pdf-parse.js');
       const parsed = await pdfParse(buffer);
       content = parsed.text;
       console.log(`[upload] PDF parsed, ${content.length} chars extracted`);
