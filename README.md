@@ -1,27 +1,30 @@
 # ChainMind AI — Decentralized Knowledge Vault
 
-> **Tatum × Walrus | Build on Sui Hackathon** · Submission deadline June 6, 2026
+> **Tatum × Walrus | Build on Sui Hackathon** · Submission deadline June 6, 2026 · 17:00 UTC
 
-A decentralized AI knowledge vault. Upload any document — it is stored permanently on Walrus, summarized by AI, and the blob reference is recorded on the Sui blockchain via Tatum RPC.
+A decentralized AI knowledge vault. Upload any document — stored permanently on Walrus, summarized by AI, and the blob reference recorded on-chain via Tatum's Sui RPC.
+
+## Live App
+
+**https://chainmind-seven.vercel.app**
 
 ## What it does
 
-1. **Upload** a PDF, TXT, MD, JSON, or CSV file
-2. **Walrus** stores the file as a blob (erasure-coded, permanent, decentralized)
-3. **Groq AI** generates a summary instantly
-4. **Sui transaction** records the `blobId` + filename on-chain via Tatum RPC — the user's wallet holds a `VaultEntry` object as proof of ownership
+1. **Upload any file** — PDF, DOCX, XLSX, TXT, MD, JSON, CSV, code, images, anything
+2. **Walrus** stores the file as an erasure-coded blob (permanent, decentralized)
+3. **Groq AI** generates a summary instantly (`llama-3.3-70b-versatile`)
+4. **Sui transaction** records the `blobId` on-chain via **Tatum RPC** — verifiable proof of storage
 5. **Ask anything** — RAG-style Q&A against the document content
 
 ## Tech stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 16 + React + Tailwind CSS |
+| Frontend | Next.js 16 + React |
 | AI | Groq (`llama-3.3-70b-versatile`) |
-| Decentralized storage | Walrus testnet REST API |
-| Blockchain | Sui (testnet → mainnet for submission) |
-| RPC | Tatum Sui RPC nodes |
-| Wallet | Sui dApp Kit + Slush wallet |
+| Decentralized storage | Walrus testnet |
+| Blockchain | Sui testnet |
+| RPC | **Tatum Sui RPC** |
 | Hosting | Vercel |
 
 ## Setup
@@ -39,80 +42,62 @@ npm install
 Create `.env.local`:
 
 ```env
-# Tatum API Keys
 TATUM_API_KEY=your_tatum_api_key
-
-# Sui RPC via Tatum
 NEXT_PUBLIC_TATUM_SUI_RPC=https://sui-mainnet.tatum.io/YOUR_KEY
-NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC=https://sui-testnet.tatum.io/YOUR_TESTNET_KEY
-
-# Network ("testnet" for dev, "mainnet" for submission)
+NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC=https://sui-testnet.tatum.io/YOUR_KEY
 NEXT_PUBLIC_SUI_NETWORK=testnet
-
-# Walrus (testnet)
 WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
-WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+NEXT_PUBLIC_WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
 NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
-
-# Groq AI
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
-
-# Smart contract (filled in after deploy)
-NEXT_PUBLIC_VAULT_PACKAGE_ID=0x...
+NEXT_PUBLIC_VAULT_PACKAGE_ID=0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138
+SUI_DEPLOYER_KEY=your_deployer_keypair_from_sui_keystore
 ```
 
-### 3. Deploy the Move contract (first time only)
-
-```bash
-# Install Sui CLI (Linux)
-curl -fsSL https://get.sui.io | sh
-
-# Fund testnet wallet via faucet
-# Visit https://faucet.sui.io — paste your address from: sui client active-address
-
-# Deploy
-cd contracts/chainmind
-sui client publish --gas-budget 50000000
-
-# Copy the published package ID into NEXT_PUBLIC_VAULT_PACKAGE_ID in .env.local
-# Testnet package (deployed): 0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138
-```
-
-### 4. Run locally
+### 3. Run locally
 
 ```bash
 npm run dev
 # Open http://localhost:3000
 ```
 
-## How to test
+### 4. Deploy Move contract (one-time)
 
-1. Open the app and connect your Slush wallet (set to **Sui Testnet**)
-2. Drop any PDF or text file into the upload zone
-3. Approve the wallet transaction when prompted
-4. See:
-   - Green blob ID → click to view the raw file on Walrus
-   - Purple tx digest → click to view the on-chain record on Sui Explorer
-5. Click **Ask AI** on any card and ask a question about the document
+```bash
+# Testnet package (already deployed):
+# 0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138
 
-## Deployed app
+# To redeploy:
+cd contracts/chainmind
+sui client publish --gas-budget 50000000
+```
 
-Live on Vercel — see submission portal for URL.
+## How to use
+
+1. Open the app — upload any file by clicking or dragging
+2. Watch: Walrus stores it → AI summarizes → Sui records the blobId on-chain
+3. Click the green blob link to view the raw file on Walrus
+4. Click the purple ⛓ tx link to see the on-chain record on Sui Explorer
+5. Click **Ask AI** on any file to chat with its content
 
 ## Smart contract
 
-The `chainmind::vault` Move module lives in `contracts/chainmind/sources/vault.move`.
+`chainmind::vault::register(blobId, filename, fileType, sizeBytes)` — deployed to Sui testnet.
 
-When a file is uploaded, the frontend calls `vault::register(blobId, filename, fileType, sizeBytes)` through the user's connected wallet. The transaction is submitted via Tatum's Sui RPC endpoint. The result is a `VaultEntry` Sui object owned by the user's wallet address.
+Every upload creates a `VaultEntry` object on Sui, permanently linking the Walrus blob to the transaction that registered it.
+
+**Testnet package:** `0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138`
+**Deploy tx:** `FvYYjikc5HR2LV4SSyeVaUDTG2CRKR5J5gFbmdTrQ3Sy`
 
 ## Hackathon checklist
 
 - [x] Walrus integrated as core feature (real uploads, real blobIds)
 - [x] Tatum RPC used for all Sui interactions
-- [x] AI summarization + RAG Q&A
-- [x] On-chain blobId registry (VaultEntry objects on Sui)
-- [x] Clean vault UI with search
-- [x] Deployed to Vercel
+- [x] AI summarization (Groq llama-3.3-70b-versatile)
+- [x] RAG-style Q&A against uploaded documents
+- [x] On-chain blobId registry via Move smart contract
+- [x] Any file type supported
+- [x] Clean two-column vault UI
+- [x] Deployed to Vercel — https://chainmind-seven.vercel.app
 - [ ] Demo video (2–3 min)
-- [ ] Switch to Sui Mainnet + Walrus Mainnet before submission

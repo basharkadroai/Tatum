@@ -6,8 +6,8 @@ import { useState } from 'react';
 
 const MAINNET_RPC =
   process.env.NEXT_PUBLIC_TATUM_SUI_RPC || 'https://fullnode.mainnet.sui.io:443';
-// Tatum testnet subdomain is unreliable — use standard testnet fullnode
-const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
+const TESTNET_RPC =
+  process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || 'https://fullnode.testnet.sui.io:443';
 
 const activeNetwork =
   (process.env.NEXT_PUBLIC_SUI_NETWORK as 'mainnet' | 'testnet') || 'testnet';

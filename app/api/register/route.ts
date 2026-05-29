@@ -5,7 +5,11 @@ import { Transaction } from '@mysten/sui/transactions';
 import { fromBase64 } from '@mysten/sui/utils';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID!;
-const RPC_URL = 'https://fullnode.testnet.sui.io:443';
+// Tatum Sui RPC — core hackathon requirement (fallback to public testnet if unreachable)
+const RPC_URL =
+  process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC ||
+  `https://sui-testnet.tatum.io/${process.env.TATUM_API_KEY}` ||
+  'https://fullnode.testnet.sui.io:443';
 
 function keypair(): Ed25519Keypair {
   const raw = process.env.SUI_DEPLOYER_KEY;
