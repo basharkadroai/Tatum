@@ -112,7 +112,7 @@ export function FileUpload({ onUploaded }: Props) {
           opacity: loading ? 0.8 : 1,
         }}
       >
-        <input ref={inputRef} type="file" accept=".pdf,.txt,.md,.json,.csv" className="hidden"
+        <input ref={inputRef} type="file" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
 
         {loading ? (
@@ -147,7 +147,7 @@ export function FileUpload({ onUploaded }: Props) {
                 Drop a file or <span style={{ color: 'var(--purple)' }}>click to browse</span>
               </p>
               <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>
-                PDF, TXT, MD, JSON, CSV · Stored permanently on Walrus · AI summarized
+                Any file type · Stored permanently on Walrus · AI summarized
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
