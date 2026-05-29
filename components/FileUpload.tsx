@@ -137,27 +137,33 @@ export function FileUpload({ onUploaded, compact }: Props) {
       }
 
       // ── Step 3: On-chain registration ────────────────────────────────────
-      // Only needed if Walrus SDK flow didn't already record a tx (i.e. REST fallback was used)
+      // If Walrus SDK flow already gave us a txDigest, skip.
+      // Otherwise always record via server (retries up to 3 times — mandatory step).
       setStepIdx(2);
       if (!txDigest) {
-        try {
-          const res = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              blobId,
-              filename: file.name,
-              fileType: file.type || 'application/octet-stream',
-              fileSize: file.size,
-            }),
-          });
-          const data = await res.json();
-          if (res.ok && data.digest) {
-            txDigest = data.digest;
-            console.log('[chain] server-signed tx:', txDigest);
+        const body = JSON.stringify({
+          blobId,
+          filename: file.name,
+          fileType: file.type || 'application/octet-stream',
+          fileSize: file.size,
+        });
+        for (let attempt = 1; attempt <= 3 && !txDigest; attempt++) {
+          try {
+            const res = await fetch('/api/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body,
+            });
+            const data = await res.json();
+            if (res.ok && data.digest) {
+              txDigest = data.digest;
+              console.log(`[chain] server-signed tx (attempt ${attempt}):`, txDigest);
+            } else {
+              console.warn(`[chain] attempt ${attempt} failed:`, data.error);
+            }
+          } catch (serverErr) {
+            console.warn(`[chain] attempt ${attempt} error:`, serverErr);
           }
-        } catch (serverErr) {
-          console.warn('[chain] server register failed:', serverErr);
         }
       }
 
