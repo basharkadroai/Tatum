@@ -4,11 +4,17 @@ import { SuiClientProvider, WalletProvider, createNetworkConfig } from '@mysten/
 import '@mysten/dapp-kit/dist/index.css';
 import { useState } from 'react';
 
-const TATUM_RPC =
+const MAINNET_RPC =
   process.env.NEXT_PUBLIC_TATUM_SUI_RPC || 'https://fullnode.mainnet.sui.io:443';
+const TESTNET_RPC =
+  process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || 'https://fullnode.testnet.sui.io:443';
+
+const activeNetwork =
+  (process.env.NEXT_PUBLIC_SUI_NETWORK as 'mainnet' | 'testnet') || 'testnet';
 
 const { networkConfig } = createNetworkConfig({
-  mainnet: { url: TATUM_RPC, network: 'mainnet' as const },
+  mainnet: { url: MAINNET_RPC, network: 'mainnet' as const },
+  testnet: { url: TESTNET_RPC, network: 'testnet' as const },
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -16,7 +22,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SuiClientProvider networks={networkConfig} defaultNetwork="mainnet">
+      <SuiClientProvider networks={networkConfig} defaultNetwork={activeNetwork}>
         <WalletProvider autoConnect>{children}</WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>

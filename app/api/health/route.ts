@@ -3,25 +3,41 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   console.log('[health] check started');
 
+  const usingGroq = !!process.env.GROQ_API_KEY;
+
   const results: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
-    ollama: { ok: false, model: process.env.OLLAMA_MODEL || 'llama3.2', error: null },
+    ai: { provider: usingGroq ? 'groq' : 'ollama', ok: false, error: null },
     walrus: { ok: false, publisher: process.env.WALRUS_PUBLISHER_URL, error: null },
     tatum: { ok: false, rpc: process.env.NEXT_PUBLIC_TATUM_SUI_RPC, error: null },
   };
 
-  // Check Ollama
-  try {
-    const res = await fetch(`${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}/api/tags`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    const data = await res.json();
-    const models = data.models?.map((m: { name: string }) => m.name) ?? [];
-    console.log('[health] Ollama models:', models);
-    results.ollama = { ok: res.ok, models, model: process.env.OLLAMA_MODEL || 'llama3.2', error: null };
-  } catch (err) {
-    console.error('[health] Ollama unreachable:', err);
-    results.ollama = { ok: false, error: String(err) };
+  // Check AI provider
+  if (usingGroq) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      console.log('[health] Groq status:', res.status);
+      results.ai = { provider: 'groq', ok: res.ok, model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant', error: null };
+    } catch (err) {
+      console.error('[health] Groq unreachable:', err);
+      results.ai = { provider: 'groq', ok: false, error: String(err) };
+    }
+  } else {
+    try {
+      const res = await fetch(`${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}/api/tags`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const data = await res.json();
+      const models = data.models?.map((m: { name: string }) => m.name) ?? [];
+      console.log('[health] Ollama models:', models);
+      results.ai = { provider: 'ollama', ok: res.ok, models, model: process.env.OLLAMA_MODEL || 'llama3.2', error: null };
+    } catch (err) {
+      console.error('[health] Ollama unreachable:', err);
+      results.ai = { provider: 'ollama', ok: false, error: String(err) };
+    }
   }
 
   // Check Walrus publisher

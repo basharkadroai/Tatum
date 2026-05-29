@@ -7,4 +7,5 @@ export interface VaultItem {
   content: string;
   uploadedAt: string;
   sizeBytes: number;
+  txDigest?: string;
 }

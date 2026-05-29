@@ -1,6 +1,10 @@
 'use client';
 import { useRef, useState } from 'react';
+import { useSignAndExecuteTransaction, useCurrentAccount } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
+
+const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 
 interface Props { onUploaded: (item: VaultItem) => void; }
 
@@ -11,7 +15,15 @@ export function FileUpload({ onUploaded }: Props) {
   const [stepIdx, setStepIdx] = useState(0);
   const [error, setError] = useState('');
 
-  const steps = ['Uploading to Walrus...', 'Generating AI summary...', 'Done!'];
+  const account = useCurrentAccount();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+
+  const steps = [
+    'Uploading to Walrus...',
+    'Generating AI summary...',
+    'Recording on Sui via Tatum...',
+    'Done!',
+  ];
 
   async function handleFile(file: File) {
     setLoading(true); setError(''); setStepIdx(0);
@@ -22,11 +34,43 @@ export function FileUpload({ onUploaded }: Props) {
       setStepIdx(1);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+      const { blobId, summary, content } = data;
+
+      // Record blobId on Sui via Tatum RPC
       setStepIdx(2);
+      let txDigest: string | undefined;
+      if (account && PACKAGE_ID) {
+        try {
+          const tx = new Transaction();
+          tx.moveCall({
+            target: `${PACKAGE_ID}::vault::register`,
+            arguments: [
+              tx.pure.string(blobId),
+              tx.pure.string(file.name),
+              tx.pure.string(file.type || 'application/octet-stream'),
+              tx.pure.u64(file.size),
+            ],
+          });
+          const result = await signAndExecute({ transaction: tx });
+          txDigest = result.digest;
+          console.log('[chain] blobId registered on Sui:', txDigest);
+        } catch (chainErr) {
+          console.warn('[chain] on-chain registration skipped:', chainErr);
+        }
+      }
+
+      setStepIdx(3);
       onUploaded({
-        id: crypto.randomUUID(), filename: file.name, fileType: file.type,
-        blobId: data.blobId, summary: data.summary, content: data.content,
-        uploadedAt: new Date().toISOString(), sizeBytes: file.size,
+        id: crypto.randomUUID(),
+        filename: file.name,
+        fileType: file.type,
+        blobId,
+        summary,
+        content,
+        txDigest,
+        uploadedAt: new Date().toISOString(),
+        sizeBytes: file.size,
       });
     } catch (err) {
       setError(String(err));
@@ -72,11 +116,11 @@ export function FileUpload({ onUploaded }: Props) {
             <div style={{ width: '200px', height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
               <div style={{
                 height: '100%', borderRadius: '2px', transition: 'width 0.4s ease',
-                width: stepIdx === 0 ? '33%' : stepIdx === 1 ? '66%' : '100%',
+                width: `${((stepIdx + 1) / steps.length) * 100}%`,
                 background: 'linear-gradient(90deg, var(--purple), var(--mint))',
               }} />
             </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-3)' }}>Step {stepIdx + 1} of 3</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-3)' }}>Step {stepIdx + 1} of {steps.length}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
@@ -97,7 +141,7 @@ export function FileUpload({ onUploaded }: Props) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-              {['Walrus Storage', 'Sui Blockchain', 'Ollama AI'].map(tag => (
+              {['Walrus Storage', 'Sui Blockchain', 'Groq AI'].map(tag => (
                 <span key={tag} style={{
                   fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px',
                   background: 'white', border: '1px solid var(--border)', color: 'var(--text-2)',

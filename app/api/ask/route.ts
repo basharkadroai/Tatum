@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { askQuestion } from '@/lib/ollama';
+import { askQuestion } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   console.log('[ask] request received');
