@@ -1,12 +1,8 @@
 'use client';
 import { useRef, useState } from 'react';
-import { useSignAndExecuteTransaction, useCurrentAccount } from '@mysten/dapp-kit';
-import { Transaction } from '@mysten/sui/transactions';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { VaultItem } from '@/types/vault';
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
-const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
-const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
 const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
 
 interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
@@ -69,7 +65,6 @@ export function FileUpload({ onUploaded, compact }: Props) {
   const [error, setError] = useState('');
 
   const account = useCurrentAccount();
-  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   const steps = [
     'Uploading to Walrus...',
@@ -102,33 +97,29 @@ export function FileUpload({ onUploaded, compact }: Props) {
         summary = data.summary ?? summary;
       }
 
-      // Step 3 — on-chain registration
+      // Step 3 — on-chain registration (server-signed via deployment wallet)
       setStepIdx(2);
       let txDigest: string | undefined;
-      if (account && PACKAGE_ID) {
-        try {
-          const tx = new Transaction();
-          tx.moveCall({
-            target: `${PACKAGE_ID}::vault::register`,
-            arguments: [
-              tx.pure.string(blobId),
-              tx.pure.string(file.name),
-              tx.pure.string(file.type || 'application/octet-stream'),
-              tx.pure.u64(file.size),
-            ],
-          });
-          console.log(`[chain] signing on ${SUI_CHAIN}, wallet=${account.address}, package=${PACKAGE_ID}`);
-          const result = await signAndExecute({ transaction: tx, chain: SUI_CHAIN });
-          txDigest = result.digest;
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            blobId,
+            filename: file.name,
+            fileType: file.type || 'application/octet-stream',
+            fileSize: file.size,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.digest) {
+          txDigest = data.digest;
           console.log('[chain] registered:', txDigest);
-        } catch (chainErr: unknown) {
-          const msg = chainErr instanceof Error ? chainErr.message : String(chainErr);
-          console.error('[chain] failed:', msg);
-          const hint = msg.toLowerCase().includes('password') || msg.toLowerCase().includes('incorrect')
-            ? ' → Open Slush and switch to Sui Testnet, then try again.'
-            : '';
-          setError(`On-chain step failed: ${msg}${hint} File was saved to Walrus.`);
+        } else {
+          console.warn('[chain] register failed:', data.error);
         }
+      } catch (chainErr) {
+        console.warn('[chain] register error:', chainErr);
       }
 
       setStepIdx(3);
