@@ -1,15 +1,13 @@
 'use client';
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState } from 'react';
 import { useCurrentAccount, useCurrentWallet, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from '@mysten/sui/jsonRpc';
-import { WalrusClient, WalrusFile } from '@mysten/walrus';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
 const SUI_NETWORK = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
 const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
-const TATUM_RPC = process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || getJsonRpcFullnodeUrl('testnet');
+const TATUM_RPC = process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || 'https://fullnode.testnet.sui.io:443';
 
 interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
 
@@ -56,11 +54,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
   const { currentWallet } = useCurrentWallet();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
-  // WalrusClient backed by Tatum RPC — created once, reused across uploads
-  const walrusClient = useMemo(() => {
-    const suiClient = new SuiJsonRpcClient({ url: TATUM_RPC, network: SUI_NETWORK });
-    return new WalrusClient({ network: SUI_NETWORK, suiClient });
-  }, []);
+  // WalrusClient is created lazily inside handleFile to avoid WASM loading during SSR
 
   const steps = [
     'Uploading to Walrus...',
@@ -85,6 +79,15 @@ export function FileUpload({ onUploaded, compact }: Props) {
 
       if (account && canWalletSign) {
         try {
+          // Dynamic import keeps WASM out of the SSR bundle
+          const { WalrusClient, WalrusFile } = await import('@mysten/walrus');
+          const { SuiJsonRpcClient, getJsonRpcFullnodeUrl } = await import('@mysten/sui/jsonRpc');
+          const suiClient = new SuiJsonRpcClient({
+            url: TATUM_RPC || getJsonRpcFullnodeUrl('testnet'),
+            network: SUI_NETWORK,
+          });
+          const walrusClient = new WalrusClient({ network: SUI_NETWORK, suiClient });
+
           const fileBytes = new Uint8Array(await file.arrayBuffer());
           const flow = walrusClient.writeFilesFlow({
             files: [WalrusFile.from({ contents: fileBytes, identifier: file.name })],
