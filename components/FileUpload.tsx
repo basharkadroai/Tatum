@@ -21,7 +21,7 @@ export function FileUpload({ onUploaded }: Props) {
   const steps = [
     'Uploading to Walrus...',
     'Generating AI summary...',
-    'Recording on Sui via Tatum...',
+    account ? 'Recording on Sui via Tatum...' : 'Saving locally (connect wallet for on-chain)...',
     'Done!',
   ];
 
@@ -56,8 +56,11 @@ export function FileUpload({ onUploaded }: Props) {
           txDigest = result.digest;
           console.log('[chain] blobId registered on Sui:', txDigest);
         } catch (chainErr) {
-          console.warn('[chain] on-chain registration skipped:', chainErr);
+          console.error('[chain] on-chain registration failed:', chainErr);
+          setError(`On-chain step failed: ${String(chainErr).slice(0, 120)} — file was still saved to Walrus.`);
         }
+      } else if (!account) {
+        console.warn('[chain] wallet not connected — skipping on-chain step');
       }
 
       setStepIdx(3);
@@ -140,7 +143,7 @@ export function FileUpload({ onUploaded }: Props) {
                 PDF, TXT, MD, JSON, CSV · Stored permanently on Walrus · AI summarized
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
               {['Walrus Storage', 'Sui Blockchain', 'Groq AI'].map(tag => (
                 <span key={tag} style={{
                   fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px',
@@ -148,6 +151,11 @@ export function FileUpload({ onUploaded }: Props) {
                 }}>{tag}</span>
               ))}
             </div>
+            {!account && (
+              <p style={{ fontSize: '12px', color: 'var(--purple)', marginTop: '4px' }}>
+                Connect your wallet above to record uploads on-chain
+              </p>
+            )}
           </div>
         )}
       </div>
