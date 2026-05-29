@@ -1,6 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useCurrentAccount, useCurrentWallet } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
@@ -65,11 +66,15 @@ export function FileUpload({ onUploaded, compact }: Props) {
   const [error, setError] = useState('');
 
   const account = useCurrentAccount();
+  const { currentWallet } = useCurrentWallet();
+  const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+  const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
+  const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
 
   const steps = [
     'Uploading to Walrus...',
     'Extracting & summarizing...',
-    account ? 'Recording on Sui...' : 'Saving locally...',
+    'Recording on Sui via Tatum...',
     'Done!',
   ];
 
@@ -97,29 +102,63 @@ export function FileUpload({ onUploaded, compact }: Props) {
         summary = data.summary ?? summary;
       }
 
-      // Step 3 — on-chain registration (server-signed via deployment wallet)
+      // Step 3 — on-chain registration
+      // Try user wallet signing first (new sui:signAndExecuteTransaction feature).
+      // Fall back to server-side signing if wallet doesn't support new API or has no gas.
       setStepIdx(2);
       let txDigest: string | undefined;
-      try {
-        const res = await fetch('/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            blobId,
-            filename: file.name,
-            fileType: file.type || 'application/octet-stream',
-            fileSize: file.size,
-          }),
-        });
-        const data = await res.json();
-        if (res.ok && data.digest) {
-          txDigest = data.digest;
-          console.log('[chain] registered:', txDigest);
-        } else {
-          console.warn('[chain] register failed:', data.error);
+
+      const newSignFeature = currentWallet?.features['sui:signAndExecuteTransaction'] as
+        | { signAndExecuteTransaction: (input: unknown) => Promise<{ digest: string }> }
+        | undefined;
+
+      if (account && PACKAGE_ID && newSignFeature) {
+        // Wallet supports new API — user signs their own transaction
+        try {
+          const tx = new Transaction();
+          tx.moveCall({
+            target: `${PACKAGE_ID}::vault::register`,
+            arguments: [
+              tx.pure.string(blobId),
+              tx.pure.string(file.name),
+              tx.pure.string(file.type || 'application/octet-stream'),
+              tx.pure.u64(file.size),
+            ],
+          });
+          console.log('[chain] user signing on', SUI_CHAIN);
+          const result = await newSignFeature.signAndExecuteTransaction({
+            transaction: tx,
+            account,
+            chain: SUI_CHAIN,
+          });
+          txDigest = result.digest;
+          console.log('[chain] user-signed tx:', txDigest);
+        } catch (clientErr) {
+          console.warn('[chain] user signing failed, falling back to server:', clientErr);
         }
-      } catch (chainErr) {
-        console.warn('[chain] register error:', chainErr);
+      }
+
+      // Server-side fallback (deployment wallet) — always runs if user signing didn't produce a digest
+      if (!txDigest) {
+        try {
+          const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              blobId,
+              filename: file.name,
+              fileType: file.type || 'application/octet-stream',
+              fileSize: file.size,
+            }),
+          });
+          const data = await res.json();
+          if (res.ok && data.digest) {
+            txDigest = data.digest;
+            console.log('[chain] server-signed tx:', txDigest);
+          }
+        } catch (serverErr) {
+          console.warn('[chain] server register failed:', serverErr);
+        }
       }
 
       setStepIdx(3);
