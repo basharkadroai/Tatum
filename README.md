@@ -76,6 +76,7 @@ cd contracts/chainmind
 sui client publish --gas-budget 50000000
 
 # Copy the published package ID into NEXT_PUBLIC_VAULT_PACKAGE_ID in .env.local
+# Testnet package (deployed): 0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138
 ```
 
 ### 4. Run locally
