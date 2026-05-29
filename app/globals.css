@@ -1,26 +1,67 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --white:       #ffffff;
+  --off-white:   #f8fafc;
+  --border:      #e2e8f0;
+  --border-2:    #cbd5e1;
+  --text-1:      #0f172a;
+  --text-2:      #475569;
+  --text-3:      #94a3b8;
+  --purple:      #4f46e5;
+  --purple-dark: #3730a3;
+  --purple-light:#6366f1;
+  --mint:        #10b981;
+  --mint-dark:   #059669;
+  --mint-light:  #34d399;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  background: var(--white);
+  color: var(--text-1);
+  min-height: 100%;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Tatum-style gradient text (purple → teal, animated) */
+.grad-text {
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 30%, #06b6d4 70%, #10b981 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4s linear infinite;
 }
+
+@keyframes shimmer {
+  0%   { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Purple card (like Tatum "Blockchain RPCs") */
+.card-purple {
+  background: linear-gradient(145deg, #312e81 0%, #1e1b4b 100%);
+  color: white;
+}
+
+/* Teal card (like Tatum "Web3 Notifications") */
+.card-teal {
+  background: linear-gradient(145deg, #059669 0%, #065f46 100%);
+  color: white;
+}
+
+/* Dot pattern (like Tatum "Smart RPC Routing" card) */
+.dot-bg {
+  background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--off-white); }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
