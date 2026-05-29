@@ -5,8 +5,61 @@ import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
+const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
+const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
 
 interface Props { onUploaded: (item: VaultItem) => void; }
+
+async function extractText(file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+
+  // Text-based: read directly in browser
+  const textExts = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'jsx', 'tsx', 'py', 'html', 'htm', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'sql', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'env', 'log'];
+  const isText = file.type.startsWith('text/') || textExts.includes(ext);
+  if (isText) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
+  // Binary formats — send to extract endpoint (these are typically < 10MB)
+  if (['pdf', 'docx', 'xlsx', 'xls'].includes(ext)) {
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/extract', { method: 'POST', body: form });
+      if (res.ok) {
+        const { content } = await res.json();
+        return content ?? '';
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  return '';
+}
+
+async function uploadToWalrus(file: File): Promise<string> {
+  const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=5`, {
+    method: 'PUT',
+    body: file,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Walrus upload failed (${res.status}): ${text.slice(0, 120)}`);
+  }
+  const data = await res.json();
+  const blobId =
+    data.newlyCreated?.blobObject?.blobId ??
+    data.alreadyCertified?.blobId;
+  if (!blobId) throw new Error('Walrus returned no blobId');
+  return blobId;
+}
 
 export function FileUpload({ onUploaded }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -20,24 +73,36 @@ export function FileUpload({ onUploaded }: Props) {
 
   const steps = [
     'Uploading to Walrus...',
-    'Generating AI summary...',
-    'Recording on Sui via Tatum...',
+    'Extracting & summarizing...',
+    account ? 'Recording on Sui...' : 'Saving locally...',
     'Done!',
   ];
 
   async function handleFile(file: File) {
-    setLoading(true); setError(''); setStepIdx(0);
+    setLoading(true);
+    setError('');
+    setStepIdx(0);
+
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      // Step 1 — upload directly to Walrus from browser (no Vercel size limit)
+      const blobId = await uploadToWalrus(file);
+
+      // Step 2 — extract text + AI summary
       setStepIdx(1);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      const content = await extractText(file);
 
-      const { blobId, summary, content } = data;
+      let summary = 'No text content could be extracted from this file.';
+      if (content.trim()) {
+        const res = await fetch('/api/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        const data = await res.json();
+        summary = data.summary ?? summary;
+      }
 
-      // Record blobId on Sui via Tatum RPC
+      // Step 3 — on-chain registration
       setStepIdx(2);
       let txDigest: string | undefined;
       if (account && PACKAGE_ID) {
@@ -52,11 +117,14 @@ export function FileUpload({ onUploaded }: Props) {
               tx.pure.u64(file.size),
             ],
           });
-          const result = await signAndExecute({ transaction: tx });
+          console.log(`[chain] signing on ${SUI_CHAIN}, package=${PACKAGE_ID}`);
+          const result = await signAndExecute({ transaction: tx, chain: SUI_CHAIN });
           txDigest = result.digest;
-          console.log('[chain] blobId registered on Sui:', txDigest);
-        } catch (chainErr) {
-          console.warn('[chain] on-chain registration skipped:', chainErr);
+          console.log('[chain] registered:', txDigest);
+        } catch (chainErr: unknown) {
+          const msg = chainErr instanceof Error ? chainErr.message : String(chainErr);
+          console.error('[chain] failed:', msg);
+          setError(`On-chain step failed: ${msg} — file was still saved to Walrus.`);
         }
       }
 
@@ -67,7 +135,7 @@ export function FileUpload({ onUploaded }: Props) {
         fileType: file.type,
         blobId,
         summary,
-        content,
+        content: content.slice(0, 12000),
         txDigest,
         uploadedAt: new Date().toISOString(),
         sizeBytes: file.size,
@@ -80,8 +148,10 @@ export function FileUpload({ onUploaded }: Props) {
   }
 
   function onDrop(e: React.DragEvent) {
-    e.preventDefault(); setDragging(false);
-    const f = e.dataTransfer.files[0]; if (f) handleFile(f);
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
   }
 
   return (
@@ -102,8 +172,16 @@ export function FileUpload({ onUploaded }: Props) {
           opacity: loading ? 0.8 : 1,
         }}
       >
-        <input ref={inputRef} type="file" accept=".pdf,.txt,.md,.json,.csv" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+        <input
+          ref={inputRef}
+          type="file"
+          className="hidden"
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = '';
+          }}
+        />
 
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
@@ -137,10 +215,10 @@ export function FileUpload({ onUploaded }: Props) {
                 Drop a file or <span style={{ color: 'var(--purple)' }}>click to browse</span>
               </p>
               <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>
-                PDF, TXT, MD, JSON, CSV · Stored permanently on Walrus · AI summarized
+                Any file type · Stored permanently on Walrus · AI summarized
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
               {['Walrus Storage', 'Sui Blockchain', 'Groq AI'].map(tag => (
                 <span key={tag} style={{
                   fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px',
@@ -148,6 +226,11 @@ export function FileUpload({ onUploaded }: Props) {
                 }}>{tag}</span>
               ))}
             </div>
+            {!account && (
+              <p style={{ fontSize: '12px', color: 'var(--purple)', marginTop: '4px' }}>
+                Connect your wallet to record uploads on-chain
+              </p>
+            )}
           </div>
         )}
       </div>

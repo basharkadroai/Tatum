@@ -20,6 +20,8 @@ interface Props { item: VaultItem; onAsk: (item: VaultItem) => void; onDelete: (
 export function VaultCard({ item, onAsk, onDelete }: Props) {
   const icon = ICONS[item.fileType] ?? '📄';
   const aggregator = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
+  const network = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
+  const suiExplorer = network === 'mainnet' ? 'https://suivision.xyz' : 'https://testnet.suivision.xyz';
 
   return (
     <div
@@ -74,7 +76,7 @@ export function VaultCard({ item, onAsk, onDelete }: Props) {
           </a>
           {item.txDigest && (
             <a
-              href={`https://testnet.suivision.xyz/txblock/${item.txDigest}`}
+              href={`${suiExplorer}/txblock/${item.txDigest}`}
               target="_blank" rel="noopener noreferrer"
               style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
