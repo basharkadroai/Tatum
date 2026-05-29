@@ -103,7 +103,8 @@ export default function Home() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <LogoMark size={30} />
-          <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.02em', color: 'var(--text-1)' }}>ChainMind</span>
+          <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.03em', color: 'var(--text-1)' }}>Chain</span>
+          <span style={{ fontWeight: 400, fontSize: '16px', letterSpacing: '-0.02em', color: 'var(--text-2)', marginLeft: '1px' }}>Mind</span>
           <span style={{
             fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
             background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid #c7d2fe',
