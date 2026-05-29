@@ -117,14 +117,17 @@ export function FileUpload({ onUploaded, compact }: Props) {
               tx.pure.u64(file.size),
             ],
           });
-          console.log(`[chain] signing on ${SUI_CHAIN}, package=${PACKAGE_ID}`);
+          console.log(`[chain] signing on ${SUI_CHAIN}, wallet=${account.address}, package=${PACKAGE_ID}`);
           const result = await signAndExecute({ transaction: tx, chain: SUI_CHAIN });
           txDigest = result.digest;
           console.log('[chain] registered:', txDigest);
         } catch (chainErr: unknown) {
           const msg = chainErr instanceof Error ? chainErr.message : String(chainErr);
           console.error('[chain] failed:', msg);
-          setError(`On-chain step failed: ${msg} — file was still saved to Walrus.`);
+          const hint = msg.toLowerCase().includes('password') || msg.toLowerCase().includes('incorrect')
+            ? ' → Open Slush and switch to Sui Testnet, then try again.'
+            : '';
+          setError(`On-chain step failed: ${msg}${hint} File was saved to Walrus.`);
         }
       }
 
