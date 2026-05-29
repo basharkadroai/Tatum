@@ -23,7 +23,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networkConfig} defaultNetwork={activeNetwork}>
-        <WalletProvider autoConnect>{children}</WalletProvider>
+        <WalletProvider autoConnect slushWallet={{ name: 'ChainMind' }}>{children}</WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>
   );
