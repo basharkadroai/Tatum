@@ -46,18 +46,42 @@ npm install
 Create `.env.local`:
 
 ```env
+# ── Network switch — flip this one line to move the whole app to mainnet ──
+NEXT_PUBLIC_SUI_NETWORK=testnet          # testnet (default, free) | mainnet
+
+# ── Tatum Sui RPC (keyed per network; the app picks by NEXT_PUBLIC_SUI_NETWORK) ──
 TATUM_API_KEY=your_tatum_api_key
-NEXT_PUBLIC_TATUM_SUI_RPC=https://sui-mainnet.gateway.tatum.io/YOUR_KEY
 NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC=https://sui-testnet.gateway.tatum.io/YOUR_KEY
-NEXT_PUBLIC_SUI_NETWORK=testnet
-WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
-NEXT_PUBLIC_WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
-NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+NEXT_PUBLIC_TATUM_SUI_MAINNET_RPC=https://sui-mainnet.gateway.tatum.io/YOUR_KEY
+
+# ── Walrus (optional overrides; sensible per-network defaults are built in) ──
+# Defaults: aggregator/publisher.walrus-<network>.walrus.space
+# Mainnet note: reads work on the public aggregator, but there is NO free public
+# mainnet publisher — set NEXT_PUBLIC_WALRUS_PUBLISHER_URL to a funded one to write.
+# NEXT_PUBLIC_WALRUS_PUBLISHER_URL=
+# NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=
+
+# ── AI + contract ──
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
 NEXT_PUBLIC_VAULT_PACKAGE_ID=0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138
 SUI_DEPLOYER_KEY=your_deployer_keypair_from_sui_keystore
 ```
+
+### Running on mainnet
+
+The app is network-agnostic — everything (Tatum RPC, Walrus endpoints, explorer
+links, chain id, gas) is derived from `NEXT_PUBLIC_SUI_NETWORK` via `lib/network.ts`.
+To run on **Sui mainnet**:
+
+1. `NEXT_PUBLIC_SUI_NETWORK=mainnet`
+2. Set `NEXT_PUBLIC_TATUM_SUI_MAINNET_RPC` to your Tatum mainnet gateway URL
+3. Publish the Move contract to mainnet and set `NEXT_PUBLIC_VAULT_PACKAGE_ID` to the new package id
+4. Set `NEXT_PUBLIC_WALRUS_PUBLISHER_URL` to a funded mainnet publisher (mainnet writes cost WAL)
+5. Fund `SUI_DEPLOYER_KEY`'s wallet with **SUI** (gas) and **WAL** (storage)
+
+We run on **testnet** by default so the live demo stays free; mainnet is fully
+supported by the same codebase.
 
 ### 3. Run locally
 

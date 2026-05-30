@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from '@mysten/sui/jsonRpc';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 import { fromBase64 } from '@mysten/sui/utils';
+import { tatumRpcUrl, SUI_NETWORK, IS_MAINNET } from '@/lib/network';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID!;
 
-// Tatum RPC is the primary — fallback to public testnet fullnode
-const RPC_URL =
-  process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC ||
-  getJsonRpcFullnodeUrl('testnet');
+// Tatum RPC is the primary — falls back to the public fullnode inside tatumRpcUrl().
+const RPC_URL = tatumRpcUrl();
 
-// Testnet reference gas price is a stable 1000 MIST. Setting gas price + budget
-// explicitly skips the SDK's getReferenceGasPrice + dryRun calls, cutting the
-// per-transaction RPC count from ~5 to ~2 — critical for Tatum's 3 RPS free tier.
+// On TESTNET the reference gas price is a stable 1000 MIST, so we set it
+// explicitly to skip the SDK's getReferenceGasPrice + dryRun calls — cutting the
+// per-tx RPC count from ~5 to ~2, critical for Tatum's 3 RPS free tier. On
+// MAINNET the reference gas price fluctuates, so we let the SDK fetch it.
 const GAS_PRICE = 1000; // testnet reference gas price (MIST)
 const GAS_BUDGET = 10_000_000; // 0.01 SUI — ample for a single moveCall
 
@@ -33,11 +33,11 @@ export async function POST(req: NextRequest) {
 
     const kp = keypair();
     const sender = kp.getPublicKey().toSuiAddress();
-    const client = new SuiJsonRpcClient({ url: RPC_URL, network: 'testnet' });
+    const client = new SuiJsonRpcClient({ url: RPC_URL, network: SUI_NETWORK });
 
     const tx = new Transaction();
     tx.setSender(sender);
-    tx.setGasPrice(GAS_PRICE);
+    if (!IS_MAINNET) tx.setGasPrice(GAS_PRICE); // mainnet RGP fluctuates → let SDK fetch it
     tx.setGasBudget(GAS_BUDGET);
     tx.moveCall({
       target: `${PACKAGE_ID}::vault::register`,

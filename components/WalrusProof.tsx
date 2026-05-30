@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Check, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { WALRUS_AGGREGATOR } from '@/lib/network';
 
-const AGGREGATOR =
-  (process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space').trim();
+const AGGREGATOR = WALRUS_AGGREGATOR.trim();
 
 interface Props {
   blobId: string;

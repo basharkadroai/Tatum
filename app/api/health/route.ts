@@ -1,15 +1,18 @@
 import { NextResponse } from 'next/server';
+import { SUI_NETWORK, tatumRpcUrl, WALRUS_PUBLISHER } from '@/lib/network';
 
 export async function GET() {
   console.log('[health] check started');
 
   const usingGroq = !!process.env.GROQ_API_KEY;
+  const RPC = tatumRpcUrl();
 
   const results: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
+    network: SUI_NETWORK,
     ai: { provider: usingGroq ? 'groq' : 'ollama', ok: false, error: null },
-    walrus: { ok: false, publisher: process.env.WALRUS_PUBLISHER_URL, error: null },
-    tatum: { ok: false, rpc: process.env.NEXT_PUBLIC_TATUM_SUI_RPC, error: null },
+    walrus: { ok: false, publisher: WALRUS_PUBLISHER, error: null },
+    tatum: { ok: false, rpc: RPC, error: null },
   };
 
   // Check AI provider
@@ -43,7 +46,7 @@ export async function GET() {
   // Check Walrus publisher
   try {
     const res = await fetch(
-      `${process.env.WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space'}/v1/health`,
+      `${WALRUS_PUBLISHER}/v1/health`,
       { signal: AbortSignal.timeout(5000) },
     );
     console.log('[health] Walrus status:', res.status);
@@ -55,8 +58,7 @@ export async function GET() {
 
   // Check Tatum / Sui RPC
   try {
-    const rpc = process.env.NEXT_PUBLIC_TATUM_SUI_RPC || '';
-    const res = await fetch(rpc, {
+    const res = await fetch(RPC, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'sui_getChainIdentifier', params: [] }),

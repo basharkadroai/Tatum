@@ -2,8 +2,7 @@
 import { useState } from 'react';
 import { ConnectModal, useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 import { LogOut, Wallet } from 'lucide-react';
-
-const NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
+import { SUI_NETWORK as NETWORK } from '@/lib/network';
 
 export function WalletProfile({ collapsed }: { collapsed: boolean }) {
   const account = useCurrentAccount();

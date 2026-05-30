@@ -1,6 +1,7 @@
 import type { VaultItem } from '@/types/vault';
+import { WALRUS_PUBLISHER as WALRUS_PUBLISHER_RAW } from '@/lib/network';
 
-const WALRUS_PUBLISHER = (process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space').trim();
+const WALRUS_PUBLISHER = WALRUS_PUBLISHER_RAW.trim();
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const VISION_MAX = 3 * 1024 * 1024;
 const EXTRACT_MAX = 4 * 1024 * 1024;

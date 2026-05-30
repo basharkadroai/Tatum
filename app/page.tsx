@@ -4,6 +4,7 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { runUpload } from '@/lib/upload';
+import { SUI_CHAIN_ID, SUI_EXPLORER, WALRUS_AGGREGATOR } from '@/lib/network';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
@@ -15,8 +16,6 @@ import {
 } from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
-const SUI_NETWORK_NAME = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
-const SUI_CHAIN_ID = `sui:${SUI_NETWORK_NAME}` as `sui:testnet` | `sui:mainnet`;
 
 const STORAGE_KEY = 'chainmind_vault';
 function loadVault(): VaultItem[] {
@@ -142,9 +141,8 @@ export default function Home() {
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
   const allTags = Array.from(new Set(vault.flatMap(i => i.tags || []))).slice(0, 12);
 
-  const network = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
-  const aggregator = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
-  const suiExplorer = network === 'mainnet' ? 'https://suivision.xyz' : 'https://testnet.suivision.xyz';
+  const aggregator = WALRUS_AGGREGATOR;
+  const suiExplorer = SUI_EXPLORER;
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--base)' }}>

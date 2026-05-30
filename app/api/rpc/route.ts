@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { tatumRpcUrl, PUBLIC_FULLNODE } from '@/lib/network';
 
 // Tatum gateway can't be called directly from the browser (its CORS preflight
 // rejects the Sui SDK's `client-sdk-version` header). This server-side proxy
 // forwards JSON-RPC to Tatum so EVERY Sui read from the frontend still routes
 // through Tatum, with the public fullnode as a graceful fallback on 429/error.
-const TATUM_RPC =
-  process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || 'https://fullnode.testnet.sui.io:443';
-const FALLBACK_RPC = 'https://fullnode.testnet.sui.io:443';
+const TATUM_RPC = tatumRpcUrl();
+const FALLBACK_RPC = PUBLIC_FULLNODE;
 
 export async function POST(req: NextRequest) {
   const body = await req.text();

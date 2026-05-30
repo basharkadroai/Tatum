@@ -1,5 +1,4 @@
-const PUBLISHER = process.env.WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
-const AGGREGATOR = process.env.WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
+import { WALRUS_PUBLISHER as PUBLISHER, WALRUS_AGGREGATOR as AGGREGATOR } from '@/lib/network';
 
 export async function uploadToWalrus(buffer: Buffer, epochs = 5): Promise<string> {
   const url = `${PUBLISHER}/v1/blobs?epochs=${epochs}`;

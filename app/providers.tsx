@@ -3,9 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SuiClientProvider, WalletProvider, createNetworkConfig } from '@mysten/dapp-kit';
 import '@mysten/dapp-kit/dist/index.css';
 import { useState } from 'react';
-
-const activeNetwork =
-  (process.env.NEXT_PUBLIC_SUI_NETWORK as 'mainnet' | 'testnet') || 'testnet';
+import { SUI_NETWORK as activeNetwork } from '@/lib/network';
 
 // Relative URL — identical on server and client, so no hydration mismatch can
 // remount the provider tree (which would wipe autoConnect). Browser fetch
