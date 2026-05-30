@@ -31,18 +31,25 @@ function dbg(step: string, detail?: unknown) {
   }
 }
 
+function readAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
 async function extractText(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  const textExts = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'jsx', 'tsx', 'py', 'html', 'htm', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'sql', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'env', 'log'];
+  const textExts = ['txt', 'md', 'mdx', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'html', 'htm', 'xml', 'svg', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash', 'zsh', 'sql', 'rs', 'go', 'java', 'kt', 'swift', 'c', 'cpp', 'cc', 'h', 'hpp', 'cs', 'css', 'scss', 'less', 'env', 'log', 'gitignore', 'dockerfile', 'lock', 'gql', 'graphql', 'vue', 'svelte', 'r', 'lua', 'pl', 'srt', 'vtt', 'tex', 'rst'];
+
+  // Known text-based files
   if (file.type.startsWith('text/') || textExts.includes(ext)) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
+    return readAsText(file);
   }
-  // Server extraction is capped by Vercel's 4.5MB body limit — skip larger files gracefully
+
+  // PDF / DOCX / XLSX → server extraction (capped by Vercel's 4.5MB body limit)
   const MAX_EXTRACT_BYTES = 4 * 1024 * 1024;
   if (['pdf', 'docx', 'xlsx', 'xls'].includes(ext) && file.size <= MAX_EXTRACT_BYTES) {
     try {
@@ -52,6 +59,22 @@ async function extractText(file: File): Promise<string> {
       if (res.ok) return (await res.json()).content ?? '';
     } catch { /* fall through */ }
   }
+
+  // Unknown small files: try reading as text; keep only if it's actually text
+  // (reject binary by counting control chars).
+  if (file.size <= 2 * 1024 * 1024 && !file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/')) {
+    try {
+      const txt = await readAsText(file);
+      const sample = txt.slice(0, 2000);
+      let nonPrintable = 0;
+      for (let i = 0; i < sample.length; i++) {
+        const c = sample.charCodeAt(i);
+        if ((c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 0xfffd) nonPrintable++;
+      }
+      if (sample.length > 0 && nonPrintable / sample.length < 0.05) return txt;
+    } catch { /* not text */ }
+  }
+
   return '';
 }
 
@@ -82,6 +105,12 @@ export function FileUpload({ onUploaded, compact, collapsed, iconButton }: Props
   ];
 
   async function handleFile(file: File) {
+    // Public Walrus publisher caps uploads at ~10 MiB — guard with a clear message.
+    const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(`"${file.name}" is ${(file.size / 1048576).toFixed(1)} MB — the max is 10 MB. Please upload a smaller file.`);
+      return;
+    }
     setLoading(true);
     setError('');
     setStepIdx(0);

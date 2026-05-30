@@ -11,10 +11,14 @@ A decentralized AI knowledge vault. Upload any document — stored permanently o
 ## What it does
 
 1. **Upload any file** — PDF, DOCX, XLSX, TXT, MD, JSON, CSV, code, images, anything
-2. **Walrus** stores the file as an erasure-coded blob (permanent, decentralized)
-3. **Groq AI** generates a summary instantly (`llama-3.3-70b-versatile`)
-4. **Sui transaction** records the `blobId` on-chain via **Tatum RPC** — verifiable proof of storage
-5. **Ask anything** — RAG-style Q&A against the document content
+2. **Walrus** stores the file as an erasure-coded blob (permanent, decentralized). The app then **retrieves the blob back from Walrus live** ("Live on Walrus — retrieved just now") to *prove* it's really on decentralized storage.
+3. **Groq AI** analyzes it on upload — summary, topic **tags**, and file-specific **suggested questions** in one pass (`llama-3.3-70b-versatile`).
+4. **Sui transaction** records the `blobId` on-chain via **Tatum RPC** — a `VaultEntry` object as verifiable proof of storage. Users can optionally **claim it with their own wallet** for true on-chain ownership.
+5. **Chat with your knowledge** — streaming, multi-turn Q&A on a single file, **or ask across your whole vault** with `[filename]` source citations.
+
+### Why this is a deep Walrus + Tatum integration
+- **Walrus is the core**, not an add-on — every upload is a real blob, and we *show* it's retrievable from storage on screen.
+- **Every Sui interaction routes through Tatum** — a server-side `/api/rpc` proxy sends all reads to Tatum's gateway, and the on-chain `vault::register` write is signed and submitted via Tatum RPC.
 
 ## Tech stack
 
@@ -43,8 +47,8 @@ Create `.env.local`:
 
 ```env
 TATUM_API_KEY=your_tatum_api_key
-NEXT_PUBLIC_TATUM_SUI_RPC=https://sui-mainnet.tatum.io/YOUR_KEY
-NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC=https://sui-testnet.tatum.io/YOUR_KEY
+NEXT_PUBLIC_TATUM_SUI_RPC=https://sui-mainnet.gateway.tatum.io/YOUR_KEY
+NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC=https://sui-testnet.gateway.tatum.io/YOUR_KEY
 NEXT_PUBLIC_SUI_NETWORK=testnet
 WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
 NEXT_PUBLIC_WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
