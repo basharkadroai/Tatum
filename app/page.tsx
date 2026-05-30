@@ -5,7 +5,6 @@ import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
 import { WalletButton } from '@/components/WalletButton';
-import { LogoMark } from '@/components/Logo';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
 import {
@@ -161,13 +160,12 @@ export default function Home() {
         borderBottom: '1px solid var(--border)', background: 'var(--white)',
         zIndex: 40,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <LogoMark size={30} />
-          <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.03em', color: 'var(--text-1)' }}>Chain</span>
-          <span style={{ fontWeight: 400, fontSize: '16px', letterSpacing: '-0.02em', color: 'var(--text-2)', marginLeft: '1px' }}>Mind</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+          <Sparkles size={19} strokeWidth={2} color="var(--purple)" className="icon-twinkle" />
+          <span style={{ fontWeight: 600, fontSize: '17px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>ChainMind</span>
           <span style={{
-            fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-            background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid #c7d2fe',
+            fontSize: '11px', fontWeight: 600, padding: '2px 9px', borderRadius: '20px', marginLeft: '4px',
+            background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid var(--purple-border)',
           }}>
             Sui {network}
           </span>
@@ -198,9 +196,9 @@ export default function Home() {
                   width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
                   padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
                   cursor: 'pointer', transition: 'all 0.15s',
-                  background: vaultMode ? 'var(--purple-bg)' : 'white',
+                  background: vaultMode ? 'var(--purple-bg)' : 'var(--white)',
                   color: vaultMode ? 'var(--purple)' : 'var(--text-1)',
-                  border: `1px solid ${vaultMode ? '#c7d2fe' : 'var(--border)'}`,
+                  border: `1px solid ${vaultMode ? 'var(--purple-border)' : 'var(--border)'}`,
                 }}
                 onMouseEnter={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--purple)'; }}
                 onMouseLeave={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--border)'; }}
@@ -246,13 +244,13 @@ export default function Home() {
                     <button onClick={() => setTagFilter(null)} style={{
                       display: 'inline-flex', alignItems: 'center', gap: '3px',
                       fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                      background: 'var(--text-1)', color: 'white', border: 'none', cursor: 'pointer',
+                      background: 'var(--purple)', color: 'var(--base)', border: 'none', cursor: 'pointer',
                     }}><X size={10} strokeWidth={2.5} /> {tagFilter}</button>
                   )}
                   {!tagFilter && allTags.map(tag => (
                     <button key={tag} onClick={() => setTagFilter(tag)} style={{
                       fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-                      background: 'white', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer',
+                      background: 'var(--off-white)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer',
                     }}
                       onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
                       onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
@@ -408,7 +406,7 @@ export default function Home() {
                     )}
                   </div>
                   {claimMsg && (
-                    <p style={{ fontSize: '11px', marginTop: '4px', color: claimMsg.startsWith('Claimed') ? 'var(--mint-dark)' : '#ef4444' }}>{claimMsg}</p>
+                    <p style={{ fontSize: '11px', marginTop: '4px', color: claimMsg.startsWith('Claimed') ? 'var(--mint-dark)' : 'var(--error)' }}>{claimMsg}</p>
                   )}
                 </div>
                 {/* Optional: claim under your own wallet */}
@@ -430,7 +428,7 @@ export default function Home() {
                 {pendingDelete === selected.id ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     <button onClick={() => handleDelete(selected.id)}
-                      style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid #fecaca', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
+                      style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--error-border)', background: 'var(--error-bg)', color: 'var(--error)', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
                       Delete
                     </button>
                     <button onClick={() => setPendingDelete(null)}
@@ -443,7 +441,7 @@ export default function Home() {
                     onClick={() => setPendingDelete(selected.id)}
                     title="Remove from vault"
                     style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--text-3)', flexShrink: 0 }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.color = '#ef4444'; }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--error-border)'; e.currentTarget.style.color = 'var(--error)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)'; }}
                   ><X size={15} strokeWidth={2} /></button>
                 )}
@@ -468,7 +466,7 @@ export default function Home() {
                     {selected.tags.map(tag => (
                       <button key={tag} onClick={() => { setTagFilter(tag); setSelected(null); }} title={`Filter vault by "${tag}"`} style={{
                         fontSize: '11px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px',
-                        background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid #c7d2fe', cursor: 'pointer',
+                        background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid var(--purple-border)', cursor: 'pointer',
                       }}>#{tag}</button>
                     ))}
                   </div>
@@ -485,7 +483,7 @@ export default function Home() {
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: '4px',
                     fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                    background: '#e6f4ea', border: '1px solid #b7e1c1', color: 'var(--mint-dark)',
+                    background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--mint-dark)',
                   }}><Check size={11} strokeWidth={2.5} /> on Walrus</span>
                   <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-3)', transform: proofExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>▼</span>
                 </button>
@@ -521,9 +519,9 @@ export default function Home() {
         <div style={{
           position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
           zIndex: 9999, display: 'flex', alignItems: 'center', gap: '8px',
-          background: 'var(--text-1)', color: 'white', padding: '10px 18px',
-          borderRadius: '12px', fontSize: '13px', fontWeight: 600,
-          boxShadow: '0 8px 28px rgba(0,0,0,0.22)', animation: 'toastIn 0.22s ease',
+          background: '#2d2e30', color: 'var(--text-1)', padding: '10px 18px',
+          borderRadius: '12px', fontSize: '13px', fontWeight: 600, border: '1px solid var(--border)',
+          boxShadow: '0 8px 28px rgba(0,0,0,0.5)', animation: 'toastIn 0.22s ease',
           maxWidth: '90vw',
         }}>
           <Check size={15} strokeWidth={2.5} color="var(--mint)" style={{ flexShrink: 0 }} />

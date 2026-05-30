@@ -61,9 +61,9 @@ export function WalrusProof({ blobId, fileType, filename }: Props) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '5px',
             fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
-            background: state === 'ok' ? '#e6f4ea' : state === 'error' ? '#fef2f2' : 'var(--off-white)',
-            border: `1px solid ${state === 'ok' ? '#b7e1c1' : state === 'error' ? '#fecaca' : 'var(--border)'}`,
-            color: state === 'ok' ? 'var(--mint-dark)' : state === 'error' ? '#ef4444' : 'var(--text-3)',
+            background: state === 'ok' ? 'var(--success-bg)' : state === 'error' ? 'var(--error-bg)' : 'var(--off-white)',
+            border: `1px solid ${state === 'ok' ? 'var(--success-border)' : state === 'error' ? 'var(--error-border)' : 'var(--border)'}`,
+            color: state === 'ok' ? 'var(--mint-dark)' : state === 'error' ? 'var(--error)' : 'var(--text-3)',
           }}
         >
           {state === 'loading' && <><Loader2 size={12} strokeWidth={2.5} className="lucide-spin" /> Retrieving from Walrus…</>}

@@ -181,8 +181,8 @@ export function FileUpload({ onUploaded, compact }: Props) {
             width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
             padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
             background: loading ? 'var(--purple-bg)' : 'var(--purple)',
-            color: loading ? 'var(--purple)' : 'white',
-            border: loading ? '1px solid #c7d2fe' : 'none',
+            color: loading ? 'var(--purple)' : 'var(--base)',
+            border: loading ? '1px solid var(--purple-border)' : 'none',
             cursor: loading ? 'default' : 'pointer', transition: 'all 0.15s',
           }}
         >
@@ -199,7 +199,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
           )}
         </button>
         {error && (
-          <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444' }}>
+          <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--error)' }}>
             ⚠ {error.slice(0, 100)}
           </div>
         )}
@@ -225,7 +225,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
         style={{
           border: `2px dashed ${dragging ? 'var(--purple)' : 'var(--border-2)'}`,
           borderRadius: '16px',
-          background: dragging ? '#eef2ff' : 'var(--off-white)',
+          background: dragging ? 'var(--purple-bg)' : 'var(--off-white)',
           padding: '48px 32px',
           textAlign: 'center',
           cursor: loading ? 'default' : 'pointer',
@@ -260,7 +260,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
               {['Walrus Storage', 'Tatum RPC', 'Groq AI'].map(tag => (
-                <span key={tag} style={{ fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', background: 'white', border: '1px solid var(--border)', color: 'var(--text-2)' }}>{tag}</span>
+                <span key={tag} style={{ fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', background: 'var(--off-white)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>{tag}</span>
               ))}
             </div>
           </div>
@@ -268,7 +268,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
       </div>
 
       {error && (
-        <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444' }}>
+        <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--error)' }}>
           ⚠ {error}
         </div>
       )}

@@ -14,7 +14,7 @@ export function WalletButton() {
           display: 'flex', alignItems: 'center', gap: '6px',
           padding: '7px 14px', borderRadius: '8px', fontSize: '13px',
           fontFamily: 'monospace', fontWeight: 500,
-          background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d',
+          background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--mint)',
         }}>
           <span style={{
             width: '7px', height: '7px', borderRadius: '50%',
@@ -45,12 +45,11 @@ export function WalletButton() {
         onClick={() => setOpen(true)}
         style={{
           padding: '9px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 700,
-          background: 'var(--purple)', color: 'white', border: 'none', cursor: 'pointer',
+          background: 'var(--purple)', color: 'var(--base)', border: 'none', cursor: 'pointer',
           letterSpacing: '-0.01em', transition: 'background 0.15s, box-shadow 0.15s',
         }}
         onMouseEnter={e => {
           e.currentTarget.style.background = 'var(--purple-dark)';
-          e.currentTarget.style.boxShadow = '0 4px 14px rgba(79,70,229,0.4)';
         }}
         onMouseLeave={e => {
           e.currentTarget.style.background = 'var(--purple)';

@@ -196,13 +196,13 @@ export function ChatPanel({ resetKey, endpoint, buildBody, suggestions, emptyHin
             <button onClick={stop} title="Stop generating" style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
               padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, flexShrink: 0,
-              background: 'var(--text-1)', color: 'white', border: 'none', cursor: 'pointer',
-            }}><Square size={12} strokeWidth={2.5} fill="white" /> Stop</button>
+              background: 'var(--off-white)', color: 'var(--text-1)', border: '1px solid var(--border)', cursor: 'pointer',
+            }}><Square size={12} strokeWidth={2.5} fill="currentColor" /> Stop</button>
           ) : (
             <button onClick={() => send()} disabled={!input.trim()} title="Send" style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
-              background: 'var(--purple)', color: 'white', border: 'none', cursor: input.trim() ? 'pointer' : 'default',
+              background: 'var(--purple)', color: 'var(--base)', border: 'none', cursor: input.trim() ? 'pointer' : 'default',
               opacity: input.trim() ? 1 : 0.4, transition: 'opacity 0.15s',
             }}><ArrowUp size={17} strokeWidth={2.5} /></button>
           )}

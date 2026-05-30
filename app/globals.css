@@ -1,25 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  /* Clean, professional palette — light neutral surfaces + blue accent */
-  --white:       #ffffff;
-  --off-white:   #f8f9fa;   /* gray-50 surface */
-  --sidebar-bg:  #f0f4f9;   /* soft blue-gray sidebar */
-  --border:      #dde1e6;   /* neutral divider */
-  --border-2:    #c4c7c5;
-  --text-1:      #1f1f1f;   /* near-black headings */
-  --text-2:      #444746;   /* body */
-  --text-3:      #80868b;   /* muted */
+  /* Dark, professional palette — inspired by AI Studio / Claude */
+  --white:       #1e1f20;   /* primary surface (panels, header, cards) */
+  --off-white:   #2a2b2d;   /* secondary surface (bubbles, hover, code) */
+  --sidebar-bg:  #171818;   /* sidebar (slightly deeper) */
+  --base:        #131314;   /* app background behind panels */
+  --border:      #3a3b3d;
+  --border-2:    #5f6368;
+  --text-1:      #e6e6e6;   /* headings */
+  --text-2:      #c0c3c6;   /* body */
+  --text-3:      #969ba1;   /* muted */
 
-  /* Accent (blue) — exposed through the old --purple tokens to avoid churn */
-  --purple:      #0b57d0;
-  --purple-dark: #0842a0;
-  --purple-light:#1a73e8;
-  --purple-bg:   #e8f0fe;
+  /* Accent (blue) — exposed through old --purple tokens */
+  --purple:      #8ab4f8;
+  --purple-dark: #aecbfa;
+  --purple-light:#a8c7fa;
+  --purple-bg:   #29303d;   /* dark blue surface */
+  --purple-border:#3b4b66;
 
-  /* Success / verified (green) — exposed through the old --mint tokens */
-  --mint:        #1e8e3e;
-  --mint-dark:   #188038;
+  /* Success / verified (green) — exposed through old --mint tokens */
+  --mint:        #81c995;
+  --mint-dark:   #81c995;
+  --success-bg:  #1f2e22;
+  --success-border:#2f5135;
+
+  /* Error */
+  --error:       #f28b82;
+  --error-bg:    #2e1f1f;
+  --error-border:#5c3434;
+
+  --hover:       #2d2e30;
 }
 
 @theme inline {
@@ -28,11 +39,11 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body { height: 100%; background: var(--white); color: var(--text-1); -webkit-font-smoothing: antialiased; }
+html, body { height: 100%; background: var(--base); color: var(--text-1); -webkit-font-smoothing: antialiased; }
 
-/* Accent gradient text — subtle, professional blue sweep */
+/* Accent gradient text — soft blue sweep on dark */
 .grad-text {
-  background: linear-gradient(90deg, #1a73e8 0%, #0b57d0 50%, #1a73e8 100%);
+  background: linear-gradient(90deg, #8ab4f8 0%, #c58af9 50%, #8ab4f8 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -54,14 +65,19 @@ html, body { height: 100%; background: var(--white); color: var(--text-1); -webk
   0%,80%,100% { transform: translateY(0); }
   40%         { transform: translateY(-5px); }
 }
+@keyframes twinkle {
+  0%, 100% { opacity: 1; transform: scale(1) rotate(0deg); }
+  50%      { opacity: 0.7; transform: scale(1.12) rotate(8deg); }
+}
 
 .file-item { transition: background 0.12s ease; }
-.file-item:hover { background: #e8eaed; }
+.file-item:hover { background: var(--hover); }
 .file-item.active { background: var(--purple-bg); }
 
 .lucide-spin { animation: spin 0.8s linear infinite; }
+.icon-twinkle { animation: twinkle 2.4s ease-in-out infinite; }
 
-::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar { width: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #dadce0; border-radius: 8px; border: 2px solid var(--white); }
+::-webkit-scrollbar-thumb { background: #3a3b3d; border-radius: 8px; border: 2px solid var(--sidebar-bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
