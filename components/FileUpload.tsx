@@ -40,6 +40,15 @@ function readAsText(file: File): Promise<string> {
   });
 }
 
+function readAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 async function extractText(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   const textExts = ['txt', 'md', 'mdx', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'html', 'htm', 'xml', 'svg', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash', 'zsh', 'sql', 'rs', 'go', 'java', 'kt', 'swift', 'c', 'cpp', 'cc', 'h', 'hpp', 'cs', 'css', 'scss', 'less', 'env', 'log', 'gitignore', 'dockerfile', 'lock', 'gql', 'graphql', 'vue', 'svelte', 'r', 'lua', 'pl', 'srt', 'vtt', 'tex', 'rst'];
@@ -128,23 +137,45 @@ export function FileUpload({ onUploaded, compact, collapsed, iconButton }: Props
 
       // ── Step 2: AI analysis (summary + tags + suggested questions) ───────
       setStepIdx(1);
-      dbg('AI: extracting text...');
-      const content = await extractText(file);
-      dbg('AI: extracted chars', { chars: content.length });
       let summary = 'No text content could be extracted from this file.';
       let tags: string[] = [];
       let questions: string[] = [];
-      if (content.trim()) {
+      let content = '';
+
+      const isImage = file.type.startsWith('image/');
+      const VISION_MAX = 3 * 1024 * 1024; // base64 must stay under Groq's 4MB limit
+
+      if (isImage && file.size <= VISION_MAX) {
+        // Vision: send the image to the multimodal model for a description
+        dbg('AI: analyzing image with vision model...');
+        const dataUrl = await readAsDataURL(file);
         const res = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ image: dataUrl }),
         });
         const data = await res.json();
         summary = data.summary ?? summary;
-        tags = Array.isArray(data.tags) ? data.tags : [];
+        tags = Array.isArray(data.tags) ? data.tags : ['image'];
         questions = Array.isArray(data.questions) ? data.questions : [];
-        dbg('AI: analysis received', { summaryChars: summary.length, tags: tags.length, questions: questions.length });
+        content = summary; // the description doubles as Q&A context
+        dbg('AI: image analysis received', { summaryChars: summary.length, tags: tags.length });
+      } else {
+        dbg('AI: extracting text...');
+        content = await extractText(file);
+        dbg('AI: extracted chars', { chars: content.length });
+        if (content.trim()) {
+          const res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          });
+          const data = await res.json();
+          summary = data.summary ?? summary;
+          tags = Array.isArray(data.tags) ? data.tags : [];
+          questions = Array.isArray(data.questions) ? data.questions : [];
+          dbg('AI: analysis received', { summaryChars: summary.length, tags: tags.length, questions: questions.length });
+        }
       }
 
       // ── Step 3: record the blobId on Sui via Tatum (server-signed) ───────

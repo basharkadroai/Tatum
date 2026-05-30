@@ -114,6 +114,51 @@ export async function analyzeDocument(content: string): Promise<DocAnalysis> {
   }
 }
 
+// ── Vision: analyze an image with a Groq multimodal model ──
+const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+export async function analyzeImage(dataUrl: string): Promise<DocAnalysis> {
+  const fallback: DocAnalysis = {
+    summary: 'An image was uploaded; an AI description could not be generated.',
+    tags: ['image'],
+    questions: ['What is shown in this image?', 'Is there any text in this image?', 'What are the key details?'],
+  };
+  try {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: GROQ_VISION_MODEL,
+        temperature: 0.4,
+        max_tokens: 1024,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analyze this image and return STRICT JSON with keys: "summary" (5-8 sentences thoroughly describing the image, transcribing any visible text, and noting key details/context), "tags" (3-5 short lowercase topic tags), "questions" (exactly 3 specific questions someone would ask about THIS image). Return only the JSON object.',
+              },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content as string;
+    const parsed = JSON.parse(raw);
+    return {
+      summary: typeof parsed.summary === 'string' ? parsed.summary : fallback.summary,
+      tags: Array.isArray(parsed.tags) ? parsed.tags.slice(0, 5).map((t: unknown) => String(t)) : ['image'],
+      questions: Array.isArray(parsed.questions) ? parsed.questions.slice(0, 3).map((q: unknown) => String(q)) : fallback.questions,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 // ── System prompts (document context lives here; history follows) ──
 const CITE_RULE =
   'When you state a fact from the source, include a SHORT direct quote in double quotes to back it up. Be concise: lead with the answer, use **bold** for key terms and "- " bullets when listing. If the answer is not in the source, say so plainly — never invent.';
