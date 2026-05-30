@@ -14,11 +14,14 @@ A decentralized AI knowledge vault. Upload any document — stored permanently o
 2. **Walrus** stores the file as an erasure-coded blob (permanent, decentralized). The app then **retrieves the blob back from Walrus live** ("Live on Walrus — retrieved just now") to *prove* it's really on decentralized storage.
 3. **Groq AI** analyzes it on upload — summary, topic **tags**, and file-specific **suggested questions** in one pass (`llama-3.3-70b-versatile`).
 4. **Sui transaction** records the `blobId` on-chain via **Tatum RPC** — a `VaultEntry` object as verifiable proof of storage. Users can optionally **claim it with their own wallet** for true on-chain ownership.
-5. **Chat with your knowledge** — streaming, multi-turn Q&A on a single file, **or ask across your whole vault** with `[filename]` source citations.
+5. **On-chain verification** — the app then **reads the registration back from Sui via Tatum** (`/api/verify-chain`) and shows a *"Verified on-chain via Tatum"* badge, proving the record exists on-chain, not just that a tx was sent.
+6. **Chat with your knowledge** — streaming, multi-turn Q&A on a single file, **or ask across your whole vault** with `[filename]` source citations.
+7. **MCP server** (`mcp/`) — exposes the on-chain vault to any AI assistant (Claude Desktop), with every tool reading through Tatum's Sui RPC.
 
 ### Why this is a deep Walrus + Tatum integration
 - **Walrus is the core**, not an add-on — every upload is a real blob, and we *show* it's retrievable from storage on screen.
-- **Every Sui interaction routes through Tatum** — a server-side `/api/rpc` proxy sends all reads to Tatum's gateway, and the on-chain `vault::register` write is signed and submitted via Tatum RPC.
+- **Tatum RPC is used for both writes and reads** — the `vault::register` write is signed and submitted via Tatum, a server-side `/api/rpc` proxy routes all browser reads through Tatum's gateway, and `/api/verify-chain` reads the `BlobRegistered` event + `VaultEntry` back from chain via Tatum.
+- **Tatum-backed MCP server** lets an LLM verify and explore the vault on-chain (see [`mcp/README.md`](mcp/README.md)).
 
 ## Tech stack
 
@@ -28,8 +31,22 @@ A decentralized AI knowledge vault. Upload any document — stored permanently o
 | AI | Groq (`llama-3.3-70b-versatile`) |
 | Decentralized storage | Walrus testnet |
 | Blockchain | Sui testnet |
-| RPC | **Tatum Sui RPC** |
+| RPC | **Tatum Sui RPC** (writes + reads + verification) |
+| AI tooling | **MCP server** (Tatum-backed) |
 | Hosting | Vercel |
+
+## Architecture
+
+```
+Browser ──upload──▶ Walrus (blob)                  proof: retrieve blob back from Walrus
+   │                                                proof: read VaultEntry back via Tatum
+   ├─ /api/register ─▶ Tatum Sui RPC ─▶ vault::register  (signed write, server keypair)
+   ├─ /api/verify-chain ─▶ Tatum Sui RPC ─▶ getTransactionBlock  (on-chain read-back)
+   ├─ /api/rpc  (proxy) ─▶ Tatum Sui RPC               (all browser Sui reads)
+   └─ /api/ask, /api/analyze ─▶ Groq                   (summaries + Q&A)
+
+mcp/chainmind-mcp.mjs ─▶ Tatum Sui RPC                 (LLM tools: list/verify/get vault entries)
+```
 
 ## Setup
 
@@ -43,7 +60,7 @@ npm install
 
 ### 2. Environment variables
 
-Create `.env.local`:
+Copy the template and fill it in (`cp .env.example .env.local`):
 
 ```env
 # ── Network switch — flip this one line to move the whole app to mainnet ──
@@ -103,11 +120,10 @@ sui client publish --gas-budget 50000000
 
 ## How to use
 
-1. Open the app — upload any file by clicking or dragging
-2. Watch: Walrus stores it → AI summarizes → Sui records the blobId on-chain
-3. Click the green blob link to view the raw file on Walrus
-4. Click the purple ⛓ tx link to see the on-chain record on Sui Explorer
-5. Click **Ask AI** on any file to chat with its content
+1. Open the app — upload any file from the chat (the assistant narrates each step as an animated chain)
+2. Watch: Walrus stores it → Sui records the blobId via Tatum → AI reads & summarizes it
+3. Open a file to see its proof panel: *"Live on Walrus — retrieved just now"* and *"Verified on-chain via Tatum"*, with links to the raw blob and the `VaultEntry` object
+4. Ask questions about a single file, or **ask across your whole vault** with source citations
 
 ## Smart contract
 
@@ -118,14 +134,29 @@ Every upload creates a `VaultEntry` object on Sui, permanently linking the Walru
 **Testnet package:** `0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138`
 **Deploy tx:** `FvYYjikc5HR2LV4SSyeVaUDTG2CRKR5J5gFbmdTrQ3Sy`
 
+## MCP server
+
+A Tatum-backed [MCP](https://modelcontextprotocol.io) server in [`mcp/`](mcp/) exposes
+the on-chain vault to any AI assistant. Tools: `list_vault_entries`, `verify_blob`,
+`get_vault_entry`, `get_blob_content_url` — all reading through Tatum's Sui RPC.
+
+```bash
+npm run mcp        # start (stdio)
+npm run mcp:test   # smoke test all tools against live Tatum RPC
+```
+
+See [`mcp/README.md`](mcp/README.md) for the Claude Desktop config.
+
 ## Hackathon checklist
 
-- [x] Walrus integrated as core feature (real uploads, real blobIds)
-- [x] Tatum RPC used for all Sui interactions
-- [x] AI summarization (Groq llama-3.3-70b-versatile)
-- [x] RAG-style Q&A against uploaded documents
+- [x] Walrus integrated as core feature (real uploads, real blobIds, live retrieval proof)
+- [x] Tatum Sui RPC for writes **and** reads (`register`, `/api/rpc` proxy, `/api/verify-chain`)
+- [x] On-chain verification — VaultEntry read back from Sui via Tatum
+- [x] MCP server backed by Tatum Sui RPC
+- [x] AI summarization (Groq llama-3.3-70b-versatile) + vision for images
+- [x] RAG-style Q&A on a file or across the whole vault with citations
 - [x] On-chain blobId registry via Move smart contract
-- [x] Any file type supported
-- [x] Clean two-column vault UI
+- [x] Any file type supported, narrated agentic upload
+- [x] Mainnet-ready (one env var) — runs on testnet by default
 - [x] Deployed to Vercel — https://chainmind-seven.vercel.app
 - [ ] Demo video (2–3 min)
