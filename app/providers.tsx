@@ -7,17 +7,19 @@ import { useState } from 'react';
 const activeNetwork =
   (process.env.NEXT_PUBLIC_SUI_NETWORK as 'mainnet' | 'testnet') || 'testnet';
 
-// Browser Sui reads route through our /api/rpc proxy → Tatum (Tatum's gateway
-// rejects direct browser calls via CORS). SSR falls back to a public fullnode.
-const PROXY_RPC =
-  typeof window !== 'undefined'
-    ? `${window.location.origin}/api/rpc`
-    : 'https://fullnode.testnet.sui.io:443';
+// Relative URL — identical on server and client, so no hydration mismatch can
+// remount the provider tree (which would wipe autoConnect). Browser fetch
+// resolves '/api/rpc' against the origin → our Tatum proxy.
+const PROXY_RPC = '/api/rpc';
 
 const { networkConfig } = createNetworkConfig({
   mainnet: { url: PROXY_RPC, network: 'mainnet' as const },
   testnet: { url: PROXY_RPC, network: 'testnet' as const },
 });
+
+// Stable references so WalletProvider props never change identity across renders.
+const SLUSH_CONFIG = { name: 'ChainMind' } as const;
+const WALLET_STORAGE_KEY = 'chainmind:wallet';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -25,7 +27,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networkConfig} defaultNetwork={activeNetwork}>
-        <WalletProvider autoConnect slushWallet={{ name: 'ChainMind' }}>{children}</WalletProvider>
+        <WalletProvider
+          autoConnect
+          storageKey={WALLET_STORAGE_KEY}
+          slushWallet={SLUSH_CONFIG}
+        >
+          {children}
+        </WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>
   );
