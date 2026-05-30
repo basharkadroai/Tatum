@@ -55,12 +55,13 @@ export default function Home() {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
-  useEffect(() => { setVault(loadVault()); }, []);
+  useEffect(() => { setVault(loadVault()); setLoaded(true); }, []);
   useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
 
   function showToast(msg: string) {
@@ -257,7 +258,10 @@ export default function Home() {
         {/* ── Main Panel ── */}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--white)' }}>
 
-          {!selected ? (
+          {!loaded ? (
+            /* Avoid flashing the upload home before localStorage loads */
+            <div style={{ flex: 1 }} />
+          ) : !selected ? (
             vault.length === 0 ? (
               /* First-run: centered upload home */
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
