@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
+import type { VaultItem } from '@/types/vault';
 
 export type ChatMessage = { role: 'user' | 'ai'; text: string };
 
@@ -16,13 +17,16 @@ interface Props {
   greeting?: string;          // shown centered above the input on the empty state
   greetingIcon?: string;      // optional logo image shown beside the greeting
   centered?: boolean;         // center the empty state vertically (home/new-chat look)
-  leftAction?: ReactNode;     // e.g. an upload "+" rendered inside the input row
-  disabled?: boolean;         // disable sending (e.g. no docs yet)
+  disabled?: boolean;         // disable sending text (e.g. no docs yet)
+  // Attach + narrate an upload inside the chat
+  uploadRunner?: (file: File, emit: (chunk: string) => void) => Promise<VaultItem | null>;
+  onUploaded?: (item: VaultItem) => void;
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
-  aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, leftAction, disabled,
+  aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, disabled,
+  uploadRunner, onUploaded,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -31,6 +35,7 @@ export function ChatPanel({
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { setMessages([]); setInput(''); abortRef.current?.abort(); }, [resetKey]);
@@ -114,6 +119,27 @@ export function ChatPanel({
     } catch { /* ignore */ }
   }
 
+  // Attach a file from the chat and narrate the upload pipeline live.
+  async function handleAttach(file: File) {
+    if (!uploadRunner || busy) return;
+    setMessages(m => [...m, { role: 'user', text: `📎 ${file.name}` }, { role: 'ai', text: '' }]);
+    setStreaming(true);
+    let acc = '';
+    const emit = (chunk: string) => {
+      acc += chunk;
+      setMessages(m => { const c = [...m]; c[c.length - 1] = { role: 'ai', text: acc }; return c; });
+    };
+    try {
+      const item = await uploadRunner(file, emit);
+      if (item) onUploaded?.(item);
+    } catch (e) {
+      emit(`\n\n⚠ ${String(e).slice(0, 120)}`);
+    } finally {
+      setStreaming(false);
+      setTimeout(() => taRef.current?.focus(), 50);
+    }
+  }
+
   const isEmpty = messages.length === 0 && !loading && !streaming;
   const busy = loading || streaming;
 
@@ -124,7 +150,27 @@ export function ChatPanel({
       border: '1px solid var(--border)', borderRadius: '16px', padding: '8px 8px 8px 8px',
       background: 'var(--off-white)',
     }}>
-      {leftAction}
+      {uploadRunner && (
+        <>
+          <input ref={fileRef} type="file" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleAttach(f); e.target.value = ''; }} />
+          <button
+            onClick={() => !busy && fileRef.current?.click()}
+            disabled={busy}
+            title="Upload a file"
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
+              background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-2)',
+              cursor: busy ? 'default' : 'pointer',
+            }}
+            onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
+          >
+            <Plus size={18} strokeWidth={2.5} />
+          </button>
+        </>
+      )}
       <textarea
         ref={taRef}
         value={input}

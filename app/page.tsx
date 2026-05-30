@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
-import { FileUpload } from '@/components/FileUpload';
+import { runUpload } from '@/lib/upload';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
@@ -74,9 +74,10 @@ export default function Home() {
     catch { showToast('Copy failed'); }
   }
 
-  function handleUploaded(item: VaultItem) {
+  // Add an uploaded file to the vault without switching the view (the chat
+  // keeps showing the upload narration).
+  function addToVault(item: VaultItem) {
     setVault(prev => { const next = [item, ...prev]; saveVault(next); return next; });
-    setSelected(item);
     showToast(`"${item.filename}" stored on Walrus${item.txDigest ? ' + recorded on Sui' : ''}`);
   }
   function handleDelete(id: string) {
@@ -261,38 +262,21 @@ export default function Home() {
             /* Avoid flashing the upload home before localStorage loads */
             <div style={{ flex: 1 }} />
           ) : !selected ? (
-            vault.length === 0 ? (
-              /* First-run: centered upload home */
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
-                <h1 style={{ fontSize: '30px', fontWeight: 600, color: 'var(--text-1)', letterSpacing: '-0.02em', textAlign: 'center' }}>
-                  Welcome to your knowledge vault
-                </h1>
-                <div style={{ width: '100%', maxWidth: '560px' }}>
-                  <FileUpload onUploaded={handleUploaded} />
-                </div>
-                <div style={{ display: 'flex', gap: '22px', fontSize: '12px', color: 'var(--text-3)', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {['Any file type', 'Permanent Walrus storage', 'Recorded on Sui via Tatum'].map(t => (
-                    <span key={t} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Check size={13} strokeWidth={2.5} color="var(--text-2)" /> {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              /* Home: centered "ask your whole vault" chat */
-              <ChatPanel
-                resetKey="vault"
-                centered
-                greeting="What do you want to know?"
-                greetingIcon="/logo.png"
-                endpoint="/api/ask-vault"
-                buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
-                suggestions={['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
-                placeholder="Ask across your whole vault…"
-                aiLabel="ChainMind"
-                leftAction={<FileUpload onUploaded={handleUploaded} iconButton />}
-              />
-            )
+            /* Home: centered chat — ask the vault, or upload a file (narrated) */
+            <ChatPanel
+              resetKey="vault"
+              centered
+              greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}
+              greetingIcon="/logo.png"
+              endpoint="/api/ask-vault"
+              buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
+              suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
+              placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
+              aiLabel="ChainMind"
+              disabled={vault.length === 0}
+              uploadRunner={runUpload}
+              onUploaded={addToVault}
+            />
           ) : (
             /* File detail + Q&A */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -434,7 +418,8 @@ export default function Home() {
                     : ['Summarize this in 3 bullet points', 'What are the key takeaways?', 'Any action items, dates, or deadlines?']}
                   placeholder="Ask anything about this document…"
                   aiLabel="ChainMind AI"
-                  leftAction={<FileUpload onUploaded={handleUploaded} iconButton />}
+                  uploadRunner={runUpload}
+                  onUploaded={addToVault}
                 />
               </div>
             </div>
