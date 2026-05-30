@@ -21,8 +21,8 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
       if (seg.startsWith('[') && seg.endsWith(']')) {
         return (
           <span key={`${keyBase}-cite${i}-${j}`} style={{
-            fontSize: '0.82em', fontWeight: 600, color: 'var(--mint-dark)',
-            background: '#ecfdf5', borderRadius: '5px', padding: '0 5px', margin: '0 1px',
+            fontSize: '0.82em', fontWeight: 600, color: '#65ca9d',
+            background: 'rgba(101,202,157,0.12)', borderRadius: '5px', padding: '1px 6px', margin: '0 1px',
           }}>{seg.slice(1, -1)}</span>
         );
       }

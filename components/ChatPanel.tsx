@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight } from 'lucide-react';
+import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 
@@ -13,7 +13,6 @@ interface Props {
   suggestions: string[];
   placeholder: string;
   aiLabel?: string;
-  onToast?: (msg: string) => void;
   greeting?: string;          // shown centered above the input on the empty state
   greetingIcon?: string;      // optional logo image shown beside the greeting
   centered?: boolean;         // center the empty state vertically (home/new-chat look)
@@ -23,12 +22,13 @@ interface Props {
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
-  aiLabel = 'ChainMind AI', onToast, greeting, greetingIcon, centered, leftAction, disabled,
+  aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, leftAction, disabled,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -106,9 +106,12 @@ export function ChatPanel({
     setMessages(msgs);
     runCompletion(lastUser, msgs.slice(0, -1).slice(-6));
   }
-  async function copyMsg(text: string) {
-    try { await navigator.clipboard.writeText(text); onToast?.('Answer copied'); }
-    catch { onToast?.('Copy failed'); }
+  async function copyMsg(text: string, idx: number) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(c => (c === idx ? null : c)), 1600);
+    } catch { /* ignore */ }
   }
 
   const isEmpty = messages.length === 0 && !loading && !streaming;
@@ -225,7 +228,9 @@ export function ChatPanel({
                 </div>
                 {m.role === 'ai' && !(streaming && i === messages.length - 1) && (
                   <div style={{ display: 'flex', gap: '14px', marginTop: '4px' }}>
-                    <button onClick={() => copyMsg(m.text)} style={actionBtn}><Copy size={12} strokeWidth={2} /> Copy</button>
+                    <button onClick={() => copyMsg(m.text, i)} style={copiedIdx === i ? { ...actionBtn, color: '#65ca9d' } : actionBtn}>
+                      {copiedIdx === i ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
+                    </button>
                     {i === messages.length - 1 && <button onClick={regenerate} style={actionBtn}><RotateCcw size={12} strokeWidth={2} /> Regenerate</button>}
                   </div>
                 )}
