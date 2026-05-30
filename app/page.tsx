@@ -47,6 +47,7 @@ export default function Home() {
   const [vaultMode, setVaultMode] = useState(false); // "ask across whole vault" mode
   const [search, setSearch] = useState('');
   const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const [proofExpanded, setProofExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState('');
   const [toast, setToast] = useState('');
@@ -58,7 +59,7 @@ export default function Home() {
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   useEffect(() => { setVault(loadVault()); }, []);
-  useEffect(() => { setSummaryExpanded(true); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
+  useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -319,16 +320,18 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              <ChatPanel
-                resetKey="vault"
-                endpoint="/api/ask-vault"
-                buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
-                suggestions={['What are the common themes across my files?', 'Which file mentions deadlines?', 'Summarize my whole vault in 3 points.']}
-                emptyHint="Ask anything across your entire knowledge vault"
-                placeholder="Ask across all your files…"
-                aiLabel="Vault AI"
-                onToast={showToast}
-              />
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ChatPanel
+                  resetKey="vault"
+                  endpoint="/api/ask-vault"
+                  buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
+                  suggestions={['What are the common themes across my files?', 'Which file mentions deadlines?', 'Summarize my whole vault in 3 points.']}
+                  emptyHint="Ask anything across your entire knowledge vault"
+                  placeholder="Ask across all your files…"
+                  aiLabel="Vault AI"
+                  onToast={showToast}
+                />
+              </div>
             </div>
           ) : !selected ? (
             /* Empty state */
@@ -469,27 +472,41 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Walrus proof — retrieve the file back from decentralized storage */}
-              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--white)' }}>
-                <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>
-                  Decentralized Storage Proof
-                </p>
-                <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} />
+              {/* Walrus proof — collapsible so the chat stays the focus */}
+              <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--white)' }}>
+                <button
+                  onClick={() => setProofExpanded(s => !s)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%' }}
+                >
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Decentralized Storage Proof</span>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                    background: '#ecfdf5', border: '1px solid #a7f3d0', color: 'var(--mint-dark)',
+                  }}>✓ on Walrus</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-3)', transform: proofExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>▼</span>
+                </button>
+                {proofExpanded && (
+                  <div style={{ marginTop: '12px', animation: 'fadeUp 0.2s ease' }}>
+                    <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} />
+                  </div>
+                )}
               </div>
 
-              {/* Chat (Claude-style) */}
-              <ChatPanel
-                resetKey={selected.id}
-                endpoint="/api/ask"
-                buildBody={(question, history) => ({ content: selected.content, question, history })}
-                suggestions={selected.questions && selected.questions.length > 0
-                  ? selected.questions
-                  : ['What is this about?', 'What are the key points?', 'Summarize in one sentence.']}
-                emptyHint={selected.questions && selected.questions.length > 0 ? 'Suggested questions for this file' : 'Ask anything about this document'}
-                placeholder="Ask anything about this document…"
-                aiLabel="ChainMind AI"
-                onToast={showToast}
-              />
+              {/* Chat (Claude-style) — fills the remaining height */}
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ChatPanel
+                  resetKey={selected.id}
+                  endpoint="/api/ask"
+                  buildBody={(question, history) => ({ content: selected.content, question, history })}
+                  suggestions={selected.questions && selected.questions.length > 0
+                    ? selected.questions
+                    : ['What is this about?', 'What are the key points?', 'Summarize in one sentence.']}
+                  emptyHint={selected.questions && selected.questions.length > 0 ? 'Suggested questions for this file' : 'Ask anything about this document'}
+                  placeholder="Ask anything about this document…"
+                  aiLabel="ChainMind AI"
+                  onToast={showToast}
+                />
+              </div>
             </div>
           )}
         </main>
