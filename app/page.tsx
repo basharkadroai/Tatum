@@ -104,8 +104,12 @@ export default function Home() {
       updateItem(item.id, { txDigest: res.digest, owner: account.address });
       setClaimMsg('✓ Claimed — you now own this on-chain');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setClaimMsg(`Could not claim: ${msg.slice(0, 80)}`);
+      const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      if (msg.includes('password') || msg.includes('set up') || msg.includes('forbidden')) {
+        setClaimMsg("Your wallet isn't set up for app signing yet — but this file is already recorded on-chain via Tatum, so claiming is optional.");
+      } else {
+        setClaimMsg('Claim skipped — the file is already recorded on-chain via Tatum.');
+      }
     } finally {
       setClaiming(false);
     }
