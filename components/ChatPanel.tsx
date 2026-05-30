@@ -1,8 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Copy, RotateCcw, Square } from 'lucide-react';
+import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
-import { ArrowUp } from 'lucide-react';
 import { FormattedText } from './FormattedText';
 
 export type ChatMessage = { role: 'user' | 'ai'; text: string };
@@ -157,15 +156,20 @@ export function ChatPanel({
   const chips = (
     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: centered && isEmpty ? 'center' : 'flex-start' }}>
       {suggestions.map(q => (
-        <button key={q} onClick={() => send(q)} disabled={disabled} style={{
-          fontSize: '13px', padding: '8px 13px', borderRadius: '10px', textAlign: 'left',
-          background: 'var(--off-white)', border: '1px solid var(--border)',
-          color: 'var(--text-2)', cursor: disabled ? 'default' : 'pointer', transition: 'all 0.15s',
-          opacity: disabled ? 0.5 : 1,
-        }}
-          onMouseEnter={e => { if (!disabled) { e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
-        >{q}</button>
+        <button key={q} onClick={() => send(q)} disabled={disabled} className="chip"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            fontSize: '13px', padding: '9px 13px', borderRadius: '12px', textAlign: 'left',
+            background: 'transparent', border: '1px solid var(--border)',
+            color: 'var(--text-2)', cursor: disabled ? 'default' : 'pointer', transition: 'all 0.15s',
+            opacity: disabled ? 0.5 : 1,
+          }}
+          onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
+        >
+          <span>{q}</span>
+          <ArrowUpRight size={14} strokeWidth={2} style={{ opacity: 0.45, flexShrink: 0 }} />
+        </button>
       ))}
     </div>
   );

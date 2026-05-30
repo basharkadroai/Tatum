@@ -247,8 +247,7 @@ export default function Home() {
                 whileHover="hover"
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '9px 10px', borderRadius: '9px', cursor: 'pointer',
-                  borderLeft: selected?.id === item.id ? '3px solid var(--purple)' : '3px solid transparent',
+                  padding: '9px 12px', borderRadius: '9px', cursor: 'pointer',
                 }}
               >
                 <motion.span
@@ -309,7 +308,7 @@ export default function Home() {
                 greeting="What do you want to know?"
                 endpoint="/api/ask-vault"
                 buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
-                suggestions={['What are the common themes across my files?', 'Which file mentions deadlines?', 'Summarize my whole vault in 3 points.']}
+                suggestions={['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
                 placeholder="Ask across your whole vault…"
                 aiLabel="ChainMind"
                 onToast={showToast}
@@ -454,7 +453,7 @@ export default function Home() {
                   buildBody={(question, history) => ({ content: selected.content, question, history })}
                   suggestions={selected.questions && selected.questions.length > 0
                     ? selected.questions
-                    : ['What is this about?', 'What are the key points?', 'Summarize in one sentence.']}
+                    : ['Summarize this in 3 bullet points', 'What are the key takeaways?', 'Any action items, dates, or deadlines?']}
                   placeholder="Ask anything about this document…"
                   aiLabel="ChainMind AI"
                   onToast={showToast}
