@@ -34,3 +34,23 @@ export async function askQuestion(content: string, question: string): Promise<st
   const prompt = `You are answering questions about a document. Answer concisely and accurately based only on the document content.\n\nDocument:\n${content.slice(0, 6000)}\n\nQuestion: ${question}\n\nAnswer:`;
   return generate(prompt);
 }
+
+// Multi-document RAG — answer across the user's entire vault and cite sources.
+export async function askAcrossVault(
+  docs: { filename: string; content: string }[],
+  question: string,
+): Promise<string> {
+  const perDoc = Math.max(800, Math.floor(11000 / Math.max(docs.length, 1)));
+  const context = docs
+    .map((d, i) => `### FILE ${i + 1}: ${d.filename}\n${(d.content || '').slice(0, perDoc)}`)
+    .join('\n\n');
+
+  const prompt = `You are an assistant answering a question using the user's personal knowledge vault below. Use ONLY these files. When you draw on a file, cite it inline in square brackets like [${docs[0]?.filename ?? 'filename'}]. If the answer spans several files, synthesize across them. If the vault doesn't contain the answer, say so plainly.
+
+${context.slice(0, 12000)}
+
+Question: ${question}
+
+Answer (with [filename] citations):`;
+  return generate(prompt);
+}

@@ -39,6 +39,7 @@ type Message = { role: 'user' | 'ai'; text: string };
 export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
   const [selected, setSelected] = useState<VaultItem | null>(null);
+  const [vaultMode, setVaultMode] = useState(false); // "ask across whole vault" mode
   const [search, setSearch] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [qaInput, setQaInput] = useState('');
@@ -50,9 +51,12 @@ export default function Home() {
   useEffect(() => { setVault(loadVault()); }, []);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { setMessages([]); setQaInput(''); setSummaryExpanded(true); }, [selected?.id]);
+  useEffect(() => { setMessages([]); setQaInput(''); }, [vaultMode]);
 
+  function openVaultMode() { setSelected(null); setVaultMode(true); }
   function handleUploaded(item: VaultItem) {
     setVault(prev => { const next = [item, ...prev]; saveVault(next); return next; });
+    setVaultMode(false);
     setSelected(item);
   }
   function handleDelete(id: string) {
@@ -62,15 +66,19 @@ export default function Home() {
 
   async function sendMessage(text?: string) {
     const q = (text ?? qaInput).trim();
-    if (!q || qaLoading || !selected) return;
+    if (!q || qaLoading || (!selected && !vaultMode)) return;
     setQaInput('');
     setMessages(m => [...m, { role: 'user', text: q }]);
     setQaLoading(true);
     try {
-      const res = await fetch('/api/ask', {
+      const endpoint = vaultMode ? '/api/ask-vault' : '/api/ask';
+      const body = vaultMode
+        ? { docs: vault.map(v => ({ filename: v.filename, content: v.content })), question: q }
+        : { content: selected!.content, question: q };
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: selected.content, question: q }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       setMessages(m => [...m, { role: 'ai', text: data.answer || data.error || 'No answer.' }]);
@@ -130,6 +138,28 @@ export default function Home() {
             <FileUpload onUploaded={handleUploaded} compact />
           </div>
 
+          {/* Ask whole vault */}
+          {vault.length > 0 && (
+            <div style={{ padding: '0 14px 10px' }}>
+              <button
+                onClick={openVaultMode}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  background: vaultMode ? 'var(--purple-bg)' : 'white',
+                  color: vaultMode ? 'var(--purple)' : 'var(--text-1)',
+                  border: `1px solid ${vaultMode ? '#c7d2fe' : 'var(--border)'}`,
+                }}
+                onMouseEnter={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--purple)'; }}
+                onMouseLeave={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--border)'; }}
+              >
+                <span style={{ fontSize: '14px' }}>✦</span>
+                Ask your whole vault
+              </button>
+            </div>
+          )}
+
           {/* Search */}
           {vault.length > 0 && (
             <div style={{ padding: '0 14px 10px' }}>
@@ -168,7 +198,7 @@ export default function Home() {
             {filtered.map(item => (
               <div
                 key={item.id}
-                onClick={() => setSelected(item)}
+                onClick={() => { setVaultMode(false); setSelected(item); }}
                 className={`file-item${selected?.id === item.id ? ' active' : ''}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
@@ -203,7 +233,75 @@ export default function Home() {
         {/* ── Main Panel ── */}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--white)' }}>
 
-          {!selected ? (
+          {vaultMode ? (
+            /* Ask-across-vault chat */
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>✦</div>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)' }}>Ask your whole vault</p>
+                  <p style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '1px' }}>
+                    AI searches across all {vault.length} file{vault.length !== 1 ? 's' : ''} and cites its sources
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {messages.length === 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>Ask anything across your entire knowledge vault</p>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {['What are the common themes?', 'Which file mentions deadlines?', 'Summarize everything in 3 points.'].map(q => (
+                        <button key={q} onClick={() => sendMessage(q)} style={{
+                          fontSize: '12px', padding: '6px 12px', borderRadius: '20px',
+                          background: 'var(--off-white)', border: '1px solid var(--border)',
+                          color: 'var(--text-2)', cursor: 'pointer', transition: 'border-color 0.15s',
+                        }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                        >{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {messages.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', animation: 'fadeUp 0.2s ease' }}>
+                    {m.role === 'ai' && <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vault AI</span>}
+                    <div style={{
+                      maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                      fontSize: '13px', lineHeight: '1.6', whiteSpace: 'pre-wrap',
+                      background: m.role === 'user' ? 'var(--purple)' : 'var(--off-white)',
+                      color: m.role === 'user' ? 'white' : 'var(--text-1)',
+                      border: m.role === 'ai' ? '1px solid var(--border)' : 'none',
+                    }}>{m.text}</div>
+                  </div>
+                ))}
+                {qaLoading && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vault AI</span>
+                    <div style={{ padding: '12px 16px', borderRadius: '14px 14px 14px 4px', background: 'var(--off-white)', border: '1px solid var(--border)', display: 'flex', gap: '5px' }}>
+                      {[0, 150, 300].map(d => (<div key={d} style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--purple)', animation: `bounce 1s ease ${d}ms infinite` }} />))}
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', flexShrink: 0, background: 'var(--white)' }}>
+                <input
+                  ref={inputRef}
+                  value={qaInput}
+                  onChange={e => setQaInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                  placeholder="Ask across all your files..."
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: '10px', fontSize: '13px', border: '1px solid var(--border)', outline: 'none', color: 'var(--text-1)', background: 'var(--off-white)' }}
+                  onFocus={e => (e.target.style.borderColor = 'var(--purple)')}
+                  onBlur={e => (e.target.style.borderColor = 'var(--border)')}
+                />
+                <button onClick={() => sendMessage()} disabled={qaLoading || !qaInput.trim()} style={{ padding: '10px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, background: 'var(--purple)', color: 'white', border: 'none', cursor: 'pointer', opacity: qaLoading || !qaInput.trim() ? 0.4 : 1, flexShrink: 0 }}>Ask</button>
+              </div>
+            </div>
+          ) : !selected ? (
             /* Empty state */
             vault.length === 0 ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '32px' }}>
