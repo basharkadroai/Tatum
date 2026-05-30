@@ -4,12 +4,11 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
-import { motion } from 'motion/react';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
+import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
-  FileText, FileSpreadsheet, FileCode, FileJson, Image as ImageIcon, File,
   Search, Database, KeyRound, Link2, Copy, X, Check,
   PanelLeft, ChevronDown,
 } from 'lucide-react';
@@ -25,15 +24,14 @@ function loadVault(): VaultItem[] {
 }
 function saveVault(items: VaultItem[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
 
-function FileIcon({ type, name, size = 18 }: { type: string; name: string; size?: number }) {
-  const ext = name.split('.').pop()?.toLowerCase();
-  const common = { size, strokeWidth: 1.8, color: 'var(--text-2)' };
-  if (ext === 'json') return <FileJson {...common} />;
-  if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') return <FileSpreadsheet {...common} />;
-  if (['js', 'ts', 'tsx', 'jsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'html', 'css', 'sh'].includes(ext || '')) return <FileCode {...common} />;
-  if (type.startsWith('image/')) return <ImageIcon {...common} />;
-  if (['pdf', 'md', 'mdx', 'docx', 'doc', 'txt'].includes(ext || '') || type.startsWith('text/')) return <FileText {...common} />;
-  return <File {...common} />;
+const CODE_EXTS = ['js', 'ts', 'tsx', 'jsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'html', 'css', 'scss', 'sh', 'json', 'xml', 'yaml', 'yml', 'sql'];
+// Animated file icons (self-animating via isAnimated — not hover). The library
+// has no per-type file glyphs, so we use an animated CodeXml for code files and
+// an animated Paperclip for everything else.
+function FileIcon({ name, size = 18, animated = false }: { type?: string; name: string; size?: number; animated?: boolean }) {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  const Cmp = CODE_EXTS.includes(ext) ? CodeXmlIcon : PaperclipIcon;
+  return <Cmp size={size} color="var(--text-2)" isAnimated={animated} />;
 }
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
@@ -240,21 +238,18 @@ export default function Home() {
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
             {sidebarOpen && filtered.map(item => (
-              <motion.div
+              <div
                 key={item.id}
                 onClick={() => setSelected(item)}
                 className={`file-item${selected?.id === item.id ? ' active' : ''}`}
-                whileHover="hover"
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '9px 12px', borderRadius: '9px', cursor: 'pointer',
                 }}
               >
-                <motion.span
-                  variants={{ hover: { scale: 1.22, rotate: -6 } }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 12 }}
-                  style={{ flexShrink: 0, display: 'flex' }}
-                ><FileIcon type={item.fileType} name={item.filename} size={17} /></motion.span>
+                <span style={{ flexShrink: 0, display: 'flex' }}>
+                  <FileIcon type={item.fileType} name={item.filename} size={18} animated />
+                </span>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <p style={{
                     fontSize: '12px', fontWeight: 600, color: 'var(--text-1)',
@@ -269,7 +264,7 @@ export default function Home() {
                 ) : item.txDigest ? (
                   <div title="Recorded on Sui" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--purple)', flexShrink: 0 }} />
                 ) : null}
-              </motion.div>
+              </div>
             ))}
           </div>
 
@@ -306,6 +301,7 @@ export default function Home() {
                 resetKey="vault"
                 centered
                 greeting="What do you want to know?"
+                greetingIcon="/logo.png"
                 endpoint="/api/ask-vault"
                 buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
                 suggestions={['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
