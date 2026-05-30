@@ -254,12 +254,12 @@ export function ChatPanel({
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
         {greeting && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 12px)' }}>
             {greetingIcon && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={greetingIcon} alt="ChainMind" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+              <img src={greetingIcon} alt="ChainMind" style={{ width: 'clamp(26px, 6vw, 40px)', height: 'clamp(26px, 6vw, 40px)', objectFit: 'contain', flexShrink: 0 }} />
             )}
-            <h1 style={{ fontSize: '30px', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center', textShadow: '0 2px 22px rgba(0,0,0,0.55)' }}>{greeting}</h1>
+            <h1 style={{ fontSize: 'clamp(20px, 5vw, 30px)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center', textShadow: '0 2px 22px rgba(0,0,0,0.55)' }}>{greeting}</h1>
           </div>
         )}
         <div style={{ width: '100%', maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
