@@ -18,20 +18,22 @@ export function HomeBackground() {
     <div aria-hidden style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0, background: 'var(--base)' }}>
       {reduced ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src="/bg-poster.jpg" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5 }} />
+        <img src="/bg-poster.jpg" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.95 }} />
       ) : (
         <video
           autoPlay muted loop playsInline preload="metadata" poster="/bg-poster.jpg"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5 }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.95 }}
         >
           <source src="/bg.mp4" type="video/mp4" />
         </video>
       )}
-      {/* Contrast overlay — darker in the center (behind the text), lighter mid so
-          the network stays visible, gently darker at the very edges. */}
+      {/* Contrast: keep the bright scene vivid, but darken a soft pool behind the
+          centered text + a gentle global tint so the white heading stays crisp. */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: 'radial-gradient(ellipse at center, rgba(26,25,23,0.62) 0%, rgba(26,25,23,0.42) 60%, rgba(26,25,23,0.58) 100%)',
+        background:
+          'radial-gradient(ellipse 56% 44% at 50% 46%, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 72%),' +
+          'linear-gradient(to bottom, rgba(26,25,23,0.22), rgba(26,25,23,0.12) 40%, rgba(26,25,23,0.28))',
       }} />
     </div>
   );

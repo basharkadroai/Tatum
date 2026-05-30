@@ -233,12 +233,13 @@ export function ChatPanel({
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '8px',
             fontSize: '13px', padding: '9px 13px', borderRadius: '12px', textAlign: 'left',
-            background: 'transparent', border: '1px solid var(--border)',
+            background: 'rgba(20,19,17,0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+            border: '1px solid var(--border)',
             color: 'var(--text-2)', cursor: disabled ? 'default' : 'pointer', transition: 'all 0.15s',
             opacity: disabled ? 0.5 : 1,
           }}
-          onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
+          onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = 'rgba(42,41,38,0.8)'; e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(20,19,17,0.55)'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
         >
           <span>{q}</span>
           <ArrowUpRight size={14} strokeWidth={2} style={{ opacity: 0.45, flexShrink: 0 }} />
@@ -257,7 +258,7 @@ export function ChatPanel({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={greetingIcon} alt="ChainMind" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
             )}
-            <h1 style={{ fontSize: '30px', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center' }}>{greeting}</h1>
+            <h1 style={{ fontSize: '30px', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center', textShadow: '0 2px 22px rgba(0,0,0,0.55)' }}>{greeting}</h1>
           </div>
         )}
         <div style={{ width: '100%', maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
