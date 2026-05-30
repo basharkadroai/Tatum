@@ -8,4 +8,5 @@ export interface VaultItem {
   uploadedAt: string;
   sizeBytes: number;
   txDigest?: string;
+  owner?: string; // set when the user claims the file on-chain with their own wallet
 }

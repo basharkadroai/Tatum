@@ -1,10 +1,16 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
 import { WalletButton } from '@/components/WalletButton';
 import { LogoMark } from '@/components/Logo';
 import { WalrusProof } from '@/components/WalrusProof';
+
+const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const SUI_NETWORK_NAME = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
+const SUI_CHAIN_ID = `sui:${SUI_NETWORK_NAME}` as `sui:testnet` | `sui:mainnet`;
 
 const STORAGE_KEY = 'chainmind_vault';
 function loadVault(): VaultItem[] {
@@ -45,12 +51,17 @@ export default function Home() {
   const [qaInput, setQaInput] = useState('');
   const [qaLoading, setQaLoading] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const [claiming, setClaiming] = useState(false);
+  const [claimMsg, setClaimMsg] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const account = useCurrentAccount();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+
   useEffect(() => { setVault(loadVault()); }, []);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  useEffect(() => { setMessages([]); setQaInput(''); setSummaryExpanded(true); }, [selected?.id]);
+  useEffect(() => { setMessages([]); setQaInput(''); setSummaryExpanded(true); setClaimMsg(''); }, [selected?.id]);
   useEffect(() => { setMessages([]); setQaInput(''); }, [vaultMode]);
 
   function openVaultMode() { setSelected(null); setVaultMode(true); }
@@ -62,6 +73,41 @@ export default function Home() {
   function handleDelete(id: string) {
     setVault(prev => { const next = prev.filter(i => i.id !== id); saveVault(next); return next; });
     if (selected?.id === id) setSelected(null);
+  }
+  function updateItem(id: string, patch: Partial<VaultItem>) {
+    setVault(prev => {
+      const next = prev.map(i => (i.id === id ? { ...i, ...patch } : i));
+      saveVault(next);
+      return next;
+    });
+    setSelected(prev => (prev && prev.id === id ? { ...prev, ...patch } : prev));
+  }
+
+  // Optional: let the user record the file under THEIR own wallet address on Sui.
+  async function claimOnChain(item: VaultItem) {
+    if (!account || !PACKAGE_ID || claiming) return;
+    setClaiming(true);
+    setClaimMsg('');
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${PACKAGE_ID}::vault::register`,
+        arguments: [
+          tx.pure.string(item.blobId),
+          tx.pure.string(item.filename),
+          tx.pure.string(item.fileType || 'application/octet-stream'),
+          tx.pure.u64(item.sizeBytes),
+        ],
+      });
+      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      updateItem(item.id, { txDigest: res.digest, owner: account.address });
+      setClaimMsg('✓ Claimed — you now own this on-chain');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setClaimMsg(`Could not claim: ${msg.slice(0, 80)}`);
+    } finally {
+      setClaiming(false);
+    }
   }
 
   async function sendMessage(text?: string) {
@@ -359,8 +405,31 @@ export default function Home() {
                         ⛓ {selected.txDigest.slice(0, 16)}…
                       </a>
                     )}
+                    {selected.owner && (
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)' }}>
+                        ✓ Owned by you
+                      </span>
+                    )}
                   </div>
+                  {claimMsg && (
+                    <p style={{ fontSize: '11px', marginTop: '4px', color: claimMsg.startsWith('✓') ? 'var(--mint-dark)' : '#ef4444' }}>{claimMsg}</p>
+                  )}
                 </div>
+                {/* Optional: claim under your own wallet */}
+                {account && !selected.owner && (
+                  <button
+                    onClick={() => claimOnChain(selected)}
+                    disabled={claiming}
+                    title="Sign with your wallet to own this file on-chain"
+                    style={{
+                      padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                      border: '1px solid #c7d2fe', background: 'var(--purple-bg)', color: 'var(--purple)',
+                      cursor: claiming ? 'default' : 'pointer', flexShrink: 0, opacity: claiming ? 0.6 : 1,
+                    }}
+                  >
+                    {claiming ? 'Claiming…' : '⛓ Claim on-chain'}
+                  </button>
+                )}
                 <button
                   onClick={() => handleDelete(selected.id)}
                   title="Remove from vault"
