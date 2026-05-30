@@ -69,6 +69,10 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [homeEmpty, setHomeEmpty] = useState(true);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreAddr, setRestoreAddr] = useState('');
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState('');
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
@@ -83,47 +87,56 @@ export default function Home() {
   }, []);
   useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
 
-  // Decentralized restore: when a wallet connects, reconstruct the files it OWNS
-  // on-chain (VaultEntry objects, read from Sui via Tatum) and pull their content
-  // back from Walrus — so a claimed vault follows the wallet to any device.
-  useEffect(() => {
-    const owner = account?.address;
-    if (!owner) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/vault-onchain?owner=${owner}`);
-        const { entries } = await res.json();
-        if (cancelled || !Array.isArray(entries) || entries.length === 0) return;
-        const fresh: VaultItem[] = [];
-        setVault(prev => {
-          const have = new Set(prev.map(i => i.blobId));
-          for (const e of entries) {
-            if (have.has(e.blobId)) continue;
-            fresh.push({
-              id: crypto.randomUUID(),
-              filename: e.filename, fileType: e.fileType, blobId: e.blobId,
-              summary: 'Restored from your on-chain vault (Sui + Walrus).',
-              content: '', txDigest: e.txDigest, owner: e.owner,
-              tags: [], questions: [], uploadedAt: new Date().toISOString(), sizeBytes: e.sizeBytes,
-            });
-          }
-          if (fresh.length === 0) return prev;
-          const next = [...fresh, ...prev];
-          saveVault(next);
-          return next;
-        });
-        // Lazily pull text content from Walrus so restored files are queryable.
-        for (const item of fresh) {
-          if (cancelled) break;
-          const content = await fetchWalrusText(item.blobId, item.fileType, item.filename);
-          if (content) updateItem(item.id, { content });
+  // Reconstruct the files OWNED by an address on-chain (VaultEntry objects, read
+  // from Sui via Tatum) and pull their content back from Walrus. Read-only — no
+  // signing — so a vault can be restored anywhere from just the owner address.
+  async function restoreFromChain(owner: string): Promise<number> {
+    try {
+      const res = await fetch(`/api/vault-onchain?owner=${owner.trim()}`);
+      const { entries } = await res.json();
+      if (!Array.isArray(entries) || entries.length === 0) return 0;
+      const fresh: VaultItem[] = [];
+      setVault(prev => {
+        const have = new Set(prev.map(i => i.blobId));
+        for (const e of entries) {
+          if (have.has(e.blobId)) continue;
+          fresh.push({
+            id: crypto.randomUUID(),
+            filename: e.filename, fileType: e.fileType, blobId: e.blobId,
+            summary: 'Restored from the on-chain vault (Sui + Walrus).',
+            content: '', txDigest: e.txDigest, owner: e.owner,
+            tags: [], questions: [], uploadedAt: new Date().toISOString(), sizeBytes: e.sizeBytes,
+          });
         }
-      } catch { /* restore is best-effort */ }
-    })();
-    return () => { cancelled = true; };
+        if (fresh.length === 0) return prev;
+        const next = [...fresh, ...prev];
+        saveVault(next);
+        return next;
+      });
+      for (const item of fresh) {
+        const content = await fetchWalrusText(item.blobId, item.fileType, item.filename);
+        if (content) updateItem(item.id, { content });
+      }
+      return fresh.length;
+    } catch { return 0; }
+  }
+
+  // Auto-restore when a wallet connects.
+  useEffect(() => {
+    if (account?.address) restoreFromChain(account.address);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.address]);
+
+  async function doRestore() {
+    const addr = restoreAddr.trim();
+    if (!addr || restoring) return;
+    setRestoring(true);
+    setRestoreMsg('');
+    const n = await restoreFromChain(addr);
+    setRestoreMsg(n > 0 ? `Restored ${n} file${n === 1 ? '' : 's'} from chain.` : 'No on-chain files found for that address.');
+    setRestoring(false);
+    if (n > 0) setRestoreAddr('');
+  }
 
   // Add an uploaded file to the vault without switching the view (the chat
   // keeps showing the upload narration).
@@ -300,8 +313,47 @@ export default function Home() {
             ))}
           </div>
 
+          {/* Restore vault from chain (read-only, by owner address) */}
+          {sidebarOpen && (
+            <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
+              {!restoreOpen ? (
+                <button
+                  onClick={() => { setRestoreOpen(true); setRestoreAddr(account?.address || ''); setRestoreMsg(''); }}
+                  title="Rebuild your vault from Sui + Walrus using an owner address"
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
+                >
+                  <Database size={14} strokeWidth={2} /> Restore vault from chain
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <input
+                    value={restoreAddr}
+                    onChange={e => setRestoreAddr(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') doRestore(); }}
+                    placeholder="Owner address 0x…"
+                    autoFocus
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', outline: 'none', fontFamily: 'ui-monospace, monospace' }}
+                  />
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button onClick={doRestore} disabled={restoring || !restoreAddr.trim()}
+                      style={{ flex: 1, padding: '7px', borderRadius: '8px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: restoring ? 'default' : 'pointer', fontSize: '12px', fontWeight: 700, opacity: restoring || !restoreAddr.trim() ? 0.5 : 1 }}>
+                      {restoring ? 'Restoring…' : 'Restore'}
+                    </button>
+                    <button onClick={() => { setRestoreOpen(false); setRestoreMsg(''); }}
+                      style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontSize: '12px' }}>
+                      Cancel
+                    </button>
+                  </div>
+                  {restoreMsg && <p style={{ fontSize: '11px', color: 'var(--text-3)', margin: '2px 2px 0' }}>{restoreMsg}</p>}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Profile (wallet) */}
-          <div style={{ padding: sidebarOpen ? '8px 10px 10px' : '8px 8px 10px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ padding: sidebarOpen ? '8px 10px 10px' : '8px 8px 10px', borderTop: '1px solid var(--border)', flexShrink: 0, marginTop: '8px' }}>
             <WalletProfile collapsed={!sidebarOpen} />
           </div>
         </aside>
