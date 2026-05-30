@@ -22,7 +22,9 @@ async function extractText(file: File): Promise<string> {
       reader.readAsText(file);
     });
   }
-  if (['pdf', 'docx', 'xlsx', 'xls'].includes(ext)) {
+  // Server extraction is capped by Vercel's 4.5MB body limit — skip larger files gracefully
+  const MAX_EXTRACT_BYTES = 4 * 1024 * 1024;
+  if (['pdf', 'docx', 'xlsx', 'xls'].includes(ext) && file.size <= MAX_EXTRACT_BYTES) {
     try {
       const form = new FormData();
       form.append('file', file);
