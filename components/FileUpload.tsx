@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { VaultItem } from '@/types/vault';
 
-const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
+const WALRUS_PUBLISHER = (process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space').trim();
 const SUI_NETWORK = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
 
 interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
