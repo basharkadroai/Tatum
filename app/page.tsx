@@ -54,26 +54,43 @@ export default function Home() {
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState('');
+  const [toast, setToast] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   useEffect(() => { setVault(loadVault()); }, []);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  useEffect(() => { setMessages([]); setQaInput(''); setSummaryExpanded(true); setClaimMsg(''); }, [selected?.id]);
+  useEffect(() => { setMessages([]); setQaInput(''); setSummaryExpanded(true); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
   useEffect(() => { setMessages([]); setQaInput(''); }, [vaultMode]);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 2600);
+  }
+  async function copy(text: string, label: string) {
+    try { await navigator.clipboard.writeText(text); showToast(`${label} copied`); }
+    catch { showToast('Copy failed'); }
+  }
 
   function openVaultMode() { setSelected(null); setVaultMode(true); }
   function handleUploaded(item: VaultItem) {
     setVault(prev => { const next = [item, ...prev]; saveVault(next); return next; });
     setVaultMode(false);
     setSelected(item);
+    showToast(`"${item.filename}" stored on Walrus${item.txDigest ? ' + recorded on Sui' : ''}`);
   }
   function handleDelete(id: string) {
+    const item = vault.find(i => i.id === id);
     setVault(prev => { const next = prev.filter(i => i.id !== id); saveVault(next); return next; });
     if (selected?.id === id) setSelected(null);
+    setPendingDelete(null);
+    if (item) showToast(`"${item.filename}" removed from vault`);
   }
   function updateItem(id: string, patch: Partial<VaultItem>) {
     setVault(prev => {
@@ -105,6 +122,7 @@ export default function Home() {
       console.log('[claim] success', res.digest);
       updateItem(item.id, { txDigest: res.digest, owner: account.address });
       setClaimMsg('✓ Claimed — you now own this on-chain');
+      showToast('Claimed on-chain — you own this file');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       // Surface the real error so we can diagnose (was previously hidden)
@@ -180,6 +198,7 @@ export default function Home() {
     item.filename.toLowerCase().includes(search.toLowerCase()) ||
     item.summary.toLowerCase().includes(search.toLowerCase())
   );
+  const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
 
   const network = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
   const aggregator = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
@@ -268,10 +287,15 @@ export default function Home() {
             </div>
           )}
 
-          {/* File list label */}
+          {/* File list label + storage stat */}
           {vault.length > 0 && (
-            <div style={{ padding: '4px 16px 6px', fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
+            <div style={{ padding: '4px 16px 6px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--mint-dark)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span>🗄</span> {formatBytes(totalBytes)} stored permanently on Walrus
+              </div>
             </div>
           )}
 
@@ -302,9 +326,11 @@ export default function Home() {
                     {formatBytes(item.sizeBytes)} · {formatDate(item.uploadedAt)}
                   </p>
                 </div>
-                {item.txDigest && (
+                {item.owner ? (
+                  <span title="Owned by you on-chain" style={{ fontSize: '10px', flexShrink: 0 }}>🔑</span>
+                ) : item.txDigest ? (
                   <div title="Recorded on Sui" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--purple)', flexShrink: 0 }} />
-                )}
+                ) : null}
               </div>
             ))}
           </div>
@@ -332,6 +358,11 @@ export default function Home() {
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {messages.length > 0 && (
+                  <button onClick={() => setMessages([])} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', fontWeight: 600 }}>
+                    Clear chat
+                  </button>
+                )}
                 {messages.length === 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
                     <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>Ask anything across your entire knowledge vault</p>
@@ -430,19 +461,27 @@ export default function Home() {
                   </p>
                   <div style={{ display: 'flex', gap: '12px', marginTop: '3px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{formatBytes(selected.sizeBytes)} · {formatDate(selected.uploadedAt)}</span>
-                    <a href={`${aggregator}/v1/blobs/${selected.blobId}`} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
-                      onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-                      onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
-                      🗄 {selected.blobId.slice(0, 16)}…
-                    </a>
-                    {selected.txDigest && (
-                      <a href={`${suiExplorer}/txblock/${selected.txDigest}`} target="_blank" rel="noopener noreferrer"
-                        style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <a href={`${aggregator}/v1/blobs/${selected.blobId}`} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
                         onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
                         onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
-                        ⛓ {selected.txDigest.slice(0, 16)}…
+                        🗄 {selected.blobId.slice(0, 16)}…
                       </a>
+                      <button onClick={() => copy(selected.blobId, 'Blob ID')} title="Copy blob ID"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', padding: '0 2px' }}>⧉</button>
+                    </span>
+                    {selected.txDigest && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        <a href={`${suiExplorer}/txblock/${selected.txDigest}`} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
+                          onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                          onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
+                          ⛓ {selected.txDigest.slice(0, 16)}…
+                        </a>
+                        <button onClick={() => copy(selected.txDigest!, 'Tx digest')} title="Copy transaction digest"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', padding: '0 2px' }}>⧉</button>
+                      </span>
                     )}
                     {selected.owner && (
                       <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)' }}>
@@ -469,13 +508,26 @@ export default function Home() {
                     {claiming ? 'Claiming…' : '⛓ Claim on-chain'}
                   </button>
                 )}
-                <button
-                  onClick={() => handleDelete(selected.id)}
-                  title="Remove from vault"
-                  style={{ padding: '6px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '14px', flexShrink: 0 }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.color = '#ef4444'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)'; }}
-                >✕</button>
+                {pendingDelete === selected.id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    <button onClick={() => handleDelete(selected.id)}
+                      style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid #fecaca', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
+                      Delete
+                    </button>
+                    <button onClick={() => setPendingDelete(null)}
+                      style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', color: 'var(--text-2)', cursor: 'pointer', fontSize: '12px' }}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setPendingDelete(selected.id)}
+                    title="Remove from vault"
+                    style={{ padding: '6px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '14px', flexShrink: 0 }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.color = '#ef4444'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                  >✕</button>
+                )}
               </div>
 
               {/* Summary (collapsible) */}
@@ -504,6 +556,11 @@ export default function Home() {
 
               {/* Chat messages */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {messages.length > 0 && (
+                  <button onClick={() => setMessages([])} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', fontWeight: 600 }}>
+                    Clear chat
+                  </button>
+                )}
                 {messages.length === 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
                     <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>Ask anything about this document</p>
@@ -588,7 +645,22 @@ export default function Home() {
         </main>
       </div>
 
-      <style>{`@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} } @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }`}</style>
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9999, display: 'flex', alignItems: 'center', gap: '8px',
+          background: 'var(--text-1)', color: 'white', padding: '10px 18px',
+          borderRadius: '12px', fontSize: '13px', fontWeight: 600,
+          boxShadow: '0 8px 28px rgba(0,0,0,0.22)', animation: 'toastIn 0.22s ease',
+          maxWidth: '90vw',
+        }}>
+          <span style={{ color: 'var(--mint)' }}>✓</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toast}</span>
+        </div>
+      )}
+
+      <style>{`@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} } @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} } @keyframes toastIn { from{opacity:0;transform:translate(-50%,8px)} to{opacity:1;transform:translate(-50%,0)} }`}</style>
     </div>
   );
 }
