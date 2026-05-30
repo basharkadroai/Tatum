@@ -9,6 +9,7 @@ import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
+import { HomeBackground } from '@/components/HomeBackground';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
@@ -54,6 +55,7 @@ export default function Home() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [homeEmpty, setHomeEmpty] = useState(true);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
@@ -241,21 +243,27 @@ export default function Home() {
             /* Avoid flashing the upload home before localStorage loads */
             <div style={{ flex: 1 }} />
           ) : !selected ? (
-            /* Home: centered chat — ask the vault, or upload a file (narrated) */
-            <ChatPanel
-              resetKey="vault"
-              centered
-              greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}
-              greetingIcon="/logo.png"
-              endpoint="/api/ask-vault"
-              buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
-              suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
-              placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
-              aiLabel="ChainMind"
-              disabled={vault.length === 0}
-              uploadRunner={runUpload}
-              onUploaded={addToVault}
-            />
+            /* Home: centered chat over a subtle looping background */
+            <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              {homeEmpty && <HomeBackground />}
+              <div style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0 }}>
+                <ChatPanel
+                  resetKey="vault"
+                  centered
+                  onEmptyChange={setHomeEmpty}
+                  greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}
+                  greetingIcon="/logo.png"
+                  endpoint="/api/ask-vault"
+                  buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
+                  suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
+                  placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
+                  aiLabel="ChainMind"
+                  disabled={vault.length === 0}
+                  uploadRunner={runUpload}
+                  onUploaded={addToVault}
+                />
+              </div>
+            </div>
           ) : (
             /* File detail + Q&A */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>

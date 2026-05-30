@@ -23,12 +23,13 @@ interface Props {
   // Attach + narrate an upload inside the chat
   uploadRunner?: (file: File, emit: (e: UploadEvent) => void) => Promise<VaultItem | null>;
   onUploaded?: (item: VaultItem) => void;
+  onEmptyChange?: (empty: boolean) => void;   // fires when the empty/greeting state toggles
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, disabled,
-  uploadRunner, onUploaded,
+  uploadRunner, onUploaded, onEmptyChange,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -41,6 +42,7 @@ export function ChatPanel({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { setMessages([]); setInput(''); abortRef.current?.abort(); }, [resetKey]);
+  useEffect(() => { onEmptyChange?.(messages.length === 0 && !loading && !streaming); }, [messages.length, loading, streaming, onEmptyChange]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => {
     const ta = taRef.current;
