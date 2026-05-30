@@ -68,6 +68,11 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
   0%, 100% { opacity: 0.25; transform: scale(0.85); }
   40%      { opacity: 1; transform: scale(1); }
 }
+@keyframes pop {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.25); }
+  100% { transform: scale(1); opacity: 1; }
+}
 
 .file-item { transition: background 0.12s ease; }
 .file-item:hover { background: var(--hover); }

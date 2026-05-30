@@ -74,25 +74,37 @@ async function analyze(file: File): Promise<Analysis> {
   return { summary: data.summary ?? '', tags: data.tags ?? [], questions: data.questions ?? [], content };
 }
 
-// Runs the full upload pipeline, narrating each step via emit(). Returns the
-// finished VaultItem (or null on a hard failure).
-export async function runUpload(file: File, emit: (chunk: string) => void): Promise<VaultItem | null> {
+// ── Structured step events for the animated chain in the chat ──
+export type UploadStepStatus = 'running' | 'done' | 'error';
+export type UploadStep = { label: string; status: UploadStepStatus; detail?: string };
+export type UploadEvent =
+  | { kind: 'start'; label: string }       // begin a new step (spinner)
+  | { kind: 'done'; detail?: string }      // resolve current step (checkmark)
+  | { kind: 'error'; detail?: string }     // fail current step
+  | { kind: 'summary'; text: string };     // final AI answer below the chain
+
+// Runs the full upload pipeline, narrating each step via emit() as structured
+// events. Returns the finished VaultItem (or null on a hard failure).
+export async function runUpload(file: File, emit: (e: UploadEvent) => void): Promise<VaultItem | null> {
   if (file.size > MAX_UPLOAD_BYTES) {
-    emit(`**${file.name}** is ${fmtBytes(file.size)} — the max is 10 MB. Try a smaller file.`);
+    emit({ kind: 'summary', text: `**${file.name}** is ${fmtBytes(file.size)} — the max upload is 10 MB. Try a smaller file.` });
     return null;
   }
 
-  emit(`Got it — **${file.name}** (${fmtBytes(file.size)}).\n\nStoring it on **Walrus** decentralized storage…`);
+  // Step 1 — Walrus
+  emit({ kind: 'start', label: `Storing ${file.name} on Walrus decentralized storage` });
   let blobId: string;
   try {
     blobId = await uploadToWalrus(file);
   } catch (e) {
-    emit(`\n\n⚠ Walrus upload failed: ${String(e).slice(0, 120)}`);
+    emit({ kind: 'error', detail: `Walrus upload failed — ${String(e).slice(0, 100)}` });
+    emit({ kind: 'summary', text: `I couldn't store this file on Walrus. Please try again in a moment.` });
     return null;
   }
-  emit(`  ✓\nIt's now stored permanently and erasure-coded across Walrus nodes — blob \`${blobId.slice(0, 18)}…\`\n\n`);
+  emit({ kind: 'done', detail: `Erasure-coded across nodes · blob ${blobId.slice(0, 14)}…` });
 
-  emit(`Recording it on **Sui** via **Tatum** so there's a verifiable on-chain proof…`);
+  // Step 2 — Sui via Tatum
+  emit({ kind: 'start', label: `Recording an on-chain proof on Sui via Tatum` });
   let txDigest: string | undefined;
   const body = JSON.stringify({ blobId, filename: file.name, fileType: file.type || 'application/octet-stream', fileSize: file.size });
   for (let attempt = 1; attempt <= 3 && !txDigest; attempt++) {
@@ -102,11 +114,15 @@ export async function runUpload(file: File, emit: (chunk: string) => void): Prom
       if (res.ok && data.digest) txDigest = data.digest;
     } catch { /* retry */ }
   }
-  emit(txDigest ? `  ✓\nOn-chain as a VaultEntry — tx \`${txDigest.slice(0, 18)}…\`\n\n` : `  (the on-chain step will retry in the background)\n\n`);
+  emit(txDigest
+    ? { kind: 'done', detail: `Registered as a VaultEntry · tx ${txDigest.slice(0, 14)}…` }
+    : { kind: 'done', detail: `Queued — the on-chain write will retry in the background` });
 
-  emit(`Reading and understanding the file with AI…`);
+  // Step 3 — AI read
+  emit({ kind: 'start', label: `Reading and understanding the file with AI` });
   const { summary, tags, questions, content } = await analyze(file);
-  emit(`  ✓\n\n${summary}\n\nAsk me anything about it.`);
+  emit({ kind: 'done', detail: `Indexed and ready for questions` });
+  emit({ kind: 'summary', text: `${summary}\n\nAsk me anything about it.` });
 
   return {
     id: crypto.randomUUID(),

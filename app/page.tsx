@@ -51,12 +51,12 @@ export default function Home() {
   const [proofExpanded, setProofExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState('');
-  const [toast, setToast] = useState('');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loaded, setLoaded] = useState(false);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
@@ -64,28 +64,24 @@ export default function Home() {
   useEffect(() => { setVault(loadVault()); setLoaded(true); }, []);
   useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 2600);
-  }
-  async function copy(text: string, label: string) {
-    try { await navigator.clipboard.writeText(text); showToast(`${label} copied`); }
-    catch { showToast('Copy failed'); }
+  async function copy(text: string, field: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopiedField(c => (c === field ? null : c)), 1600);
+    } catch { /* ignore */ }
   }
 
   // Add an uploaded file to the vault without switching the view (the chat
   // keeps showing the upload narration).
   function addToVault(item: VaultItem) {
     setVault(prev => { const next = [item, ...prev]; saveVault(next); return next; });
-    showToast(`"${item.filename}" stored on Walrus${item.txDigest ? ' + recorded on Sui' : ''}`);
   }
   function handleDelete(id: string) {
-    const item = vault.find(i => i.id === id);
     setVault(prev => { const next = prev.filter(i => i.id !== id); saveVault(next); return next; });
     if (selected?.id === id) setSelected(null);
     setPendingDelete(null);
-    if (item) showToast(`"${item.filename}" removed from vault`);
   }
   function updateItem(id: string, patch: Partial<VaultItem>) {
     setVault(prev => {
@@ -117,7 +113,6 @@ export default function Home() {
       console.log('[claim] success', res.digest);
       updateItem(item.id, { txDigest: res.digest, owner: account.address });
       setClaimMsg('Claimed — you now own this on-chain');
-      showToast('Claimed on-chain — you own this file');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       // Surface the real error so we can diagnose (was previously hidden)
@@ -297,8 +292,9 @@ export default function Home() {
                         onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
                         <Database size={12} strokeWidth={2} /> {selected.blobId.slice(0, 14)}…
                       </a>
-                      <button onClick={() => copy(selected.blobId, 'Blob ID')} title="Copy blob ID"
-                        style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '0 2px' }}><Copy size={11} strokeWidth={2} /></button>
+                      <button onClick={() => copy(selected.blobId, 'blob')} title="Copy blob ID"
+                        style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: copiedField === 'blob' ? 'var(--text-1)' : 'var(--text-3)', padding: '0 2px' }}>
+                        {copiedField === 'blob' ? <Check size={11} strokeWidth={2.5} /> : <Copy size={11} strokeWidth={2} />}</button>
                     </span>
                     {selected.txDigest && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -308,8 +304,9 @@ export default function Home() {
                           onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
                           <Link2 size={12} strokeWidth={2} /> {selected.txDigest.slice(0, 14)}…
                         </a>
-                        <button onClick={() => copy(selected.txDigest!, 'Tx digest')} title="Copy transaction digest"
-                          style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '0 2px' }}><Copy size={11} strokeWidth={2} /></button>
+                        <button onClick={() => copy(selected.txDigest!, 'tx')} title="Copy transaction digest"
+                          style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: copiedField === 'tx' ? 'var(--text-1)' : 'var(--text-3)', padding: '0 2px' }}>
+                          {copiedField === 'tx' ? <Check size={11} strokeWidth={2.5} /> : <Copy size={11} strokeWidth={2} />}</button>
                       </span>
                     )}
                     {selected.owner && (
@@ -426,22 +423,7 @@ export default function Home() {
           )}
         </main>
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-          zIndex: 9999, display: 'flex', alignItems: 'center', gap: '8px',
-          background: '#2d2e30', color: 'var(--text-1)', padding: '10px 18px',
-          borderRadius: '12px', fontSize: '13px', fontWeight: 600, border: '1px solid var(--border)',
-          boxShadow: '0 8px 28px rgba(0,0,0,0.5)', animation: 'toastIn 0.22s ease',
-          maxWidth: '90vw',
-        }}>
-          <Check size={15} strokeWidth={2.5} color="var(--mint)" style={{ flexShrink: 0 }} />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toast}</span>
-        </div>
-      )}
-
-      <style>{`@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} } @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} } @keyframes toastIn { from{opacity:0;transform:translate(-50%,8px)} to{opacity:1;transform:translate(-50%,0)} }`}</style>
+      <style>{`@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} } @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }`}</style>
     </div>
   );
 }

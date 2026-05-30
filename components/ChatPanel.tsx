@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
+import { UploadSteps } from './UploadSteps';
 import type { VaultItem } from '@/types/vault';
+import type { UploadEvent, UploadStep } from '@/lib/upload';
 
-export type ChatMessage = { role: 'user' | 'ai'; text: string };
+export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[] };
 
 interface Props {
   resetKey: string;
@@ -19,7 +21,7 @@ interface Props {
   centered?: boolean;         // center the empty state vertically (home/new-chat look)
   disabled?: boolean;         // disable sending text (e.g. no docs yet)
   // Attach + narrate an upload inside the chat
-  uploadRunner?: (file: File, emit: (chunk: string) => void) => Promise<VaultItem | null>;
+  uploadRunner?: (file: File, emit: (e: UploadEvent) => void) => Promise<VaultItem | null>;
   onUploaded?: (item: VaultItem) => void;
 }
 
@@ -119,21 +121,40 @@ export function ChatPanel({
     } catch { /* ignore */ }
   }
 
-  // Attach a file from the chat and narrate the upload pipeline live.
+  // Attach a file from the chat and narrate the upload pipeline as an animated
+  // chain of steps (each step: spinner → checkmark), with the AI summary below.
   async function handleAttach(file: File) {
     if (!uploadRunner || busy) return;
-    setMessages(m => [...m, { role: 'user', text: `📎 ${file.name}` }, { role: 'ai', text: '' }]);
+    setMessages(m => [...m, { role: 'user', text: `📎 ${file.name}` }, { role: 'ai', text: '', steps: [] }]);
     setStreaming(true);
-    let acc = '';
-    const emit = (chunk: string) => {
-      acc += chunk;
-      setMessages(m => { const c = [...m]; c[c.length - 1] = { role: 'ai', text: acc }; return c; });
+    const emit = (e: UploadEvent) => {
+      setMessages(m => {
+        const c = [...m];
+        const last = { ...c[c.length - 1] };
+        const steps = [...(last.steps ?? [])];
+        if (e.kind === 'start') {
+          steps.push({ label: e.label, status: 'running' });
+        } else if (e.kind === 'done' || e.kind === 'error') {
+          for (let i = steps.length - 1; i >= 0; i--) {
+            if (steps[i].status === 'running') {
+              steps[i] = { ...steps[i], status: e.kind === 'done' ? 'done' : 'error', detail: e.detail };
+              break;
+            }
+          }
+        } else if (e.kind === 'summary') {
+          last.text = e.text;
+        }
+        last.steps = steps;
+        c[c.length - 1] = last;
+        return c;
+      });
     };
     try {
       const item = await uploadRunner(file, emit);
       if (item) onUploaded?.(item);
-    } catch (e) {
-      emit(`\n\n⚠ ${String(e).slice(0, 120)}`);
+    } catch (err) {
+      emit({ kind: 'error', detail: String(err).slice(0, 120) });
+      emit({ kind: 'summary', text: 'Something went wrong during upload. Please try again.' });
     } finally {
       setStreaming(false);
       setTimeout(() => taRef.current?.focus(), 50);
@@ -267,12 +288,13 @@ export function ChatPanel({
                   borderRadius: m.role === 'user' ? '12px' : 0,
                   padding: m.role === 'user' ? '10px 14px' : 0,
                 }}>
-                  {m.role === 'ai' ? <FormattedText text={m.text} /> : m.text}
-                  {m.role === 'ai' && streaming && i === messages.length - 1 && (
+                  {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} />}
+                  {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} /> : null) : m.text}
+                  {m.role === 'ai' && streaming && i === messages.length - 1 && !(m.steps && m.steps.length) && (
                     <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
                   )}
                 </div>
-                {m.role === 'ai' && !(streaming && i === messages.length - 1) && (
+                {m.role === 'ai' && !(m.steps && m.steps.length) && !(streaming && i === messages.length - 1) && (
                   <div style={{ display: 'flex', gap: '14px', marginTop: '4px' }}>
                     <button onClick={() => copyMsg(m.text, i)} style={copiedIdx === i ? { ...actionBtn, color: '#65ca9d' } : actionBtn}>
                       {copiedIdx === i ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
