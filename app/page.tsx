@@ -10,6 +10,7 @@ import { ChatPanel } from '@/components/ChatPanel';
 import {
   FileText, FileSpreadsheet, FileCode, FileJson, Image as ImageIcon, File,
   Sparkles, Search, Database, KeyRound, Link2, Copy, X, ArrowLeft, Check,
+  PanelLeft, ChevronDown,
 } from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
@@ -54,6 +55,7 @@ export default function Home() {
   const [toast, setToast] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const account = useCurrentAccount();
@@ -161,6 +163,15 @@ export default function Home() {
         zIndex: 40,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer', marginRight: '2px' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+          >
+            <PanelLeft size={18} strokeWidth={2} />
+          </button>
           <Sparkles size={19} strokeWidth={2} color="var(--purple)" className="icon-twinkle" />
           <span style={{ fontWeight: 600, fontSize: '17px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>ChainMind</span>
           <span style={{
@@ -176,11 +187,11 @@ export default function Home() {
       {/* ── Body ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-        {/* ── Sidebar ── */}
+        {/* ── Sidebar (collapsible) ── */}
         <aside style={{
-          width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column',
-          borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
-          overflow: 'hidden',
+          width: sidebarOpen ? '280px' : '0px', flexShrink: 0, display: 'flex', flexDirection: 'column',
+          borderRight: sidebarOpen ? '1px solid var(--border)' : 'none', background: 'var(--sidebar-bg)',
+          overflow: 'hidden', transition: 'width 0.2s ease',
         }}>
           {/* Upload button */}
           <div style={{ padding: '14px 14px 10px' }}>
@@ -454,7 +465,7 @@ export default function Home() {
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: summaryExpanded ? '10px' : 0 }}
                 >
                   <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Summary</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-3)', transform: summaryExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', display: 'inline-block' }}>▼</span>
+                  <ChevronDown size={13} strokeWidth={2.5} color="var(--text-3)" style={{ transform: summaryExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
                 </button>
                 {summaryExpanded && (
                   <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: '1.65', animation: 'fadeUp 0.2s ease' }}>
@@ -485,7 +496,7 @@ export default function Home() {
                     fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
                     background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--mint-dark)',
                   }}><Check size={11} strokeWidth={2.5} /> on Walrus</span>
-                  <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-3)', transform: proofExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>▼</span>
+                  <ChevronDown size={13} strokeWidth={2.5} color="var(--text-3)" style={{ marginLeft: 'auto', transform: proofExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
                 </button>
                 {proofExpanded && (
                   <div style={{ marginTop: '12px', animation: 'fadeUp 0.2s ease' }}>

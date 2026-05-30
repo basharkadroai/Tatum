@@ -165,7 +165,7 @@ export function ChatPanel({ resetKey, endpoint, buildBody, suggestions, emptyHin
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--purple)' }}>{aiLabel}</span>
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                  {[0, 150, 300].map(d => (<div key={d} style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--purple)', animation: `bounce 1s ease ${d}ms infinite` }} />))}
+                  {[0, 200, 400].map(d => (<div key={d} style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--text-3)', animation: `dotpulse 1.2s ease ${d}ms infinite` }} />))}
                   <span style={{ fontSize: '12px', color: 'var(--text-3)', marginLeft: '4px' }}>Thinking…</span>
                 </div>
               </div>

@@ -1,36 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  /* Dark, professional palette — inspired by AI Studio / Claude */
-  --white:       #1e1f20;   /* primary surface (panels, header, cards) */
-  --off-white:   #2a2b2d;   /* secondary surface (bubbles, hover, code) */
-  --sidebar-bg:  #171818;   /* sidebar (slightly deeper) */
-  --base:        #131314;   /* app background behind panels */
-  --border:      #3a3b3d;
-  --border-2:    #5f6368;
-  --text-1:      #e6e6e6;   /* headings */
-  --text-2:      #c0c3c6;   /* body */
-  --text-3:      #969ba1;   /* muted */
+  /* Refined dark palette — neutral surfaces, restrained indigo accent */
+  --base:        #0d0d0f;   /* app background behind panels */
+  --white:       #1a1a1d;   /* primary surface (panels, header, cards) */
+  --off-white:   #242428;   /* secondary surface (bubbles, hover, code) */
+  --sidebar-bg:  #141416;   /* sidebar */
+  --border:      #29292e;
+  --border-2:    #3a3a40;
+  --text-1:      #f3f3f5;   /* headings */
+  --text-2:      #a6a7ad;   /* body */
+  --text-3:      #6c6d75;   /* muted */
 
-  /* Accent (blue) — exposed through old --purple tokens */
-  --purple:      #8ab4f8;
-  --purple-dark: #aecbfa;
-  --purple-light:#a8c7fa;
-  --purple-bg:   #29303d;   /* dark blue surface */
-  --purple-border:#3b4b66;
+  /* Accent (indigo) — exposed through old --purple tokens */
+  --purple:      #8b8ff5;   /* light enough for text/icons on dark */
+  --purple-dark: #a3a6f8;
+  --purple-light:#a3a6f8;
+  --purple-bg:   #1c1c28;   /* subtle accent surface */
+  --purple-border:#33344a;
 
-  /* Success / verified (green) — exposed through old --mint tokens */
-  --mint:        #81c995;
-  --mint-dark:   #81c995;
-  --success-bg:  #1f2e22;
-  --success-border:#2f5135;
+  /* Verified (muted teal-green) — exposed through old --mint tokens */
+  --mint:        #4fbf95;
+  --mint-dark:   #4fbf95;
+  --success-bg:  #142420;
+  --success-border:#264a3e;
 
   /* Error */
-  --error:       #f28b82;
-  --error-bg:    #2e1f1f;
-  --error-border:#5c3434;
+  --error:       #e8736a;
+  --error-bg:    #271b1b;
+  --error-border:#52332f;
 
-  --hover:       #2d2e30;
+  --hover:       #242427;
 }
 
 @theme inline {
@@ -43,7 +43,7 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
 
 /* Accent gradient text — soft blue sweep on dark */
 .grad-text {
-  background: linear-gradient(90deg, #8ab4f8 0%, #c58af9 50%, #8ab4f8 100%);
+  background: linear-gradient(90deg, #8b8ff5 0%, #b39af8 50%, #8b8ff5 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -68,6 +68,10 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
 @keyframes twinkle {
   0%, 100% { opacity: 1; transform: scale(1) rotate(0deg); }
   50%      { opacity: 0.7; transform: scale(1.12) rotate(8deg); }
+}
+@keyframes dotpulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  40%      { opacity: 1; transform: scale(1); }
 }
 
 .file-item { transition: background 0.12s ease; }

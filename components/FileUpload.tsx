@@ -1,6 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
-import { Plus, UploadCloud, Loader2 } from 'lucide-react';
+import { Plus, UploadCloud, Loader2, AlertTriangle } from 'lucide-react';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = (process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space').trim();
@@ -199,8 +199,8 @@ export function FileUpload({ onUploaded, compact }: Props) {
           )}
         </button>
         {error && (
-          <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--error)' }}>
-            ⚠ {error.slice(0, 100)}
+          <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--error)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <AlertTriangle size={12} strokeWidth={2.5} style={{ flexShrink: 0 }} /> {error.slice(0, 100)}
           </div>
         )}
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -268,8 +268,8 @@ export function FileUpload({ onUploaded, compact }: Props) {
       </div>
 
       {error && (
-        <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--error)' }}>
-          ⚠ {error}
+        <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--error)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <AlertTriangle size={14} strokeWidth={2.5} style={{ flexShrink: 0 }} /> {error}
         </div>
       )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
