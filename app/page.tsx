@@ -4,9 +4,11 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
+import { motion } from 'motion/react';
 import { WalletButton } from '@/components/WalletButton';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
+import { MotionIcon } from '@/components/MotionIcon';
 import {
   FileText, FileSpreadsheet, FileCode, FileJson, Image as ImageIcon, File,
   Sparkles, Search, Database, KeyRound, Link2, Copy, X, ArrowLeft, Check,
@@ -172,7 +174,7 @@ export default function Home() {
           >
             <PanelLeft size={18} strokeWidth={2} />
           </button>
-          <Sparkles size={19} strokeWidth={2} color="var(--purple)" className="icon-twinkle" />
+          <MotionIcon icon={Sparkles} mode="loop" size={19} strokeWidth={2} color="var(--purple)" />
           <span style={{ fontWeight: 600, fontSize: '17px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>ChainMind</span>
           <span style={{
             fontSize: '11px', fontWeight: 600, padding: '2px 9px', borderRadius: '20px', marginLeft: '4px',
@@ -278,18 +280,22 @@ export default function Home() {
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
             {filtered.map(item => (
-              <div
+              <motion.div
                 key={item.id}
                 onClick={() => { setVaultMode(false); setSelected(item); }}
                 className={`file-item${selected?.id === item.id ? ' active' : ''}`}
+                whileHover="hover"
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '9px 10px', borderRadius: '9px', cursor: 'pointer',
                   borderLeft: selected?.id === item.id ? '3px solid var(--purple)' : '3px solid transparent',
-                  animation: 'fadeUp 0.2s ease',
                 }}
               >
-                <span style={{ flexShrink: 0, display: 'flex' }}><FileIcon type={item.fileType} name={item.filename} size={17} /></span>
+                <motion.span
+                  variants={{ hover: { scale: 1.22, rotate: -6 } }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 12 }}
+                  style={{ flexShrink: 0, display: 'flex' }}
+                ><FileIcon type={item.fileType} name={item.filename} size={17} /></motion.span>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <p style={{
                     fontSize: '12px', fontWeight: 600, color: 'var(--text-1)',
@@ -304,7 +310,7 @@ export default function Home() {
                 ) : item.txDigest ? (
                   <div title="Recorded on Sui" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--purple)', flexShrink: 0 }} />
                 ) : null}
-              </div>
+              </motion.div>
             ))}
           </div>
 
@@ -321,7 +327,7 @@ export default function Home() {
             /* Ask-across-vault chat */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Sparkles size={18} strokeWidth={2} color="var(--purple)" /></div>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MotionIcon icon={Sparkles} mode="loop" size={18} strokeWidth={2} color="var(--purple)" /></div>
                 <div>
                   <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)' }}>Ask your whole vault</p>
                   <p style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '1px' }}>
@@ -348,7 +354,7 @@ export default function Home() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '32px' }}>
                 <div style={{ textAlign: 'center', maxWidth: '480px' }}>
                   <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'var(--purple-bg)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '18px' }}>
-                    <Sparkles size={26} strokeWidth={1.8} color="var(--purple)" />
+                    <MotionIcon icon={Sparkles} mode="loop" size={26} strokeWidth={1.8} color="var(--purple)" />
                   </div>
                   <h1 style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-1)', letterSpacing: '-0.03em', marginBottom: '10px', lineHeight: 1.2 }}>
                     Your <span className="grad-text">AI Knowledge Vault</span>

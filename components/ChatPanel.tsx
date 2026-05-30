@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, RotateCcw, Square, ArrowUp } from 'lucide-react';
+import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 
 export type ChatMessage = { role: 'user' | 'ai'; text: string };
@@ -204,7 +205,7 @@ export function ChatPanel({ resetKey, endpoint, buildBody, suggestions, emptyHin
               width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
               background: 'var(--purple)', color: 'var(--base)', border: 'none', cursor: input.trim() ? 'pointer' : 'default',
               opacity: input.trim() ? 1 : 0.4, transition: 'opacity 0.15s',
-            }}><ArrowUp size={17} strokeWidth={2.5} /></button>
+            }}><MotionIcon icon={ArrowUp} mode="bob" size={17} strokeWidth={2.5} color="currentColor" /></button>
           )}
         </div>
         <p style={{ maxWidth: '760px', margin: '6px auto 0', fontSize: '10.5px', color: 'var(--text-3)', textAlign: 'center' }}>

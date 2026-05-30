@@ -1,6 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
 import { Plus, UploadCloud, Loader2, AlertTriangle } from 'lucide-react';
+import { MotionIcon } from '@/components/MotionIcon';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = (process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space').trim();
@@ -248,7 +249,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <UploadCloud size={26} strokeWidth={1.8} color="var(--purple)" />
+              <MotionIcon icon={UploadCloud} mode="bob" size={26} strokeWidth={1.8} color="var(--purple)" />
             </div>
             <div>
               <p style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text-1)', marginBottom: '4px' }}>
