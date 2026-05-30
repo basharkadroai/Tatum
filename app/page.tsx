@@ -177,14 +177,9 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Upload */}
-        <div style={{ padding: sidebarOpen ? '2px 12px 8px' : '2px 11px 8px' }}>
-          <FileUpload onUploaded={handleUploaded} compact collapsed={!sidebarOpen} />
-        </div>
-
         {/* Search */}
         {sidebarOpen && vault.length > 0 && (
-            <div style={{ padding: '0 14px 10px' }}>
+            <div style={{ padding: '12px 14px 10px' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={13} strokeWidth={2} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
                 <input
@@ -212,24 +207,28 @@ export default function Home() {
                 <Database size={12} strokeWidth={2} /> {formatBytes(totalBytes)} stored permanently on Walrus
               </div>
               {allTags.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px' }}>
-                  {tagFilter && (
+                tagFilter ? (
+                  <div style={{ marginTop: '8px' }}>
                     <button onClick={() => setTagFilter(null)} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '3px',
-                      fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '10px', fontWeight: 700, padding: '3px 9px', borderRadius: '20px',
                       background: 'var(--purple)', color: 'var(--base)', border: 'none', cursor: 'pointer',
                     }}><X size={10} strokeWidth={2.5} /> {tagFilter}</button>
-                  )}
-                  {!tagFilter && allTags.map(tag => (
-                    <button key={tag} onClick={() => setTagFilter(tag)} style={{
-                      fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-                      background: 'var(--off-white)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer',
-                    }}
-                      onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
-                      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                    >{tag}</button>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <div className="tag-strip" style={{ display: 'flex', gap: '5px', marginTop: '8px', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: '2px' }}>
+                    {allTags.map(tag => (
+                      <button key={tag} onClick={() => setTagFilter(tag)} style={{
+                        flexShrink: 0, whiteSpace: 'nowrap',
+                        fontSize: '10px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px',
+                        background: 'var(--off-white)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer',
+                      }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                      >{tag}</button>
+                    ))}
+                  </div>
+                )
               )}
             </div>
           )}
@@ -435,6 +434,7 @@ export default function Home() {
                     : ['Summarize this in 3 bullet points', 'What are the key takeaways?', 'Any action items, dates, or deadlines?']}
                   placeholder="Ask anything about this document…"
                   aiLabel="ChainMind AI"
+                  leftAction={<FileUpload onUploaded={handleUploaded} iconButton />}
                 />
               </div>
             </div>
