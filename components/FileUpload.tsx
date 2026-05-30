@@ -95,20 +95,25 @@ export function FileUpload({ onUploaded, compact }: Props) {
       const blobId = await uploadToWalrusREST(file);
       dbg('WALRUS: blobId received', { blobId });
 
-      // ── Step 2: AI summary ───────────────────────────────────────────────
+      // ── Step 2: AI analysis (summary + tags + suggested questions) ───────
       setStepIdx(1);
       dbg('AI: extracting text...');
       const content = await extractText(file);
       dbg('AI: extracted chars', { chars: content.length });
       let summary = 'No text content could be extracted from this file.';
+      let tags: string[] = [];
+      let questions: string[] = [];
       if (content.trim()) {
-        const res = await fetch('/api/summarize', {
+        const res = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content }),
         });
-        summary = (await res.json()).summary ?? summary;
-        dbg('AI: summary received', { chars: summary.length });
+        const data = await res.json();
+        summary = data.summary ?? summary;
+        tags = Array.isArray(data.tags) ? data.tags : [];
+        questions = Array.isArray(data.questions) ? data.questions : [];
+        dbg('AI: analysis received', { summaryChars: summary.length, tags: tags.length, questions: questions.length });
       }
 
       // ── Step 3: record the blobId on Sui via Tatum (server-signed) ───────
@@ -150,6 +155,8 @@ export function FileUpload({ onUploaded, compact }: Props) {
         summary,
         content: content.slice(0, 12000),
         txDigest,
+        tags,
+        questions,
         uploadedAt: new Date().toISOString(),
         sizeBytes: file.size,
       });

@@ -56,6 +56,7 @@ export default function Home() {
   const [claimMsg, setClaimMsg] = useState('');
   const [toast, setToast] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,13 +146,14 @@ export default function Home() {
     const q = (text ?? qaInput).trim();
     if (!q || qaLoading || (!selected && !vaultMode)) return;
     setQaInput('');
+    const history = messages.slice(-6); // prior turns for context
     setMessages(m => [...m, { role: 'user', text: q }]);
     setQaLoading(true);
     try {
       const endpoint = vaultMode ? '/api/ask-vault' : '/api/ask';
       const body = vaultMode
-        ? { docs: vault.map(v => ({ filename: v.filename, content: v.content })), question: q }
-        : { content: selected!.content, question: q };
+        ? { docs: vault.map(v => ({ filename: v.filename, content: v.content })), question: q, history }
+        : { content: selected!.content, question: q, history };
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,12 +195,16 @@ export default function Home() {
     }
   }
 
-  const filtered = vault.filter(item =>
-    !search ||
-    item.filename.toLowerCase().includes(search.toLowerCase()) ||
-    item.summary.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = vault.filter(item => {
+    const matchesSearch =
+      !search ||
+      item.filename.toLowerCase().includes(search.toLowerCase()) ||
+      item.summary.toLowerCase().includes(search.toLowerCase());
+    const matchesTag = !tagFilter || (item.tags || []).includes(tagFilter);
+    return matchesSearch && matchesTag;
+  });
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
+  const allTags = Array.from(new Set(vault.flatMap(i => i.tags || []))).slice(0, 12);
 
   const network = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
   const aggregator = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
@@ -296,6 +302,25 @@ export default function Home() {
               <div style={{ fontSize: '11px', color: 'var(--mint-dark)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span>🗄</span> {formatBytes(totalBytes)} stored permanently on Walrus
               </div>
+              {allTags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px' }}>
+                  {tagFilter && (
+                    <button onClick={() => setTagFilter(null)} style={{
+                      fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                      background: 'var(--text-1)', color: 'white', border: 'none', cursor: 'pointer',
+                    }}>✕ {tagFilter}</button>
+                  )}
+                  {!tagFilter && allTags.map(tag => (
+                    <button key={tag} onClick={() => setTagFilter(tag)} style={{
+                      fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+                      background: 'white', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer',
+                    }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                    >{tag}</button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -544,6 +569,16 @@ export default function Home() {
                     {selected.summary}
                   </p>
                 )}
+                {summaryExpanded && selected.tags && selected.tags.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+                    {selected.tags.map(tag => (
+                      <button key={tag} onClick={() => { setTagFilter(tag); setSelected(null); }} title={`Filter vault by "${tag}"`} style={{
+                        fontSize: '11px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px',
+                        background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid #c7d2fe', cursor: 'pointer',
+                      }}>#{tag}</button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Walrus proof — retrieve the file back from decentralized storage */}
@@ -563,13 +598,18 @@ export default function Home() {
                 )}
                 {messages.length === 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                    <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>Ask anything about this document</p>
+                    <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>
+                      {selected.questions && selected.questions.length > 0 ? 'Suggested questions for this file' : 'Ask anything about this document'}
+                    </p>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {['What is this about?', 'What are the key points?', 'Summarize in one sentence.'].map(q => (
+                      {(selected.questions && selected.questions.length > 0
+                        ? selected.questions
+                        : ['What is this about?', 'What are the key points?', 'Summarize in one sentence.']
+                      ).map(q => (
                         <button key={q} onClick={() => sendMessage(q)} style={{
                           fontSize: '12px', padding: '6px 12px', borderRadius: '20px',
                           background: 'var(--off-white)', border: '1px solid var(--border)',
-                          color: 'var(--text-2)', cursor: 'pointer', transition: 'border-color 0.15s',
+                          color: 'var(--text-2)', cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'left',
                         }}
                           onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
                           onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
