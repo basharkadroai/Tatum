@@ -7,7 +7,7 @@ import { VaultItem } from '@/types/vault';
 const WALRUS_PUBLISHER = (process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space').trim();
 const SUI_NETWORK = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
 
-interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; collapsed?: boolean; }
+interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; collapsed?: boolean; iconButton?: boolean; }
 
 // ── Debug logger ──────────────────────────────────────────────────────────
 // Every step is logged with a [ChainMind] prefix and also buffered on
@@ -67,7 +67,7 @@ async function uploadToWalrusREST(file: File): Promise<string> {
   return blobId;
 }
 
-export function FileUpload({ onUploaded, compact, collapsed }: Props) {
+export function FileUpload({ onUploaded, compact, collapsed, iconButton }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -168,6 +168,29 @@ export function FileUpload({ onUploaded, compact, collapsed }: Props) {
     } finally {
       setTimeout(() => setLoading(false), 500);
     }
+  }
+
+  if (iconButton) {
+    return (
+      <>
+        <input ref={inputRef} type="file" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+        <button
+          onClick={() => !loading && inputRef.current?.click()}
+          disabled={loading}
+          title="Upload a file"
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
+            background: 'transparent', border: '1px solid var(--border)', cursor: loading ? 'default' : 'pointer', color: 'var(--text-2)',
+          }}
+          onMouseEnter={e => { if (!loading) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
+        >
+          {loading ? <Loader2 size={16} strokeWidth={2.5} className="lucide-spin" /> : <Plus size={17} strokeWidth={2.5} />}
+        </button>
+      </>
+    );
   }
 
   if (compact) {

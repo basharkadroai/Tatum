@@ -8,10 +8,9 @@ import { motion } from 'motion/react';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
-import { MotionIcon } from '@/components/MotionIcon';
 import {
   FileText, FileSpreadsheet, FileCode, FileJson, Image as ImageIcon, File,
-  Sparkles, Search, Database, KeyRound, Link2, Copy, X, ArrowLeft, Check,
+  Search, Database, KeyRound, Link2, Copy, X, Check,
   PanelLeft, ChevronDown,
 } from 'lucide-react';
 
@@ -48,7 +47,6 @@ function formatDate(iso: string) {
 export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
   const [selected, setSelected] = useState<VaultItem | null>(null);
-  const [vaultMode, setVaultMode] = useState(false); // "ask across whole vault" mode
   const [search, setSearch] = useState('');
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [proofExpanded, setProofExpanded] = useState(false);
@@ -76,10 +74,8 @@ export default function Home() {
     catch { showToast('Copy failed'); }
   }
 
-  function openVaultMode() { setSelected(null); setVaultMode(true); }
   function handleUploaded(item: VaultItem) {
     setVault(prev => { const next = [item, ...prev]; saveVault(next); return next; });
-    setVaultMode(false);
     setSelected(item);
     showToast(`"${item.filename}" stored on Walrus${item.txDigest ? ' + recorded on Sui' : ''}`);
   }
@@ -165,7 +161,11 @@ export default function Home() {
       }}>
         {/* Brand + collapse toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', padding: sidebarOpen ? '16px 14px 12px' : '16px 0 12px', flexShrink: 0 }}>
-          {sidebarOpen && <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>ChainMind</span>}
+          {sidebarOpen && (
+            <button onClick={() => setSelected(null)} title="Home" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
+              ChainMind
+            </button>
+          )}
           <button
             onClick={() => setSidebarOpen(o => !o)}
             title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -181,28 +181,6 @@ export default function Home() {
         <div style={{ padding: sidebarOpen ? '2px 12px 8px' : '2px 11px 8px' }}>
           <FileUpload onUploaded={handleUploaded} compact collapsed={!sidebarOpen} />
         </div>
-
-        {/* Ask whole vault */}
-        {vault.length > 0 && (
-          <div style={{ padding: sidebarOpen ? '0 12px 8px' : '0 11px 8px' }}>
-            <button
-              onClick={openVaultMode}
-              title="Ask your whole vault"
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'flex-start' : 'center', gap: '9px',
-                padding: sidebarOpen ? '9px 12px' : '9px 0', borderRadius: '9px', fontSize: '13px', fontWeight: 600,
-                cursor: 'pointer', transition: 'background 0.15s',
-                background: vaultMode ? 'var(--purple-bg)' : 'transparent',
-                color: vaultMode ? 'var(--text-1)' : 'var(--text-2)', border: 'none',
-              }}
-              onMouseEnter={e => { if (!vaultMode) e.currentTarget.style.background = 'var(--hover)'; }}
-              onMouseLeave={e => { if (!vaultMode) e.currentTarget.style.background = 'transparent'; }}
-            >
-              <Sparkles size={16} strokeWidth={2} style={{ flexShrink: 0 }} />
-              {sidebarOpen && 'Ask your whole vault'}
-            </button>
-          </div>
-        )}
 
         {/* Search */}
         {sidebarOpen && vault.length > 0 && (
@@ -264,7 +242,7 @@ export default function Home() {
             {sidebarOpen && filtered.map(item => (
               <motion.div
                 key={item.id}
-                onClick={() => { setVaultMode(false); setSelected(item); }}
+                onClick={() => setSelected(item)}
                 className={`file-item${selected?.id === item.id ? ' active' : ''}`}
                 whileHover="hover"
                 style={{
@@ -305,63 +283,38 @@ export default function Home() {
         {/* ── Main Panel ── */}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--white)' }}>
 
-          {vaultMode ? (
-            /* Ask-across-vault chat */
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MotionIcon icon={Sparkles} mode="loop" size={18} strokeWidth={2} color="var(--purple)" /></div>
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)' }}>Ask your whole vault</p>
-                  <p style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '1px' }}>
-                    AI searches across all {vault.length} file{vault.length !== 1 ? 's' : ''} and cites its sources
-                  </p>
-                </div>
-              </div>
-              <div style={{ flex: 1, minHeight: 0 }}>
-                <ChatPanel
-                  resetKey="vault"
-                  endpoint="/api/ask-vault"
-                  buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
-                  suggestions={['What are the common themes across my files?', 'Which file mentions deadlines?', 'Summarize my whole vault in 3 points.']}
-                  emptyHint="Ask anything across your entire knowledge vault"
-                  placeholder="Ask across all your files…"
-                  aiLabel="Vault AI"
-                  onToast={showToast}
-                />
-              </div>
-            </div>
-          ) : !selected ? (
-            /* Empty state */
+          {!selected ? (
             vault.length === 0 ? (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '32px' }}>
-                <div style={{ textAlign: 'center', maxWidth: '480px' }}>
-                  <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'var(--purple-bg)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '18px' }}>
-                    <MotionIcon icon={Sparkles} mode="loop" size={26} strokeWidth={1.8} color="var(--purple)" />
-                  </div>
-                  <h1 style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-1)', letterSpacing: '-0.03em', marginBottom: '10px', lineHeight: 1.2 }}>
-                    Your <span className="grad-text">AI Knowledge Vault</span>
-                  </h1>
-                  <p style={{ fontSize: '15px', color: 'var(--text-2)', lineHeight: 1.6 }}>
-                    Upload any document — stored forever on <strong style={{ color: 'var(--purple)' }}>Walrus</strong>, summarized by AI, and verifiable on <strong style={{ color: 'var(--mint-dark)' }}>Sui</strong>.
-                  </p>
-                </div>
-                <div style={{ width: '100%', maxWidth: '480px' }}>
+              /* First-run: centered upload home */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
+                <h1 style={{ fontSize: '30px', fontWeight: 600, color: 'var(--text-1)', letterSpacing: '-0.02em', textAlign: 'center' }}>
+                  Welcome to your knowledge vault
+                </h1>
+                <div style={{ width: '100%', maxWidth: '560px' }}>
                   <FileUpload onUploaded={handleUploaded} />
                 </div>
-                <div style={{ display: 'flex', gap: '24px', fontSize: '12px', color: 'var(--text-3)', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {['Any file type', 'Permanent Walrus storage', 'On-chain ownership via Sui'].map(t => (
+                <div style={{ display: 'flex', gap: '22px', fontSize: '12px', color: 'var(--text-3)', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {['Any file type', 'Permanent Walrus storage', 'Recorded on Sui via Tatum'].map(t => (
                     <span key={t} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Check size={13} strokeWidth={2.5} color="var(--mint)" /> {t}
+                      <Check size={13} strokeWidth={2.5} color="var(--text-2)" /> {t}
                     </span>
                   ))}
                 </div>
               </div>
             ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
-                <ArrowLeft size={28} strokeWidth={1.8} color="var(--text-3)" />
-                <p style={{ fontSize: '15px', color: 'var(--text-2)', fontWeight: 500 }}>Select a file to view it</p>
-                <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>Or upload a new one using the sidebar</p>
-              </div>
+              /* Home: centered "ask your whole vault" chat */
+              <ChatPanel
+                resetKey="vault"
+                centered
+                greeting="What do you want to know?"
+                endpoint="/api/ask-vault"
+                buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
+                suggestions={['What are the common themes across my files?', 'Which file mentions deadlines?', 'Summarize my whole vault in 3 points.']}
+                placeholder="Ask across your whole vault…"
+                aiLabel="ChainMind"
+                onToast={showToast}
+                leftAction={<FileUpload onUploaded={handleUploaded} iconButton />}
+              />
             )
           ) : (
             /* File detail + Q&A */
@@ -502,7 +455,6 @@ export default function Home() {
                   suggestions={selected.questions && selected.questions.length > 0
                     ? selected.questions
                     : ['What is this about?', 'What are the key points?', 'Summarize in one sentence.']}
-                  emptyHint={selected.questions && selected.questions.length > 0 ? 'Suggested questions for this file' : 'Ask anything about this document'}
                   placeholder="Ask anything about this document…"
                   aiLabel="ChainMind AI"
                   onToast={showToast}
