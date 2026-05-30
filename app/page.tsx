@@ -7,7 +7,7 @@ import { FileUpload } from '@/components/FileUpload';
 import { WalletButton } from '@/components/WalletButton';
 import { LogoMark } from '@/components/Logo';
 import { WalrusProof } from '@/components/WalrusProof';
-import { FormattedText } from '@/components/FormattedText';
+import { ChatPanel } from '@/components/ChatPanel';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 const SUI_NETWORK_NAME = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
@@ -41,33 +41,24 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-type Message = { role: 'user' | 'ai'; text: string };
-
 export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
   const [selected, setSelected] = useState<VaultItem | null>(null);
   const [vaultMode, setVaultMode] = useState(false); // "ask across whole vault" mode
   const [search, setSearch] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [qaInput, setQaInput] = useState('');
-  const [qaLoading, setQaLoading] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState('');
   const [toast, setToast] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   useEffect(() => { setVault(loadVault()); }, []);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  useEffect(() => { setMessages([]); setQaInput(''); setSummaryExpanded(true); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
-  useEffect(() => { setMessages([]); setQaInput(''); }, [vaultMode]);
+  useEffect(() => { setSummaryExpanded(true); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -139,59 +130,6 @@ export default function Home() {
       }
     } finally {
       setClaiming(false);
-    }
-  }
-
-  async function sendMessage(text?: string) {
-    const q = (text ?? qaInput).trim();
-    if (!q || qaLoading || (!selected && !vaultMode)) return;
-    setQaInput('');
-    const history = messages.slice(-6); // prior turns for context
-    setMessages(m => [...m, { role: 'user', text: q }]);
-    setQaLoading(true);
-    try {
-      const endpoint = vaultMode ? '/api/ask-vault' : '/api/ask';
-      const body = vaultMode
-        ? { docs: vault.map(v => ({ filename: v.filename, content: v.content })), question: q, history }
-        : { content: selected!.content, question: q, history };
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok || !res.body) {
-        setMessages(m => [...m, { role: 'ai', text: 'Failed to reach AI.' }]);
-        return;
-      }
-
-      // Stream tokens into a growing AI message
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let acc = '';
-      let started = false;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        acc += decoder.decode(value, { stream: true });
-        if (!started) {
-          started = true;
-          setQaLoading(false);
-          setMessages(m => [...m, { role: 'ai', text: acc }]);
-        } else {
-          setMessages(m => {
-            const copy = [...m];
-            copy[copy.length - 1] = { role: 'ai', text: acc };
-            return copy;
-          });
-        }
-      }
-      if (!started) setMessages(m => [...m, { role: 'ai', text: 'No answer.' }]);
-    } catch {
-      setMessages(m => [...m, { role: 'ai', text: 'Failed to reach AI.' }]);
-    } finally {
-      setQaLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }
 
@@ -381,66 +319,16 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {messages.length > 0 && (
-                  <button onClick={() => setMessages([])} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', fontWeight: 600 }}>
-                    Clear chat
-                  </button>
-                )}
-                {messages.length === 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                    <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>Ask anything across your entire knowledge vault</p>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {['What are the common themes?', 'Which file mentions deadlines?', 'Summarize everything in 3 points.'].map(q => (
-                        <button key={q} onClick={() => sendMessage(q)} style={{
-                          fontSize: '12px', padding: '6px 12px', borderRadius: '20px',
-                          background: 'var(--off-white)', border: '1px solid var(--border)',
-                          color: 'var(--text-2)', cursor: 'pointer', transition: 'border-color 0.15s',
-                        }}
-                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
-                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                        >{q}</button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {messages.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', animation: 'fadeUp 0.2s ease' }}>
-                    {m.role === 'ai' && <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vault AI</span>}
-                    <div style={{
-                      maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                      fontSize: '13px', lineHeight: '1.6',
-                      background: m.role === 'user' ? 'var(--purple)' : 'var(--off-white)',
-                      color: m.role === 'user' ? 'white' : 'var(--text-1)',
-                      border: m.role === 'ai' ? '1px solid var(--border)' : 'none',
-                    }}>{m.role === 'ai' ? <FormattedText text={m.text} /> : m.text}</div>
-                  </div>
-                ))}
-                {qaLoading && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vault AI</span>
-                    <div style={{ padding: '12px 16px', borderRadius: '14px 14px 14px 4px', background: 'var(--off-white)', border: '1px solid var(--border)', display: 'flex', gap: '5px' }}>
-                      {[0, 150, 300].map(d => (<div key={d} style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--purple)', animation: `bounce 1s ease ${d}ms infinite` }} />))}
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', flexShrink: 0, background: 'var(--white)' }}>
-                <input
-                  ref={inputRef}
-                  value={qaInput}
-                  onChange={e => setQaInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                  placeholder="Ask across all your files..."
-                  style={{ flex: 1, padding: '10px 14px', borderRadius: '10px', fontSize: '13px', border: '1px solid var(--border)', outline: 'none', color: 'var(--text-1)', background: 'var(--off-white)' }}
-                  onFocus={e => (e.target.style.borderColor = 'var(--purple)')}
-                  onBlur={e => (e.target.style.borderColor = 'var(--border)')}
-                />
-                <button onClick={() => sendMessage()} disabled={qaLoading || !qaInput.trim()} style={{ padding: '10px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, background: 'var(--purple)', color: 'white', border: 'none', cursor: 'pointer', opacity: qaLoading || !qaInput.trim() ? 0.4 : 1, flexShrink: 0 }}>Ask</button>
-              </div>
+              <ChatPanel
+                resetKey="vault"
+                endpoint="/api/ask-vault"
+                buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
+                suggestions={['What are the common themes across my files?', 'Which file mentions deadlines?', 'Summarize my whole vault in 3 points.']}
+                emptyHint="Ask anything across your entire knowledge vault"
+                placeholder="Ask across all your files…"
+                aiLabel="Vault AI"
+                onToast={showToast}
+              />
             </div>
           ) : !selected ? (
             /* Empty state */
@@ -589,97 +477,19 @@ export default function Home() {
                 <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} />
               </div>
 
-              {/* Chat messages */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {messages.length > 0 && (
-                  <button onClick={() => setMessages([])} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', fontWeight: 600 }}>
-                    Clear chat
-                  </button>
-                )}
-                {messages.length === 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                    <p style={{ fontSize: '12px', color: 'var(--text-3)', fontWeight: 500 }}>
-                      {selected.questions && selected.questions.length > 0 ? 'Suggested questions for this file' : 'Ask anything about this document'}
-                    </p>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {(selected.questions && selected.questions.length > 0
-                        ? selected.questions
-                        : ['What is this about?', 'What are the key points?', 'Summarize in one sentence.']
-                      ).map(q => (
-                        <button key={q} onClick={() => sendMessage(q)} style={{
-                          fontSize: '12px', padding: '6px 12px', borderRadius: '20px',
-                          background: 'var(--off-white)', border: '1px solid var(--border)',
-                          color: 'var(--text-2)', cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'left',
-                        }}
-                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
-                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                        >{q}</button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {messages.map((m, i) => (
-                  <div key={i} style={{
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: m.role === 'user' ? 'flex-end' : 'flex-start',
-                    animation: 'fadeUp 0.2s ease',
-                  }}>
-                    {m.role === 'ai' && (
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI</span>
-                    )}
-                    <div style={{
-                      maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                      fontSize: '13px', lineHeight: '1.6',
-                      background: m.role === 'user' ? 'var(--purple)' : 'var(--off-white)',
-                      color: m.role === 'user' ? 'white' : 'var(--text-1)',
-                      border: m.role === 'ai' ? '1px solid var(--border)' : 'none',
-                    }}>
-                      {m.role === 'ai' ? <FormattedText text={m.text} /> : m.text}
-                    </div>
-                  </div>
-                ))}
-
-                {qaLoading && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI</span>
-                    <div style={{ padding: '12px 16px', borderRadius: '14px 14px 14px 4px', background: 'var(--off-white)', border: '1px solid var(--border)', display: 'flex', gap: '5px' }}>
-                      {[0, 150, 300].map(d => (
-                        <div key={d} style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--purple)', animation: `bounce 1s ease ${d}ms infinite` }} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Input bar */}
-              <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', flexShrink: 0, background: 'var(--white)' }}>
-                <input
-                  ref={inputRef}
-                  value={qaInput}
-                  onChange={e => setQaInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                  placeholder="Ask anything about this document..."
-                  style={{
-                    flex: 1, padding: '10px 14px', borderRadius: '10px', fontSize: '13px',
-                    border: '1px solid var(--border)', outline: 'none', color: 'var(--text-1)',
-                    background: 'var(--off-white)', transition: 'border-color 0.15s',
-                  }}
-                  onFocus={e => (e.target.style.borderColor = 'var(--purple)')}
-                  onBlur={e => (e.target.style.borderColor = 'var(--border)')}
-                />
-                <button
-                  onClick={() => sendMessage()}
-                  disabled={qaLoading || !qaInput.trim()}
-                  style={{
-                    padding: '10px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
-                    background: 'var(--purple)', color: 'white', border: 'none', cursor: 'pointer',
-                    opacity: qaLoading || !qaInput.trim() ? 0.4 : 1, transition: 'opacity 0.15s',
-                    flexShrink: 0,
-                  }}
-                >Ask</button>
-              </div>
+              {/* Chat (Claude-style) */}
+              <ChatPanel
+                resetKey={selected.id}
+                endpoint="/api/ask"
+                buildBody={(question, history) => ({ content: selected.content, question, history })}
+                suggestions={selected.questions && selected.questions.length > 0
+                  ? selected.questions
+                  : ['What is this about?', 'What are the key points?', 'Summarize in one sentence.']}
+                emptyHint={selected.questions && selected.questions.length > 0 ? 'Suggested questions for this file' : 'Ask anything about this document'}
+                placeholder="Ask anything about this document…"
+                aiLabel="ChainMind AI"
+                onToast={showToast}
+              />
             </div>
           )}
         </main>
