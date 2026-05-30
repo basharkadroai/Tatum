@@ -4,6 +4,7 @@ import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
 import { WalletButton } from '@/components/WalletButton';
 import { LogoMark } from '@/components/Logo';
+import { WalrusProof } from '@/components/WalrusProof';
 
 const STORAGE_KEY = 'chainmind_vault';
 function loadVault(): VaultItem[] {
@@ -285,6 +286,14 @@ export default function Home() {
                     {selected.summary}
                   </p>
                 )}
+              </div>
+
+              {/* Walrus proof — retrieve the file back from decentralized storage */}
+              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--white)' }}>
+                <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>
+                  Decentralized Storage Proof
+                </p>
+                <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} />
               </div>
 
               {/* Chat messages */}
