@@ -7,6 +7,7 @@ import { FileUpload } from '@/components/FileUpload';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
+import { FileListItem } from '@/components/FileListItem';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, KeyRound, Link2, Copy, X, Check,
@@ -238,33 +239,12 @@ export default function Home() {
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
             {sidebarOpen && filtered.map(item => (
-              <div
+              <FileListItem
                 key={item.id}
-                onClick={() => setSelected(item)}
-                className={`file-item${selected?.id === item.id ? ' active' : ''}`}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '9px 12px', borderRadius: '9px', cursor: 'pointer',
-                }}
-              >
-                <span style={{ flexShrink: 0, display: 'flex' }}>
-                  <FileIcon type={item.fileType} name={item.filename} size={18} animated />
-                </span>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <p style={{
-                    fontSize: '12px', fontWeight: 600, color: 'var(--text-1)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{item.filename}</p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '1px' }}>
-                    {formatBytes(item.sizeBytes)} · {formatDate(item.uploadedAt)}
-                  </p>
-                </div>
-                {item.owner ? (
-                  <KeyRound size={13} strokeWidth={2} color="var(--mint-dark)" style={{ flexShrink: 0 }} />
-                ) : item.txDigest ? (
-                  <div title="Recorded on Sui" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--purple)', flexShrink: 0 }} />
-                ) : null}
-              </div>
+                item={item}
+                active={selected?.id === item.id}
+                onSelect={() => setSelected(item)}
+              />
             ))}
           </div>
 
