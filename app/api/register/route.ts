@@ -6,10 +6,16 @@ import { fromBase64 } from '@mysten/sui/utils';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID!;
 
-// Tatum RPC is the primary — fallback to public testnet
+// Tatum RPC is the primary — fallback to public testnet fullnode
 const RPC_URL =
   process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC ||
   getJsonRpcFullnodeUrl('testnet');
+
+// Testnet reference gas price is a stable 1000 MIST. Setting gas price + budget
+// explicitly skips the SDK's getReferenceGasPrice + dryRun calls, cutting the
+// per-transaction RPC count from ~5 to ~2 — critical for Tatum's 3 RPS free tier.
+const GAS_PRICE = 1000; // testnet reference gas price (MIST)
+const GAS_BUDGET = 10_000_000; // 0.01 SUI — ample for a single moveCall
 
 function keypair(): Ed25519Keypair {
   const raw = process.env.SUI_DEPLOYER_KEY;
@@ -18,16 +24,21 @@ function keypair(): Ed25519Keypair {
   return Ed25519Keypair.fromSecretKey(fromBase64(raw).slice(1));
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function POST(req: NextRequest) {
   try {
     const { blobId, filename, fileType, fileSize } = await req.json();
-
     if (!PACKAGE_ID) throw new Error('NEXT_PUBLIC_VAULT_PACKAGE_ID not set');
 
     const kp = keypair();
+    const sender = kp.getPublicKey().toSuiAddress();
     const client = new SuiJsonRpcClient({ url: RPC_URL, network: 'testnet' });
 
     const tx = new Transaction();
+    tx.setSender(sender);
+    tx.setGasPrice(GAS_PRICE);
+    tx.setGasBudget(GAS_BUDGET);
     tx.moveCall({
       target: `${PACKAGE_ID}::vault::register`,
       arguments: [
@@ -38,20 +49,31 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    const result = await client.signAndExecuteTransaction({
-      signer: kp,
-      transaction: tx,
-      options: { showEffects: true },
-    });
-
-    // Check for execution failure
-    if (result.effects?.status?.status === 'failure') {
-      throw new Error(`Sui tx failed: ${result.effects.status.error ?? 'unknown'}`);
+    // Retry with backoff to absorb the occasional 429 from the 3 RPS free tier
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        const result = await client.signAndExecuteTransaction({
+          signer: kp,
+          transaction: tx,
+          options: { showEffects: true },
+        });
+        if (result.effects?.status?.status === 'failure') {
+          throw new Error(`Sui tx failed: ${result.effects.status.error ?? 'unknown'}`);
+        }
+        console.log('[register] tx:', result.digest, `(attempt ${attempt})`);
+        return NextResponse.json({ digest: result.digest });
+      } catch (err) {
+        lastErr = err;
+        const msg = String(err);
+        if (msg.includes('429') && attempt < 4) {
+          await sleep(attempt * 700); // 700ms, 1.4s, 2.1s
+          continue;
+        }
+        throw err;
+      }
     }
-
-    const digest = result.digest;
-    console.log('[register] tx:', digest);
-    return NextResponse.json({ digest });
+    throw lastErr;
   } catch (err) {
     console.error('[register] failed:', String(err));
     return NextResponse.json({ error: String(err) }, { status: 500 });
