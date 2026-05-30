@@ -19,6 +19,28 @@ const RPC_PROXY = '/api/rpc';
 
 interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
 
+// ── Debug logger ──────────────────────────────────────────────────────────
+// Every step is logged with a [ChainMind] prefix and also buffered on
+// window.__cmlog so the whole run can be copied with: copy(__cmlog())
+function dbg(step: string, detail?: unknown) {
+  const ts = new Date().toISOString().slice(11, 23);
+  let extra = '';
+  if (detail !== undefined) {
+    if (detail instanceof Error) extra = ` ${detail.name}: ${detail.message}`;
+    else if (typeof detail === 'object') {
+      try { extra = ' ' + JSON.stringify(detail, Object.getOwnPropertyNames(detail as object)); }
+      catch { extra = ' ' + String(detail); }
+    } else extra = ' ' + String(detail);
+  }
+  const line = `[ChainMind ${ts}] ${step}${extra}`;
+  console.log(line);
+  if (typeof window !== 'undefined') {
+    const w = window as unknown as { __cmlogBuf?: string[]; __cmlog?: () => string };
+    (w.__cmlogBuf ||= []).push(line);
+    w.__cmlog ||= () => (w.__cmlogBuf || []).join('\n');
+  }
+}
+
 async function extractText(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   const textExts = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'jsx', 'tsx', 'py', 'html', 'htm', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'sql', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'env', 'log'];
@@ -83,14 +105,17 @@ export function FileUpload({ onUploaded, compact }: Props) {
       let txDigest: string | undefined;
 
       const hasModernSign = !!currentWallet?.features['sui:signAndExecuteTransaction'];
+      dbg('UPLOAD START', {
+        file: file.name, sizeBytes: file.size, type: file.type,
+        network: SUI_NETWORK, wallet: account?.address ?? 'none',
+        walletName: currentWallet?.name ?? 'none', hasModernSign,
+        packageId: PACKAGE_ID,
+      });
 
       // ── PRIMARY PATH: official Walrus SDK with wallet signing ────────────
-      // Deep Walrus integration — the blob is registered AND certified on Sui
-      // by the user's own wallet (they own it on-chain). Sui reads route through
-      // our Tatum proxy; data goes through the Walrus upload relay (browser-safe).
-      // Requires the wallet to hold WAL (storage) + SUI (gas/tip).
       if (account && hasModernSign) {
         try {
+          dbg('WALRUS-SDK: importing SDK + creating client');
           const { WalrusClient, WalrusFile } = await import('@mysten/walrus');
           const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
 
@@ -109,40 +134,48 @@ export function FileUpload({ onUploaded, compact }: Props) {
             files: [WalrusFile.from({ contents: bytes, identifier: file.name })],
           });
 
+          dbg('WALRUS-SDK: encoding...');
           await flow.encode();
 
-          // Register the blob on Sui — user signs (proves on-chain ownership)
+          dbg('WALRUS-SDK: requesting REGISTER signature (popup 1/2)');
           const registerTx = flow.register({ owner: account.address, epochs: 5, deletable: false });
           const reg = await signAndExecute({ transaction: registerTx, chain: SUI_CHAIN });
           txDigest = reg.digest;
+          dbg('WALRUS-SDK: register signed', { digest: reg.digest });
 
-          // Push data to storage nodes via the upload relay
+          dbg('WALRUS-SDK: uploading data via relay...');
           await flow.upload({ digest: reg.digest });
+          dbg('WALRUS-SDK: data uploaded to storage nodes');
 
-          // Certify the blob on Sui — user signs (finalises availability)
+          dbg('WALRUS-SDK: requesting CERTIFY signature (popup 2/2)');
           const certifyTx = flow.certify();
-          await signAndExecute({ transaction: certifyTx, chain: SUI_CHAIN });
+          const cert = await signAndExecute({ transaction: certifyTx, chain: SUI_CHAIN });
+          dbg('WALRUS-SDK: certify signed', { digest: cert.digest });
 
           const files = await flow.listFiles();
           blobId = files[0]?.blobId;
-          console.log('[walrus-sdk] blobId:', blobId, 'tx:', txDigest);
+          dbg('WALRUS-SDK: SUCCESS', { blobId, txDigest });
         } catch (sdkErr) {
-          console.warn('[walrus-sdk] flow unavailable, using publisher fallback:', sdkErr);
+          dbg('WALRUS-SDK: FAILED -> publisher fallback', sdkErr);
           blobId = undefined;
           txDigest = undefined;
         }
+      } else {
+        dbg('WALRUS-SDK: skipped', { reason: !account ? 'no wallet connected' : 'wallet lacks modern signing API' });
       }
 
       // ── FALLBACK PATH: public publisher + server-signed register ─────────
-      // Used when no wallet, old wallet API, or no WAL. Publisher pays WAL;
-      // server records the blobId in our vault contract via Tatum RPC.
       if (!blobId) {
+        dbg('PUBLISHER: uploading to Walrus publisher (REST)...');
         blobId = await uploadToWalrusREST(file);
+        dbg('PUBLISHER: blobId received', { blobId });
       }
 
       // ── Step 2: AI summary ───────────────────────────────────────────────
       setStepIdx(1);
+      dbg('AI: extracting text...');
       const content = await extractText(file);
+      dbg('AI: extracted chars', { chars: content.length });
       let summary = 'No text content could be extracted from this file.';
       if (content.trim()) {
         const res = await fetch('/api/summarize', {
@@ -151,12 +184,13 @@ export function FileUpload({ onUploaded, compact }: Props) {
           body: JSON.stringify({ content }),
         });
         summary = (await res.json()).summary ?? summary;
+        dbg('AI: summary received', { chars: summary.length });
       }
 
       // ── Step 3: ensure an on-chain record exists ─────────────────────────
-      // If the SDK flow didn't already produce a tx, record via server (Tatum).
       setStepIdx(2);
       if (!txDigest) {
+        dbg('CHAIN: no user tx yet -> server register via Tatum');
         const body = JSON.stringify({
           blobId,
           filename: file.name,
@@ -173,12 +207,12 @@ export function FileUpload({ onUploaded, compact }: Props) {
             const data = await res.json();
             if (res.ok && data.digest) {
               txDigest = data.digest;
-              console.log(`[chain] server-signed tx (attempt ${attempt}):`, txDigest);
+              dbg(`CHAIN: server-signed tx OK (attempt ${attempt})`, { digest: txDigest });
             } else {
-              console.warn(`[chain] attempt ${attempt} failed:`, data.error);
+              dbg(`CHAIN: attempt ${attempt} failed`, { error: data.error });
             }
           } catch (serverErr) {
-            console.warn(`[chain] attempt ${attempt} error:`, serverErr);
+            dbg(`CHAIN: attempt ${attempt} error`, serverErr);
           }
         }
       }
@@ -186,6 +220,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
       // ── Done ─────────────────────────────────────────────────────────────
       if (!blobId) throw new Error('Upload failed — no blobId produced');
       setStepIdx(3);
+      dbg('DONE', { blobId, txDigest, onChain: !!txDigest });
       onUploaded({
         id: crypto.randomUUID(),
         filename: file.name,
@@ -198,6 +233,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
         sizeBytes: file.size,
       });
     } catch (err) {
+      dbg('FATAL ERROR', err);
       setError(String(err));
     } finally {
       setTimeout(() => setLoading(false), 500);
