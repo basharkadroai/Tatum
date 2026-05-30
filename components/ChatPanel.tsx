@@ -15,6 +15,7 @@ interface Props {
   aiLabel?: string;
   onToast?: (msg: string) => void;
   greeting?: string;          // shown centered above the input on the empty state
+  greetingIcon?: string;      // optional logo image shown beside the greeting
   centered?: boolean;         // center the empty state vertically (home/new-chat look)
   leftAction?: ReactNode;     // e.g. an upload "+" rendered inside the input row
   disabled?: boolean;         // disable sending (e.g. no docs yet)
@@ -22,7 +23,7 @@ interface Props {
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
-  aiLabel = 'ChainMind AI', onToast, greeting, centered, leftAction, disabled,
+  aiLabel = 'ChainMind AI', onToast, greeting, greetingIcon, centered, leftAction, disabled,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -179,7 +180,13 @@ export function ChatPanel({
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
         {greeting && (
-          <h1 style={{ fontSize: '30px', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center' }}>{greeting}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {greetingIcon && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={greetingIcon} alt="ChainMind" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+            )}
+            <h1 style={{ fontSize: '30px', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center' }}>{greeting}</h1>
+          </div>
         )}
         <div style={{ width: '100%', maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {inputBox}

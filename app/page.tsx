@@ -306,6 +306,7 @@ export default function Home() {
                 resetKey="vault"
                 centered
                 greeting="What do you want to know?"
+                greetingIcon="/logo.png"
                 endpoint="/api/ask-vault"
                 buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
                 suggestions={['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
