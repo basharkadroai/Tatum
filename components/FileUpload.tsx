@@ -1,13 +1,21 @@
 'use client';
 import { useRef, useState } from 'react';
 import { useCurrentAccount, useCurrentWallet, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
 const SUI_NETWORK = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
 const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
-const TATUM_RPC = process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || 'https://fullnode.testnet.sui.io:443';
+// Walrus upload relay — makes browser uploads practical (avoids thousands of
+// direct storage-node requests). Required for the in-browser SDK flow.
+const WALRUS_UPLOAD_RELAY =
+  SUI_NETWORK === 'mainnet'
+    ? 'https://upload-relay.mainnet.walrus.space'
+    : 'https://upload-relay.testnet.walrus.space';
+// Browser Sui reads for the Walrus SDK route through our Tatum proxy.
+const RPC_PROXY = '/api/rpc';
 
 interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
 
@@ -35,7 +43,9 @@ async function extractText(file: File): Promise<string> {
   return '';
 }
 
-// REST fallback for when Walrus SDK flow fails
+// Upload to Walrus via the public publisher HTTP API.
+// The publisher pays the WAL — the correct pattern for a public web app
+// (per Walrus docs), so users don't need WAL tokens of their own.
 async function uploadToWalrusREST(file: File): Promise<string> {
   const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=5`, { method: 'PUT', body: file });
   if (!res.ok) throw new Error(`Walrus upload failed (${res.status}): ${(await res.text()).slice(0, 120)}`);
@@ -56,8 +66,6 @@ export function FileUpload({ onUploaded, compact }: Props) {
   const { currentWallet } = useCurrentWallet();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
-  // WalrusClient is created lazily inside handleFile to avoid WASM loading during SSR
-
   const steps = [
     'Uploading to Walrus...',
     'Extracting & summarizing...',
@@ -71,57 +79,64 @@ export function FileUpload({ onUploaded, compact }: Props) {
     setStepIdx(0);
 
     try {
-      // ── Step 1: Walrus upload ────────────────────────────────────────────
-      // Primary: Walrus SDK writeFilesFlow (proper on-chain registration, user-owned blobs)
-      // Fallback: REST PUT to publisher
-      let blobId: string;
+      let blobId: string | undefined;
       let txDigest: string | undefined;
 
-      const canWalletSign = !!(account && currentWallet?.features['sui:signAndExecuteTransaction']);
+      const hasModernSign = !!currentWallet?.features['sui:signAndExecuteTransaction'];
 
-      if (account && canWalletSign) {
+      // ── PRIMARY PATH: official Walrus SDK with wallet signing ────────────
+      // Deep Walrus integration — the blob is registered AND certified on Sui
+      // by the user's own wallet (they own it on-chain). Sui reads route through
+      // our Tatum proxy; data goes through the Walrus upload relay (browser-safe).
+      // Requires the wallet to hold WAL (storage) + SUI (gas/tip).
+      if (account && hasModernSign) {
         try {
-          // Dynamic import keeps WASM out of the SSR bundle
           const { WalrusClient, WalrusFile } = await import('@mysten/walrus');
-          const { SuiJsonRpcClient, getJsonRpcFullnodeUrl } = await import('@mysten/sui/jsonRpc');
+          const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
+
           const suiClient = new SuiJsonRpcClient({
-            url: TATUM_RPC || getJsonRpcFullnodeUrl('testnet'),
+            url: typeof window !== 'undefined' ? `${window.location.origin}${RPC_PROXY}` : RPC_PROXY,
             network: SUI_NETWORK,
           });
-          const walrusClient = new WalrusClient({ network: SUI_NETWORK, suiClient });
+          const walrusClient = new WalrusClient({
+            network: SUI_NETWORK,
+            suiClient,
+            uploadRelay: { host: WALRUS_UPLOAD_RELAY, sendTip: { max: 1_000 } },
+          });
 
-          const fileBytes = new Uint8Array(await file.arrayBuffer());
+          const bytes = new Uint8Array(await file.arrayBuffer());
           const flow = walrusClient.writeFilesFlow({
-            files: [WalrusFile.from({ contents: fileBytes, identifier: file.name })],
+            files: [WalrusFile.from({ contents: bytes, identifier: file.name })],
           });
 
           await flow.encode();
 
-          // Register blob on Sui (user signs — proves ownership)
+          // Register the blob on Sui — user signs (proves on-chain ownership)
           const registerTx = flow.register({ owner: account.address, epochs: 5, deletable: false });
-          const registerResult = await signAndExecute({ transaction: registerTx, chain: SUI_CHAIN });
-          txDigest = registerResult.digest;
-          console.log('[walrus-sdk] registered, tx:', txDigest);
+          const reg = await signAndExecute({ transaction: registerTx, chain: SUI_CHAIN });
+          txDigest = reg.digest;
 
-          // Upload data directly from browser to Walrus storage nodes
-          await flow.upload({ digest: txDigest });
-          console.log('[walrus-sdk] data uploaded to storage nodes');
+          // Push data to storage nodes via the upload relay
+          await flow.upload({ digest: reg.digest });
 
-          // Certify blob on Sui (user signs — finalises storage proof)
+          // Certify the blob on Sui — user signs (finalises availability)
           const certifyTx = flow.certify();
-          const certifyResult = await signAndExecute({ transaction: certifyTx, chain: SUI_CHAIN });
-          console.log('[walrus-sdk] certified, tx:', certifyResult.digest);
+          await signAndExecute({ transaction: certifyTx, chain: SUI_CHAIN });
 
           const files = await flow.listFiles();
-          blobId = files[0].blobId;
-          console.log('[walrus-sdk] blobId:', blobId);
-
+          blobId = files[0]?.blobId;
+          console.log('[walrus-sdk] blobId:', blobId, 'tx:', txDigest);
         } catch (sdkErr) {
-          console.warn('[walrus-sdk] flow failed, falling back to REST:', sdkErr);
-          blobId = await uploadToWalrusREST(file);
+          console.warn('[walrus-sdk] flow unavailable, using publisher fallback:', sdkErr);
+          blobId = undefined;
+          txDigest = undefined;
         }
-      } else {
-        // No wallet or old wallet API — use REST
+      }
+
+      // ── FALLBACK PATH: public publisher + server-signed register ─────────
+      // Used when no wallet, old wallet API, or no WAL. Publisher pays WAL;
+      // server records the blobId in our vault contract via Tatum RPC.
+      if (!blobId) {
         blobId = await uploadToWalrusREST(file);
       }
 
@@ -138,9 +153,8 @@ export function FileUpload({ onUploaded, compact }: Props) {
         summary = (await res.json()).summary ?? summary;
       }
 
-      // ── Step 3: On-chain registration ────────────────────────────────────
-      // If Walrus SDK flow already gave us a txDigest, skip.
-      // Otherwise always record via server (retries up to 3 times — mandatory step).
+      // ── Step 3: ensure an on-chain record exists ─────────────────────────
+      // If the SDK flow didn't already produce a tx, record via server (Tatum).
       setStepIdx(2);
       if (!txDigest) {
         const body = JSON.stringify({
@@ -170,6 +184,7 @@ export function FileUpload({ onUploaded, compact }: Props) {
       }
 
       // ── Done ─────────────────────────────────────────────────────────────
+      if (!blobId) throw new Error('Upload failed — no blobId produced');
       setStepIdx(3);
       onUploaded({
         id: crypto.randomUUID(),

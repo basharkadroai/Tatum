@@ -4,17 +4,19 @@ import { SuiClientProvider, WalletProvider, createNetworkConfig } from '@mysten/
 import '@mysten/dapp-kit/dist/index.css';
 import { useState } from 'react';
 
-const MAINNET_RPC =
-  process.env.NEXT_PUBLIC_TATUM_SUI_RPC || 'https://fullnode.mainnet.sui.io:443';
-const TESTNET_RPC =
-  process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC || 'https://fullnode.testnet.sui.io:443';
-
 const activeNetwork =
   (process.env.NEXT_PUBLIC_SUI_NETWORK as 'mainnet' | 'testnet') || 'testnet';
 
+// Browser Sui reads route through our /api/rpc proxy → Tatum (Tatum's gateway
+// rejects direct browser calls via CORS). SSR falls back to a public fullnode.
+const PROXY_RPC =
+  typeof window !== 'undefined'
+    ? `${window.location.origin}/api/rpc`
+    : 'https://fullnode.testnet.sui.io:443';
+
 const { networkConfig } = createNetworkConfig({
-  mainnet: { url: MAINNET_RPC, network: 'mainnet' as const },
-  testnet: { url: TESTNET_RPC, network: 'testnet' as const },
+  mainnet: { url: PROXY_RPC, network: 'mainnet' as const },
+  testnet: { url: PROXY_RPC, network: 'testnet' as const },
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
