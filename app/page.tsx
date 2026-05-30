@@ -236,17 +236,17 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* ── Main Panel ── */}
-        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--white)' }}>
+        {/* ── Main Panel — looping scene behind every state ── */}
+        <main style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--base)' }}>
+          <HomeBackground mode={!selected && homeEmpty ? 'hero' : 'chat'} />
 
+          <div style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {!loaded ? (
             /* Avoid flashing the upload home before localStorage loads */
             <div style={{ flex: 1 }} />
           ) : !selected ? (
-            /* Home: centered chat over a subtle looping background */
-            <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              {homeEmpty && <HomeBackground />}
-              <div style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0 }}>
+            /* Home: centered chat over the scene */
+            <div style={{ flex: 1, minHeight: 0 }}>
                 <ChatPanel
                   resetKey="vault"
                   centered
@@ -262,14 +262,13 @@ export default function Home() {
                   uploadRunner={runUpload}
                   onUploaded={addToVault}
                 />
-              </div>
             </div>
           ) : (
             /* File detail + Q&A */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
               {/* File header */}
-              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0, background: 'var(--white)' }}>
+              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0, background: 'rgba(26,25,23,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
                 <span style={{ display: 'flex', flexShrink: 0 }}><FileIcon type={selected.fileType} name={selected.filename} size={22} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -338,7 +337,7 @@ export default function Home() {
               </div>
 
               {/* Summary (collapsible) */}
-              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--off-white)' }}>
+              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'rgba(26,25,23,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
                 <button
                   onClick={() => setSummaryExpanded(s => !s)}
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: summaryExpanded ? '10px' : 0 }}
@@ -364,7 +363,7 @@ export default function Home() {
               </div>
 
               {/* Walrus proof — collapsible so the chat stays the focus */}
-              <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--white)' }}>
+              <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'rgba(26,25,23,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
                 <button
                   onClick={() => setProofExpanded(s => !s)}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%' }}
@@ -401,6 +400,7 @@ export default function Home() {
               </div>
             </div>
           )}
+          </div>
         </main>
 
       <style>{`@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} } @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }`}</style>
