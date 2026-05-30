@@ -386,17 +386,12 @@ export default function Home() {
           <HomeBackground mode={!selected && homeEmpty ? 'hero' : 'chat'} />
 
           <div style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {/* Mobile top bar */}
+          {/* Mobile: floating menu button (no header bar) */}
           {isMobile && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--sidebar-bg)', flexShrink: 0 }}>
-              <button onClick={() => setMobileNavOpen(true)} aria-label="Open menu"
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-1)', cursor: 'pointer', flexShrink: 0 }}>
-                <Menu size={20} strokeWidth={2} />
-              </button>
-              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--text-1)', fontWeight: 700, fontSize: '16px', letterSpacing: '-0.01em', cursor: 'pointer' }}>
-                ChainMind
-              </button>
-            </div>
+            <button onClick={() => setMobileNavOpen(true)} aria-label="Open menu"
+              style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '9px', border: '1px solid var(--border)', background: 'rgba(20,19,17,0.6)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', color: 'var(--text-1)', cursor: 'pointer' }}>
+              <Menu size={20} strokeWidth={2} />
+            </button>
           )}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {!loaded ? (
@@ -427,7 +422,7 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
               {/* File header */}
-              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0, background: 'rgba(26,25,23,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
+              <div style={{ padding: '14px 24px', paddingLeft: isMobile ? '58px' : '24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0, background: 'rgba(26,25,23,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
                 <span style={{ display: 'flex', flexShrink: 0 }}><FileIcon type={selected.fileType} name={selected.filename} size={22} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
