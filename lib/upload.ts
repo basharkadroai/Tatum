@@ -21,12 +21,23 @@ function readAsDataURL(file: File): Promise<string> {
 }
 
 async function uploadToWalrus(file: File): Promise<string> {
-  const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=5`, { method: 'PUT', body: file });
-  if (!res.ok) throw new Error(`Walrus upload failed (${res.status})`);
-  const data = await res.json();
-  const blobId = data.newlyCreated?.blobObject?.blobId ?? data.alreadyCertified?.blobId;
-  if (!blobId) throw new Error('Walrus returned no blobId');
-  return blobId;
+  // The public testnet publisher is occasionally flaky — retry a few times with
+  // backoff so a transient 5xx/timeout doesn't fail an upload on camera.
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=5`, { method: 'PUT', body: file });
+      if (!res.ok) throw new Error(`Walrus upload failed (${res.status})`);
+      const data = await res.json();
+      const blobId = data.newlyCreated?.blobObject?.blobId ?? data.alreadyCertified?.blobId;
+      if (!blobId) throw new Error('Walrus returned no blobId');
+      return blobId;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 800));
+    }
+  }
+  throw lastErr ?? new Error('Walrus upload failed');
 }
 
 async function extractText(file: File): Promise<string> {

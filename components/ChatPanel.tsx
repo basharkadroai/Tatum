@@ -24,12 +24,13 @@ interface Props {
   uploadRunner?: (file: File, emit: (e: UploadEvent) => void) => Promise<VaultItem | null>;
   onUploaded?: (item: VaultItem) => void;
   onEmptyChange?: (empty: boolean) => void;   // fires when the empty/greeting state toggles
+  onCitation?: (label: string) => void;        // open a file when a [citation] pill is clicked
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, disabled,
-  uploadRunner, onUploaded, onEmptyChange,
+  uploadRunner, onUploaded, onEmptyChange, onCitation,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -292,7 +293,7 @@ export function ChatPanel({
                   padding: m.role === 'user' ? '10px 14px' : 0,
                 }}>
                   {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} />}
-                  {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} /> : null) : m.text}
+                  {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} onCitation={onCitation} /> : null) : m.text}
                   {m.role === 'ai' && streaming && i === messages.length - 1 && !(m.steps && m.steps.length) && (
                     <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
                   )}

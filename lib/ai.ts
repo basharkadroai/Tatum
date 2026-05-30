@@ -170,14 +170,20 @@ export function askSystemPrompt(content: string): ChatMsg {
   };
 }
 
-export function vaultSystemPrompt(docs: { filename: string; content: string }[]): ChatMsg {
-  const perDoc = Math.max(700, Math.floor(10000 / Math.max(docs.length, 1)));
+export function vaultSystemPrompt(docs: { filename: string; summary?: string; content?: string }[]): ChatMsg {
+  // Every file contributes its summary (breadth); only retrieved files carry an
+  // excerpt (depth). Keeps the prompt compact and scalable.
   const context = docs
-    .map((d, i) => `### FILE ${i + 1}: ${d.filename}\n${(d.content || '').slice(0, perDoc)}`)
+    .map((d, i) => {
+      const parts = [`### FILE ${i + 1}: ${d.filename}`];
+      if (d.summary) parts.push(`Summary: ${d.summary}`);
+      if (d.content) parts.push(`Excerpt:\n${d.content.slice(0, 2500)}`);
+      return parts.join('\n');
+    })
     .join('\n\n');
   return {
     role: 'system',
-    content: `You answer questions using the user's personal knowledge vault (multiple files below). Use ONLY these files and synthesize across them.\nCite the file inline as [filename], and include a SHORT direct quote when stating a fact.\nBe concise; use **bold** and "- " bullets when listing. If the vault lacks the answer, say so.\n\n${context.slice(0, 12000)}`,
+    content: `You answer questions using the user's personal knowledge vault (the files below; each has a summary, and the most relevant ones include an excerpt). Use ONLY these files and synthesize across them.\nCite the file inline as [filename], and include a SHORT direct quote when stating a fact from an excerpt.\nBe concise; use **bold** and "- " bullets when listing. If the vault lacks the answer, say so.\n\n${context.slice(0, 14000)}`,
   };
 }
 

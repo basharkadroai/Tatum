@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Inline: **bold**, `code`, [citation] pills
-function renderInline(text: string, keyBase: string): React.ReactNode[] {
+function renderInline(text: string, keyBase: string, onCitation?: (label: string) => void): React.ReactNode[] {
   // Split on bold and inline-code, keeping delimiters
   const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   return tokens.flatMap((tok, i) => {
@@ -19,19 +19,28 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
     // citation pills [filename]
     return tok.split(/(\[[^\]]+\])/g).map((seg, j) => {
       if (seg.startsWith('[') && seg.endsWith(']')) {
-        return (
-          <span key={`${keyBase}-cite${i}-${j}`} style={{
-            fontSize: '0.82em', fontWeight: 600, color: '#65ca9d',
-            background: 'rgba(101,202,157,0.12)', borderRadius: '5px', padding: '1px 6px', margin: '0 1px',
-          }}>{seg.slice(1, -1)}</span>
-        );
+        const label = seg.slice(1, -1);
+        const pillStyle: React.CSSProperties = {
+          fontSize: '0.82em', fontWeight: 600, color: '#65ca9d',
+          background: 'rgba(101,202,157,0.12)', borderRadius: '5px', padding: '1px 6px', margin: '0 1px',
+        };
+        if (onCitation) {
+          return (
+            <button key={`${keyBase}-cite${i}-${j}`} onClick={() => onCitation(label)} title="Open this file"
+              style={{ ...pillStyle, border: 'none', cursor: 'pointer', font: 'inherit' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(101,202,157,0.22)'; e.currentTarget.style.textDecoration = 'underline'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(101,202,157,0.12)'; e.currentTarget.style.textDecoration = 'none'; }}
+            >{label}</button>
+          );
+        }
+        return <span key={`${keyBase}-cite${i}-${j}`} style={pillStyle}>{label}</span>;
       }
       return <React.Fragment key={`${keyBase}-t${i}-${j}`}>{seg}</React.Fragment>;
     });
   });
 }
 
-export function FormattedText({ text }: { text: string }) {
+export function FormattedText({ text, onCitation }: { text: string; onCitation?: (label: string) => void }) {
   // Split into code-fence segments: even = prose, odd = code block
   const segments = text.split(/```/g);
   const out: React.ReactNode[] = [];
@@ -63,11 +72,11 @@ export function FormattedText({ text }: { text: string }) {
       out.push(
         bullets.ordered ? (
           <ol key={key} style={{ margin: '4px 0', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {items.map((b, i) => <li key={i}>{renderInline(b, `${key}-${i}`)}</li>)}
+            {items.map((b, i) => <li key={i}>{renderInline(b, `${key}-${i}`, onCitation)}</li>)}
           </ol>
         ) : (
           <ul key={key} style={{ margin: '4px 0', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {items.map((b, i) => <li key={i}>{renderInline(b, `${key}-${i}`)}</li>)}
+            {items.map((b, i) => <li key={i}>{renderInline(b, `${key}-${i}`, onCitation)}</li>)}
           </ul>
         )
       );
@@ -91,9 +100,9 @@ export function FormattedText({ text }: { text: string }) {
         if (heading) {
           const level = heading[1].length;
           const size = level === 1 ? '16px' : level === 2 ? '14.5px' : '13px';
-          out.push(<p key={key} style={{ margin: '8px 0 4px', fontWeight: 800, fontSize: size, color: 'var(--text-1)' }}>{renderInline(heading[2], key)}</p>);
+          out.push(<p key={key} style={{ margin: '8px 0 4px', fontWeight: 800, fontSize: size, color: 'var(--text-1)' }}>{renderInline(heading[2], key, onCitation)}</p>);
         } else if (t) {
-          out.push(<p key={key} style={{ margin: '4px 0' }}>{renderInline(line, key)}</p>);
+          out.push(<p key={key} style={{ margin: '4px 0' }}>{renderInline(line, key, onCitation)}</p>);
         }
       }
     });

@@ -4,12 +4,13 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { runUpload } from '@/lib/upload';
-import { SUI_CHAIN_ID } from '@/lib/network';
+import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
+import { selectVaultDocs } from '@/lib/retrieve';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
@@ -24,6 +25,18 @@ function loadVault(): VaultItem[] {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
 }
 function saveVault(items: VaultItem[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+
+// Pull a text blob's content back from Walrus so restored files are queryable.
+async function fetchWalrusText(blobId: string, fileType: string, filename: string): Promise<string> {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  const textual = fileType.startsWith('text/') || ['txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'log', 'xml', 'yaml', 'yml', ...CODE_EXTS].includes(ext);
+  if (!textual) return '';
+  try {
+    const res = await fetch(`${WALRUS_AGGREGATOR}/v1/blobs/${blobId}`);
+    if (!res.ok) return '';
+    return (await res.text()).slice(0, 12000);
+  } catch { return ''; }
+}
 
 const CODE_EXTS = ['js', 'ts', 'tsx', 'jsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'html', 'css', 'scss', 'sh', 'json', 'xml', 'yaml', 'yml', 'sql'];
 // Animated file icons (self-animating via isAnimated — not hover). The library
@@ -61,7 +74,56 @@ export default function Home() {
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); }, []);
+  // Collapse the sidebar to its rail on small screens so the chat gets the room.
+  useEffect(() => {
+    const apply = () => { if (window.innerWidth < 768) setSidebarOpen(false); };
+    apply();
+    window.addEventListener('resize', apply);
+    return () => window.removeEventListener('resize', apply);
+  }, []);
   useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
+
+  // Decentralized restore: when a wallet connects, reconstruct the files it OWNS
+  // on-chain (VaultEntry objects, read from Sui via Tatum) and pull their content
+  // back from Walrus — so a claimed vault follows the wallet to any device.
+  useEffect(() => {
+    const owner = account?.address;
+    if (!owner) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/vault-onchain?owner=${owner}`);
+        const { entries } = await res.json();
+        if (cancelled || !Array.isArray(entries) || entries.length === 0) return;
+        const fresh: VaultItem[] = [];
+        setVault(prev => {
+          const have = new Set(prev.map(i => i.blobId));
+          for (const e of entries) {
+            if (have.has(e.blobId)) continue;
+            fresh.push({
+              id: crypto.randomUUID(),
+              filename: e.filename, fileType: e.fileType, blobId: e.blobId,
+              summary: 'Restored from your on-chain vault (Sui + Walrus).',
+              content: '', txDigest: e.txDigest, owner: e.owner,
+              tags: [], questions: [], uploadedAt: new Date().toISOString(), sizeBytes: e.sizeBytes,
+            });
+          }
+          if (fresh.length === 0) return prev;
+          const next = [...fresh, ...prev];
+          saveVault(next);
+          return next;
+        });
+        // Lazily pull text content from Walrus so restored files are queryable.
+        for (const item of fresh) {
+          if (cancelled) break;
+          const content = await fetchWalrusText(item.blobId, item.fileType, item.filename);
+          if (content) updateItem(item.id, { content });
+        }
+      } catch { /* restore is best-effort */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.address]);
 
   // Add an uploaded file to the vault without switching the view (the chat
   // keeps showing the upload narration).
@@ -72,6 +134,14 @@ export default function Home() {
     setVault(prev => { const next = prev.filter(i => i.id !== id); saveVault(next); return next; });
     if (selected?.id === id) setSelected(null);
     setPendingDelete(null);
+  }
+  // Open the file referenced by a [citation] pill. Labels look like
+  // "FILE 8: business project blueprint.txt" or just the filename.
+  function openCitedFile(label: string) {
+    const name = label.replace(/^\s*file\s*\d+\s*:\s*/i, '').trim().toLowerCase();
+    const hit = vault.find(v => v.filename.toLowerCase() === name)
+      || vault.find(v => v.filename.toLowerCase().includes(name) || name.includes(v.filename.toLowerCase()));
+    if (hit) setSelected(hit);
   }
   function updateItem(id: string, patch: Partial<VaultItem>) {
     setVault(prev => {
@@ -251,10 +321,11 @@ export default function Home() {
                   resetKey="vault"
                   centered
                   onEmptyChange={setHomeEmpty}
+                  onCitation={openCitedFile}
                   greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}
                   greetingIcon="/logo.png"
                   endpoint="/api/ask-vault"
-                  buildBody={(question, history) => ({ docs: vault.map(v => ({ filename: v.filename, content: v.content })), question, history })}
+                  buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), question, history })}
                   suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
                   aiLabel="ChainMind"
