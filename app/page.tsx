@@ -14,7 +14,7 @@ import { selectVaultDocs } from '@/lib/retrieve';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
-  PanelLeft, ChevronDown,
+  PanelLeft, ChevronDown, Menu,
 } from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
@@ -67,6 +67,8 @@ export default function Home() {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [homeEmpty, setHomeEmpty] = useState(true);
   const [restoreOpen, setRestoreOpen] = useState(false);
@@ -78,9 +80,14 @@ export default function Home() {
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); }, []);
-  // Collapse the sidebar to its rail on small screens so the chat gets the room.
+  // On phones the sidebar becomes a slide-in drawer; keep its content expanded
+  // and let `mobileNavOpen` control visibility.
   useEffect(() => {
-    const apply = () => { if (window.innerWidth < 768) setSidebarOpen(false); };
+    const apply = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) { setSidebarOpen(true); } else { setMobileNavOpen(false); }
+    };
     apply();
     window.addEventListener('resize', apply);
     return () => window.removeEventListener('resize', apply);
@@ -224,27 +231,32 @@ export default function Home() {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--base)' }}>
 
-      {/* ── Sidebar (collapses to an icon rail) ── */}
-      <aside style={{
+      {/* ── Sidebar — icon rail on desktop, slide-in drawer on mobile ── */}
+      <aside style={isMobile ? {
+        position: 'fixed', top: 0, left: 0, height: '100%', width: '280px', maxWidth: '85vw', zIndex: 50,
+        transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.25s ease',
+        display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
+        overflow: 'hidden', boxShadow: mobileNavOpen ? '0 0 40px rgba(0,0,0,0.55)' : 'none',
+      } : {
         width: sidebarOpen ? '264px' : '62px', flexShrink: 0, display: 'flex', flexDirection: 'column',
         borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
         overflow: 'hidden', transition: 'width 0.2s ease',
       }}>
-        {/* Brand + collapse toggle */}
+        {/* Brand + collapse/close toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', padding: sidebarOpen ? '16px 14px 12px' : '16px 0 12px', flexShrink: 0 }}>
           {sidebarOpen && (
-            <button onClick={() => setSelected(null)} title="Home" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
+            <button onClick={() => { setSelected(null); setMobileNavOpen(false); }} title="Home" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
               ChainMind
             </button>
           )}
           <button
-            onClick={() => setSidebarOpen(o => !o)}
-            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => { if (isMobile) setMobileNavOpen(false); else setSidebarOpen(o => !o); }}
+            title={isMobile ? 'Close menu' : sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
             style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
           >
-            <PanelLeft size={18} strokeWidth={2} />
+            {isMobile ? <X size={18} strokeWidth={2} /> : <PanelLeft size={18} strokeWidth={2} />}
           </button>
         </div>
 
@@ -289,7 +301,7 @@ export default function Home() {
                 ) : (
                   <div className="tag-strip" style={{ display: 'flex', gap: '5px', marginTop: '8px', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: '2px' }}>
                     {allTags.map(tag => (
-                      <button key={tag} onClick={() => setTagFilter(tag)} style={{
+                      <button key={tag} onClick={() => { setTagFilter(tag); setMobileNavOpen(false); }} style={{
                         flexShrink: 0, whiteSpace: 'nowrap',
                         fontSize: '10px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px',
                         background: 'var(--off-white)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer',
@@ -314,7 +326,7 @@ export default function Home() {
                 key={item.id}
                 item={item}
                 active={selected?.id === item.id}
-                onSelect={() => setSelected(item)}
+                onSelect={() => { setSelected(item); setMobileNavOpen(false); }}
               />
             ))}
           </div>
@@ -364,11 +376,29 @@ export default function Home() {
           </div>
         </aside>
 
+        {/* Drawer backdrop (mobile) */}
+        {isMobile && mobileNavOpen && (
+          <div onClick={() => setMobileNavOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }} />
+        )}
+
         {/* ── Main Panel — looping scene behind every state ── */}
-        <main style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--base)' }}>
+        <main style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--base)' }}>
           <HomeBackground mode={!selected && homeEmpty ? 'hero' : 'chat'} />
 
           <div style={{ position: 'relative', zIndex: 1, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {/* Mobile top bar */}
+          {isMobile && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--sidebar-bg)', flexShrink: 0 }}>
+              <button onClick={() => setMobileNavOpen(true)} aria-label="Open menu"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-1)', cursor: 'pointer', flexShrink: 0 }}>
+                <Menu size={20} strokeWidth={2} />
+              </button>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--text-1)', fontWeight: 700, fontSize: '16px', letterSpacing: '-0.01em', cursor: 'pointer' }}>
+                ChainMind
+              </button>
+            </div>
+          )}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {!loaded ? (
             /* Avoid flashing the upload home before localStorage loads */
             <div style={{ flex: 1 }} />
@@ -529,6 +559,7 @@ export default function Home() {
               </div>
             </div>
           )}
+          </div>
           </div>
         </main>
 
