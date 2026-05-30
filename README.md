@@ -81,7 +81,7 @@ NEXT_PUBLIC_TATUM_SUI_MAINNET_RPC=https://sui-mainnet.gateway.tatum.io/YOUR_KEY
 # ── AI + contract ──
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
-NEXT_PUBLIC_VAULT_PACKAGE_ID=0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138
+NEXT_PUBLIC_VAULT_PACKAGE_ID=0x206ac074200b07449d570a97c4f903a50e2ad9125db8254c3e0b1f140f7fec64
 SUI_DEPLOYER_KEY=your_deployer_keypair_from_sui_keystore
 ```
 
@@ -111,7 +111,7 @@ npm run dev
 
 ```bash
 # Testnet package (already deployed):
-# 0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138
+# 0x206ac074200b07449d570a97c4f903a50e2ad9125db8254c3e0b1f140f7fec64
 
 # To redeploy:
 cd contracts/chainmind
@@ -127,12 +127,12 @@ sui client publish --gas-budget 50000000
 
 ## Smart contract
 
-`chainmind::vault::register(blobId, filename, fileType, sizeBytes)` — deployed to Sui testnet.
+`chainmind::vault::register(blobId, filename, fileType, sizeBytes, owner)` — deployed to Sui testnet.
 
-Every upload creates a `VaultEntry` object on Sui, permanently linking the Walrus blob to the transaction that registered it.
+Every upload creates a `VaultEntry` object on Sui and transfers it to `owner` (the user's connected wallet, or the signer if none), permanently linking the Walrus blob to the transaction that registered it. Because the entry is **owned by the user's wallet**, the vault can be reconstructed on any device from the chain (`/api/vault-onchain`) + Walrus.
 
-**Testnet package:** `0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138`
-**Deploy tx:** `FvYYjikc5HR2LV4SSyeVaUDTG2CRKR5J5gFbmdTrQ3Sy`
+**Testnet package:** `0x206ac074200b07449d570a97c4f903a50e2ad9125db8254c3e0b1f140f7fec64`
+**Deploy tx:** `FdFmPEJJ9t74cTRj4WGWL1LnfFdMixqykcyd6NF8L4vs`
 
 ## MCP server
 

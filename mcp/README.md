@@ -33,7 +33,7 @@ Add to `claude_desktop_config.json`:
       "args": ["/absolute/path/to/chainmind/mcp/chainmind-mcp.mjs"],
       "env": {
         "TATUM_SUI_RPC": "https://sui-testnet.gateway.tatum.io/YOUR_TATUM_KEY",
-        "VAULT_PACKAGE_ID": "0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138"
+        "VAULT_PACKAGE_ID": "0x206ac074200b07449d570a97c4f903a50e2ad9125db8254c3e0b1f140f7fec64"
       }
     }
   }

@@ -382,7 +382,7 @@ export default function Home() {
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
                   aiLabel="ChainMind"
                   disabled={vault.length === 0}
-                  uploadRunner={runUpload}
+                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address)}
                   onUploaded={addToVault}
                 />
             </div>
@@ -517,7 +517,7 @@ export default function Home() {
                     : ['Summarize this in 3 bullet points', 'What are the key takeaways?', 'Any action items, dates, or deadlines?']}
                   placeholder="Ask anything about this document…"
                   aiLabel="ChainMind AI"
-                  uploadRunner={runUpload}
+                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address)}
                   onUploaded={addToVault}
                 />
               </div>

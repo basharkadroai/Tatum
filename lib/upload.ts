@@ -97,7 +97,7 @@ export type UploadEvent =
 
 // Runs the full upload pipeline, narrating each step via emit() as structured
 // events. Returns the finished VaultItem (or null on a hard failure).
-export async function runUpload(file: File, emit: (e: UploadEvent) => void): Promise<VaultItem | null> {
+export async function runUpload(file: File, emit: (e: UploadEvent) => void, owner?: string): Promise<VaultItem | null> {
   if (file.size > MAX_UPLOAD_BYTES) {
     emit({ kind: 'summary', text: `**${file.name}** is ${fmtBytes(file.size)} — the max upload is 10 MB. Try a smaller file.` });
     return null;
@@ -118,7 +118,7 @@ export async function runUpload(file: File, emit: (e: UploadEvent) => void): Pro
   // Step 2 — Sui via Tatum
   emit({ kind: 'start', label: `Recording an on-chain proof on Sui via Tatum` });
   let txDigest: string | undefined;
-  const body = JSON.stringify({ blobId, filename: file.name, fileType: file.type || 'application/octet-stream', fileSize: file.size });
+  const body = JSON.stringify({ blobId, filename: file.name, fileType: file.type || 'application/octet-stream', fileSize: file.size, owner });
   for (let attempt = 1; attempt <= 3 && !txDigest; attempt++) {
     try {
       const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
@@ -144,6 +144,7 @@ export async function runUpload(file: File, emit: (e: UploadEvent) => void): Pro
     summary,
     content: content.slice(0, 12000),
     txDigest,
+    owner: txDigest && owner ? owner : undefined,
     tags,
     questions,
     uploadedAt: new Date().toISOString(),

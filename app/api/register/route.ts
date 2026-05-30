@@ -28,11 +28,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function POST(req: NextRequest) {
   try {
-    const { blobId, filename, fileType, fileSize } = await req.json();
+    const { blobId, filename, fileType, fileSize, owner } = await req.json();
     if (!PACKAGE_ID) throw new Error('NEXT_PUBLIC_VAULT_PACKAGE_ID not set');
 
     const kp = keypair();
     const sender = kp.getPublicKey().toSuiAddress();
+    // Transfer ownership to the user's wallet if provided, else the signer keeps it.
+    const recipient = typeof owner === 'string' && owner.startsWith('0x') ? owner : sender;
     const client = new SuiJsonRpcClient({ url: RPC_URL, network: SUI_NETWORK });
 
     const tx = new Transaction();
@@ -46,6 +48,7 @@ export async function POST(req: NextRequest) {
         tx.pure.string(filename),
         tx.pure.string(fileType || 'application/octet-stream'),
         tx.pure.u64(fileSize),
+        tx.pure.address(recipient),
       ],
     });
 

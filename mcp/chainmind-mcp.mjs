@@ -21,7 +21,7 @@ const TATUM_RPC =
 const FALLBACK_RPC = 'https://fullnode.testnet.sui.io:443';
 const PACKAGE_ID =
   process.env.VAULT_PACKAGE_ID ||
-  '0x1a20ef3fe5ad3843ab3242cb7ce5e3482cdea773ffdba381c15607f0df3aa138';
+  '0x206ac074200b07449d570a97c4f903a50e2ad9125db8254c3e0b1f140f7fec64';
 const AGGREGATOR =
   process.env.WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
 const EXPLORER = (process.env.SUI_NETWORK === 'mainnet')

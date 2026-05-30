@@ -18,11 +18,14 @@ module chainmind::vault {
         entry_id: ID,
     }
 
+    /// Register a Walrus blob on-chain and transfer the VaultEntry to `owner`,
+    /// so an uploaded file is owned by the user's wallet (not the signer).
     public entry fun register(
         blob_id: String,
         filename: String,
         file_type: String,
         size_bytes: u64,
+        owner: address,
         ctx: &mut TxContext,
     ) {
         let entry = VaultEntry {
@@ -31,7 +34,7 @@ module chainmind::vault {
             filename,
             file_type,
             size_bytes,
-            owner: ctx.sender(),
+            owner,
         };
         let entry_id = object::id(&entry);
         event::emit(BlobRegistered {
@@ -40,6 +43,6 @@ module chainmind::vault {
             owner: entry.owner,
             entry_id,
         });
-        transfer::transfer(entry, ctx.sender());
+        transfer::public_transfer(entry, owner);
     }
 }
