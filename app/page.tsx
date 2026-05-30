@@ -148,10 +148,16 @@ export default function Home() {
     if (selected?.id === id) setSelected(null);
     setPendingDelete(null);
   }
-  // Open the file referenced by a [citation] pill. Labels look like
-  // "FILE 8: business project blueprint.txt" or just the filename.
+  // Open the file referenced by a [citation] pill. Labels are normally the exact
+  // filename; we also handle a bare "FILE N" (index into the current vault order).
   function openCitedFile(label: string) {
-    const name = label.replace(/^\s*file\s*\d+\s*:\s*/i, '').trim().toLowerCase();
+    const raw = label.trim();
+    const numOnly = raw.match(/^file\s*(\d+)$/i);
+    if (numOnly) {
+      const item = vault[parseInt(numOnly[1], 10) - 1];
+      if (item) { setSelected(item); return; }
+    }
+    const name = raw.replace(/^\s*file\s*\d+\s*:\s*/i, '').trim().toLowerCase();
     const hit = vault.find(v => v.filename.toLowerCase() === name)
       || vault.find(v => v.filename.toLowerCase().includes(name) || name.includes(v.filename.toLowerCase()));
     if (hit) setSelected(hit);

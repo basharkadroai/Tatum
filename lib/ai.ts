@@ -172,18 +172,30 @@ export function askSystemPrompt(content: string): ChatMsg {
 
 export function vaultSystemPrompt(docs: { filename: string; summary?: string; content?: string }[]): ChatMsg {
   // Every file contributes its summary (breadth); only retrieved files carry an
-  // excerpt (depth). Keeps the prompt compact and scalable.
+  // excerpt (depth). Files are headed by FILENAME (no numbers) so the model cites
+  // the real filename — which the UI turns into a clickable pill.
   const context = docs
-    .map((d, i) => {
-      const parts = [`### FILE ${i + 1}: ${d.filename}`];
+    .map(d => {
+      const parts = [`### ${d.filename}`];
       if (d.summary) parts.push(`Summary: ${d.summary}`);
       if (d.content) parts.push(`Excerpt:\n${d.content.slice(0, 2500)}`);
       return parts.join('\n');
     })
     .join('\n\n');
+  const example = docs[0]?.filename ?? 'example.txt';
   return {
     role: 'system',
-    content: `You answer questions using the user's personal knowledge vault (the files below; each has a summary, and the most relevant ones include an excerpt). Use ONLY these files and synthesize across them.\nCite the file inline as [filename], and include a SHORT direct quote when stating a fact from an excerpt.\nBe concise; use **bold** and "- " bullets when listing. If the vault lacks the answer, say so.\n\n${context.slice(0, 14000)}`,
+    content: `You answer questions using the user's personal knowledge vault (the files below; each has a summary, and the most relevant ones include an excerpt). Use ONLY these files and synthesize across them.
+
+CITATIONS — very important:
+- When you reference a file, cite it inline using its EXACT filename in square brackets, e.g. [${example}].
+- Put exactly ONE filename inside each pair of brackets — never group like [a.txt, b.txt]; write [a.txt] [b.txt] instead.
+- NEVER write "FILE 1", "FILE 2" or any number — always the real filename.
+- Include a SHORT direct quote when stating a fact from an excerpt.
+
+Be concise; use **bold** and "- " bullets when listing. If the vault lacks the answer, say so.
+
+${context.slice(0, 14000)}`,
   };
 }
 
