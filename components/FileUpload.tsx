@@ -1,5 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
+import { Plus, UploadCloud, Loader2 } from 'lucide-react';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = (process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space').trim();
@@ -187,14 +188,12 @@ export function FileUpload({ onUploaded, compact }: Props) {
         >
           {loading ? (
             <>
-              <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #c7d2fe', borderTopColor: 'var(--purple)', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+              <Loader2 size={14} strokeWidth={2.5} className="lucide-spin" style={{ flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px' }}>{steps[stepIdx]}</span>
             </>
           ) : (
             <>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus size={15} strokeWidth={2.5} />
               Upload File
             </>
           )}
@@ -248,10 +247,8 @@ export function FileUpload({ onUploaded, compact }: Props) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
+            <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UploadCloud size={26} strokeWidth={1.8} color="var(--purple)" />
             </div>
             <div>
               <p style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text-1)', marginBottom: '4px' }}>

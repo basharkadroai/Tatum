@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { Check, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
 
 const AGGREGATOR =
   (process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space').trim();
@@ -60,22 +61,22 @@ export function WalrusProof({ blobId, fileType, filename }: Props) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '5px',
             fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
-            background: state === 'ok' ? '#ecfdf5' : state === 'error' ? '#fef2f2' : 'var(--off-white)',
-            border: `1px solid ${state === 'ok' ? '#a7f3d0' : state === 'error' ? '#fecaca' : 'var(--border)'}`,
+            background: state === 'ok' ? '#e6f4ea' : state === 'error' ? '#fef2f2' : 'var(--off-white)',
+            border: `1px solid ${state === 'ok' ? '#b7e1c1' : state === 'error' ? '#fecaca' : 'var(--border)'}`,
             color: state === 'ok' ? 'var(--mint-dark)' : state === 'error' ? '#ef4444' : 'var(--text-3)',
           }}
         >
-          {state === 'loading' && '⏳ Retrieving from Walrus…'}
-          {state === 'ok' && '✓ Live on Walrus — retrieved just now'}
-          {state === 'error' && '⚠ Could not retrieve (node busy, retry)'}
+          {state === 'loading' && <><Loader2 size={12} strokeWidth={2.5} className="lucide-spin" /> Retrieving from Walrus…</>}
+          {state === 'ok' && <><Check size={12} strokeWidth={2.5} /> Live on Walrus — retrieved just now</>}
+          {state === 'error' && <><AlertTriangle size={12} strokeWidth={2.5} /> Could not retrieve (node busy, retry)</>}
         </span>
         <a
           href={blobUrl} target="_blank" rel="noopener noreferrer"
-          style={{ fontSize: '11px', color: 'var(--mint-dark)', textDecoration: 'none', fontWeight: 600 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--mint-dark)', textDecoration: 'none', fontWeight: 600 }}
           onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
           onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
         >
-          Open raw blob ↗
+          Open raw blob <ExternalLink size={11} strokeWidth={2} />
         </a>
       </div>
 

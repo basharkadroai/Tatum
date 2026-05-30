@@ -7,8 +7,8 @@ export function LogoMark({ size = 32 }: { size?: number }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Background — solid deep indigo, no gradient */}
-      <rect width="32" height="32" rx="8" fill="#4338ca" />
+      {/* Background — solid blue accent */}
+      <rect width="32" height="32" rx="8" fill="#0b57d0" />
 
       {/*
         C arc: center (16,16), radius 8.5

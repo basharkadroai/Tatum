@@ -8,6 +8,10 @@ import { WalletButton } from '@/components/WalletButton';
 import { LogoMark } from '@/components/Logo';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
+import {
+  FileText, FileSpreadsheet, FileCode, FileJson, Image as ImageIcon, File,
+  Sparkles, Search, Database, KeyRound, Link2, Copy, X, ArrowLeft, Check,
+} from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 const SUI_NETWORK_NAME = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
@@ -20,17 +24,15 @@ function loadVault(): VaultItem[] {
 }
 function saveVault(items: VaultItem[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
 
-function fileIcon(type: string, name: string) {
+function FileIcon({ type, name, size = 18 }: { type: string; name: string; size?: number }) {
   const ext = name.split('.').pop()?.toLowerCase();
-  if (ext === 'pdf') return '📕';
-  if (ext === 'md' || ext === 'mdx') return '📝';
-  if (ext === 'json') return '🗂';
-  if (ext === 'csv') return '📊';
-  if (ext === 'docx' || ext === 'doc') return '📘';
-  if (ext === 'xlsx' || ext === 'xls') return '📗';
-  if (type.startsWith('image/')) return '🖼';
-  if (type.startsWith('text/')) return '📄';
-  return '📦';
+  const common = { size, strokeWidth: 1.8, color: 'var(--text-2)' };
+  if (ext === 'json') return <FileJson {...common} />;
+  if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') return <FileSpreadsheet {...common} />;
+  if (['js', 'ts', 'tsx', 'jsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'html', 'css', 'sh'].includes(ext || '')) return <FileCode {...common} />;
+  if (type.startsWith('image/')) return <ImageIcon {...common} />;
+  if (['pdf', 'md', 'mdx', 'docx', 'doc', 'txt'].includes(ext || '') || type.startsWith('text/')) return <FileText {...common} />;
+  return <File {...common} />;
 }
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
@@ -114,7 +116,7 @@ export default function Home() {
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       console.log('[claim] success', res.digest);
       updateItem(item.id, { txDigest: res.digest, owner: account.address });
-      setClaimMsg('✓ Claimed — you now own this on-chain');
+      setClaimMsg('Claimed — you now own this on-chain');
       showToast('Claimed on-chain — you own this file');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
@@ -203,7 +205,7 @@ export default function Home() {
                 onMouseEnter={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--purple)'; }}
                 onMouseLeave={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--border)'; }}
               >
-                <span style={{ fontSize: '14px' }}>✦</span>
+                <Sparkles size={15} strokeWidth={2} />
                 Ask your whole vault
               </button>
             </div>
@@ -213,10 +215,7 @@ export default function Home() {
           {vault.length > 0 && (
             <div style={{ padding: '0 14px 10px' }}>
               <div style={{ position: 'relative' }}>
-                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }}
-                  width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-                </svg>
+                <Search size={13} strokeWidth={2} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
                 <input
                   value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Search files..."
@@ -238,16 +237,17 @@ export default function Home() {
               <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--mint-dark)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span>🗄</span> {formatBytes(totalBytes)} stored permanently on Walrus
+              <div style={{ fontSize: '11px', color: 'var(--mint-dark)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Database size={12} strokeWidth={2} /> {formatBytes(totalBytes)} stored permanently on Walrus
               </div>
               {allTags.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px' }}>
                   {tagFilter && (
                     <button onClick={() => setTagFilter(null)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '3px',
                       fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
                       background: 'var(--text-1)', color: 'white', border: 'none', cursor: 'pointer',
-                    }}>✕ {tagFilter}</button>
+                    }}><X size={10} strokeWidth={2.5} /> {tagFilter}</button>
                   )}
                   {!tagFilter && allTags.map(tag => (
                     <button key={tag} onClick={() => setTagFilter(tag)} style={{
@@ -280,7 +280,7 @@ export default function Home() {
                   animation: 'fadeUp 0.2s ease',
                 }}
               >
-                <span style={{ fontSize: '18px', flexShrink: 0 }}>{fileIcon(item.fileType, item.filename)}</span>
+                <span style={{ flexShrink: 0, display: 'flex' }}><FileIcon type={item.fileType} name={item.filename} size={17} /></span>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <p style={{
                     fontSize: '12px', fontWeight: 600, color: 'var(--text-1)',
@@ -291,7 +291,7 @@ export default function Home() {
                   </p>
                 </div>
                 {item.owner ? (
-                  <span title="Owned by you on-chain" style={{ fontSize: '10px', flexShrink: 0 }}>🔑</span>
+                  <KeyRound size={13} strokeWidth={2} color="var(--mint-dark)" style={{ flexShrink: 0 }} />
                 ) : item.txDigest ? (
                   <div title="Recorded on Sui" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--purple)', flexShrink: 0 }} />
                 ) : null}
@@ -312,7 +312,7 @@ export default function Home() {
             /* Ask-across-vault chat */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>✦</div>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Sparkles size={18} strokeWidth={2} color="var(--purple)" /></div>
                 <div>
                   <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)' }}>Ask your whole vault</p>
                   <p style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '1px' }}>
@@ -338,7 +338,9 @@ export default function Home() {
             vault.length === 0 ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '32px' }}>
                 <div style={{ textAlign: 'center', maxWidth: '480px' }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🧠</div>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'var(--purple-bg)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '18px' }}>
+                    <Sparkles size={26} strokeWidth={1.8} color="var(--purple)" />
+                  </div>
                   <h1 style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-1)', letterSpacing: '-0.03em', marginBottom: '10px', lineHeight: 1.2 }}>
                     Your <span className="grad-text">AI Knowledge Vault</span>
                   </h1>
@@ -350,16 +352,16 @@ export default function Home() {
                   <FileUpload onUploaded={handleUploaded} />
                 </div>
                 <div style={{ display: 'flex', gap: '24px', fontSize: '12px', color: 'var(--text-3)', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {['PDF, DOCX, XLSX, TXT, MD, JSON, CSV', 'Permanent Walrus storage', 'On-chain ownership via Sui'].map(t => (
-                    <span key={t} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ color: 'var(--mint)' }}>✓</span> {t}
+                  {['Any file type', 'Permanent Walrus storage', 'On-chain ownership via Sui'].map(t => (
+                    <span key={t} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Check size={13} strokeWidth={2.5} color="var(--mint)" /> {t}
                     </span>
                   ))}
                 </div>
               </div>
             ) : (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ fontSize: '32px' }}>👈</div>
+                <ArrowLeft size={28} strokeWidth={1.8} color="var(--text-3)" />
                 <p style={{ fontSize: '15px', color: 'var(--text-2)', fontWeight: 500 }}>Select a file to view it</p>
                 <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>Or upload a new one using the sidebar</p>
               </div>
@@ -370,43 +372,43 @@ export default function Home() {
 
               {/* File header */}
               <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0, background: 'var(--white)' }}>
-                <span style={{ fontSize: '24px' }}>{fileIcon(selected.fileType, selected.filename)}</span>
+                <span style={{ display: 'flex', flexShrink: 0 }}><FileIcon type={selected.fileType} name={selected.filename} size={22} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {selected.filename}
                   </p>
                   <div style={{ display: 'flex', gap: '12px', marginTop: '3px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{formatBytes(selected.sizeBytes)} · {formatDate(selected.uploadedAt)}</span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                       <a href={`${aggregator}/v1/blobs/${selected.blobId}`} target="_blank" rel="noopener noreferrer"
-                        style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
                         onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
                         onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
-                        🗄 {selected.blobId.slice(0, 16)}…
+                        <Database size={12} strokeWidth={2} /> {selected.blobId.slice(0, 14)}…
                       </a>
                       <button onClick={() => copy(selected.blobId, 'Blob ID')} title="Copy blob ID"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', padding: '0 2px' }}>⧉</button>
+                        style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '0 2px' }}><Copy size={11} strokeWidth={2} /></button>
                     </span>
                     {selected.txDigest && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <a href={`${suiExplorer}/txblock/${selected.txDigest}`} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
                           onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
                           onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
-                          ⛓ {selected.txDigest.slice(0, 16)}…
+                          <Link2 size={12} strokeWidth={2} /> {selected.txDigest.slice(0, 14)}…
                         </a>
                         <button onClick={() => copy(selected.txDigest!, 'Tx digest')} title="Copy transaction digest"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '11px', padding: '0 2px' }}>⧉</button>
+                          style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '0 2px' }}><Copy size={11} strokeWidth={2} /></button>
                       </span>
                     )}
                     {selected.owner && (
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)' }}>
-                        ✓ Owned by you
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)' }}>
+                        <KeyRound size={12} strokeWidth={2} /> Owned by you
                       </span>
                     )}
                   </div>
                   {claimMsg && (
-                    <p style={{ fontSize: '11px', marginTop: '4px', color: claimMsg.startsWith('✓') ? 'var(--mint-dark)' : '#ef4444' }}>{claimMsg}</p>
+                    <p style={{ fontSize: '11px', marginTop: '4px', color: claimMsg.startsWith('Claimed') ? 'var(--mint-dark)' : '#ef4444' }}>{claimMsg}</p>
                   )}
                 </div>
                 {/* Optional: claim under your own wallet */}
@@ -416,12 +418,13 @@ export default function Home() {
                     disabled={claiming}
                     title="Sign with your wallet to own this file on-chain"
                     style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
                       padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
-                      border: '1px solid #c7d2fe', background: 'var(--purple-bg)', color: 'var(--purple)',
+                      border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)',
                       cursor: claiming ? 'default' : 'pointer', flexShrink: 0, opacity: claiming ? 0.6 : 1,
                     }}
                   >
-                    {claiming ? 'Claiming…' : '⛓ Claim on-chain'}
+                    <Link2 size={13} strokeWidth={2} /> {claiming ? 'Claiming…' : 'Claim on-chain'}
                   </button>
                 )}
                 {pendingDelete === selected.id ? (
@@ -439,10 +442,10 @@ export default function Home() {
                   <button
                     onClick={() => setPendingDelete(selected.id)}
                     title="Remove from vault"
-                    style={{ padding: '6px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '14px', flexShrink: 0 }}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--text-3)', flexShrink: 0 }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.color = '#ef4444'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)'; }}
-                  >✕</button>
+                  ><X size={15} strokeWidth={2} /></button>
                 )}
               </div>
 
@@ -480,9 +483,10 @@ export default function Home() {
                 >
                   <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Decentralized Storage Proof</span>
                   <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
                     fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                    background: '#ecfdf5', border: '1px solid #a7f3d0', color: 'var(--mint-dark)',
-                  }}>✓ on Walrus</span>
+                    background: '#e6f4ea', border: '1px solid #b7e1c1', color: 'var(--mint-dark)',
+                  }}><Check size={11} strokeWidth={2.5} /> on Walrus</span>
                   <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-3)', transform: proofExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>▼</span>
                 </button>
                 {proofExpanded && (
@@ -522,7 +526,7 @@ export default function Home() {
           boxShadow: '0 8px 28px rgba(0,0,0,0.22)', animation: 'toastIn 0.22s ease',
           maxWidth: '90vw',
         }}>
-          <span style={{ color: 'var(--mint)' }}>✓</span>
+          <Check size={15} strokeWidth={2.5} color="var(--mint)" style={{ flexShrink: 0 }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toast}</span>
         </div>
       )}

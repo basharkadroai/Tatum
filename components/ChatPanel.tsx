@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { Copy, RotateCcw, Square, ArrowUp } from 'lucide-react';
 import { FormattedText } from './FormattedText';
 
 export type ChatMessage = { role: 'user' | 'ai'; text: string };
@@ -151,10 +152,10 @@ export function ChatPanel({ resetKey, endpoint, buildBody, suggestions, emptyHin
                 </div>
                 {/* AI message actions */}
                 {m.role === 'ai' && !(streaming && i === messages.length - 1) && (
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '2px' }}>
-                    <button onClick={() => copyMsg(m.text)} style={actionBtn}>⧉ Copy</button>
+                  <div style={{ display: 'flex', gap: '14px', marginTop: '4px' }}>
+                    <button onClick={() => copyMsg(m.text)} style={actionBtn}><Copy size={12} strokeWidth={2} /> Copy</button>
                     {i === messages.length - 1 && (
-                      <button onClick={regenerate} style={actionBtn}>↻ Regenerate</button>
+                      <button onClick={regenerate} style={actionBtn}><RotateCcw size={12} strokeWidth={2} /> Regenerate</button>
                     )}
                   </div>
                 )}
@@ -193,15 +194,17 @@ export function ChatPanel({ resetKey, endpoint, buildBody, suggestions, emptyHin
           />
           {streaming || loading ? (
             <button onClick={stop} title="Stop generating" style={{
-              padding: '8px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+              padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, flexShrink: 0,
               background: 'var(--text-1)', color: 'white', border: 'none', cursor: 'pointer',
-            }}>■ Stop</button>
+            }}><Square size={12} strokeWidth={2.5} fill="white" /> Stop</button>
           ) : (
             <button onClick={() => send()} disabled={!input.trim()} title="Send" style={{
-              padding: '8px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, flexShrink: 0,
-              background: 'var(--purple)', color: 'white', border: 'none', cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
+              background: 'var(--purple)', color: 'white', border: 'none', cursor: input.trim() ? 'pointer' : 'default',
               opacity: input.trim() ? 1 : 0.4, transition: 'opacity 0.15s',
-            }}>Send</button>
+            }}><ArrowUp size={17} strokeWidth={2.5} /></button>
           )}
         </div>
         <p style={{ maxWidth: '760px', margin: '6px auto 0', fontSize: '10.5px', color: 'var(--text-3)', textAlign: 'center' }}>
@@ -214,6 +217,7 @@ export function ChatPanel({ resetKey, endpoint, buildBody, suggestions, emptyHin
 }
 
 const actionBtn: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: '4px',
   background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)',
   fontSize: '11px', fontWeight: 600, padding: 0,
 };
