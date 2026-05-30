@@ -1,21 +1,9 @@
 'use client';
 import { useRef, useState } from 'react';
-import { useCurrentAccount, useCurrentWallet, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 
 const WALRUS_PUBLISHER = process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
 const SUI_NETWORK = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
-const SUI_CHAIN = `sui:${SUI_NETWORK}` as `sui:testnet` | `sui:mainnet`;
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
-// Walrus upload relay — makes browser uploads practical (avoids thousands of
-// direct storage-node requests). Required for the in-browser SDK flow.
-const WALRUS_UPLOAD_RELAY =
-  SUI_NETWORK === 'mainnet'
-    ? 'https://upload-relay.mainnet.walrus.space'
-    : 'https://upload-relay.testnet.walrus.space';
-// Browser Sui reads for the Walrus SDK route through our Tatum proxy.
-const RPC_PROXY = '/api/rpc';
 
 interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
 
@@ -84,10 +72,6 @@ export function FileUpload({ onUploaded, compact }: Props) {
   const [stepIdx, setStepIdx] = useState(0);
   const [error, setError] = useState('');
 
-  const account = useCurrentAccount();
-  const { currentWallet } = useCurrentWallet();
-  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-
   const steps = [
     'Uploading to Walrus...',
     'Extracting & summarizing...',
@@ -101,75 +85,15 @@ export function FileUpload({ onUploaded, compact }: Props) {
     setStepIdx(0);
 
     try {
-      let blobId: string | undefined;
       let txDigest: string | undefined;
-
-      const hasModernSign = !!currentWallet?.features['sui:signAndExecuteTransaction'];
       dbg('UPLOAD START', {
-        file: file.name, sizeBytes: file.size, type: file.type,
-        network: SUI_NETWORK, wallet: account?.address ?? 'none',
-        walletName: currentWallet?.name ?? 'none', hasModernSign,
-        packageId: PACKAGE_ID,
+        file: file.name, sizeBytes: file.size, type: file.type, network: SUI_NETWORK,
       });
 
-      // ── PRIMARY PATH: official Walrus SDK with wallet signing ────────────
-      if (account && hasModernSign) {
-        try {
-          dbg('WALRUS-SDK: importing SDK + creating client');
-          const { WalrusClient, WalrusFile } = await import('@mysten/walrus');
-          const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
-
-          const suiClient = new SuiJsonRpcClient({
-            url: typeof window !== 'undefined' ? `${window.location.origin}${RPC_PROXY}` : RPC_PROXY,
-            network: SUI_NETWORK,
-          });
-          const walrusClient = new WalrusClient({
-            network: SUI_NETWORK,
-            suiClient,
-            uploadRelay: { host: WALRUS_UPLOAD_RELAY, sendTip: { max: 1_000 } },
-          });
-
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          const flow = walrusClient.writeFilesFlow({
-            files: [WalrusFile.from({ contents: bytes, identifier: file.name })],
-          });
-
-          dbg('WALRUS-SDK: encoding...');
-          await flow.encode();
-
-          dbg('WALRUS-SDK: requesting REGISTER signature (popup 1/2)');
-          const registerTx = flow.register({ owner: account.address, epochs: 5, deletable: false });
-          const reg = await signAndExecute({ transaction: registerTx, chain: SUI_CHAIN });
-          txDigest = reg.digest;
-          dbg('WALRUS-SDK: register signed', { digest: reg.digest });
-
-          dbg('WALRUS-SDK: uploading data via relay...');
-          await flow.upload({ digest: reg.digest });
-          dbg('WALRUS-SDK: data uploaded to storage nodes');
-
-          dbg('WALRUS-SDK: requesting CERTIFY signature (popup 2/2)');
-          const certifyTx = flow.certify();
-          const cert = await signAndExecute({ transaction: certifyTx, chain: SUI_CHAIN });
-          dbg('WALRUS-SDK: certify signed', { digest: cert.digest });
-
-          const files = await flow.listFiles();
-          blobId = files[0]?.blobId;
-          dbg('WALRUS-SDK: SUCCESS', { blobId, txDigest });
-        } catch (sdkErr) {
-          dbg('WALRUS-SDK: FAILED -> publisher fallback', sdkErr);
-          blobId = undefined;
-          txDigest = undefined;
-        }
-      } else {
-        dbg('WALRUS-SDK: skipped', { reason: !account ? 'no wallet connected' : 'wallet lacks modern signing API' });
-      }
-
-      // ── FALLBACK PATH: public publisher + server-signed register ─────────
-      if (!blobId) {
-        dbg('PUBLISHER: uploading to Walrus publisher (REST)...');
-        blobId = await uploadToWalrusREST(file);
-        dbg('PUBLISHER: blobId received', { blobId });
-      }
+      // ── Step 1: store the file on Walrus ─────────────────────────────────
+      dbg('WALRUS: uploading to publisher...', { publisher: WALRUS_PUBLISHER });
+      const blobId = await uploadToWalrusREST(file);
+      dbg('WALRUS: blobId received', { blobId });
 
       // ── Step 2: AI summary ───────────────────────────────────────────────
       setStepIdx(1);
@@ -187,38 +111,35 @@ export function FileUpload({ onUploaded, compact }: Props) {
         dbg('AI: summary received', { chars: summary.length });
       }
 
-      // ── Step 3: ensure an on-chain record exists ─────────────────────────
+      // ── Step 3: record the blobId on Sui via Tatum (server-signed) ───────
       setStepIdx(2);
-      if (!txDigest) {
-        dbg('CHAIN: no user tx yet -> server register via Tatum');
-        const body = JSON.stringify({
-          blobId,
-          filename: file.name,
-          fileType: file.type || 'application/octet-stream',
-          fileSize: file.size,
-        });
-        for (let attempt = 1; attempt <= 3 && !txDigest; attempt++) {
-          try {
-            const res = await fetch('/api/register', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body,
-            });
-            const data = await res.json();
-            if (res.ok && data.digest) {
-              txDigest = data.digest;
-              dbg(`CHAIN: server-signed tx OK (attempt ${attempt})`, { digest: txDigest });
-            } else {
-              dbg(`CHAIN: attempt ${attempt} failed`, { error: data.error });
-            }
-          } catch (serverErr) {
-            dbg(`CHAIN: attempt ${attempt} error`, serverErr);
+      dbg('CHAIN: recording blobId on Sui via Tatum...');
+      const body = JSON.stringify({
+        blobId,
+        filename: file.name,
+        fileType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+      });
+      for (let attempt = 1; attempt <= 3 && !txDigest; attempt++) {
+        try {
+          const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+          });
+          const data = await res.json();
+          if (res.ok && data.digest) {
+            txDigest = data.digest;
+            dbg(`CHAIN: tx OK (attempt ${attempt})`, { digest: txDigest });
+          } else {
+            dbg(`CHAIN: attempt ${attempt} failed`, { error: data.error });
           }
+        } catch (serverErr) {
+          dbg(`CHAIN: attempt ${attempt} error`, serverErr);
         }
       }
 
       // ── Done ─────────────────────────────────────────────────────────────
-      if (!blobId) throw new Error('Upload failed — no blobId produced');
       setStepIdx(3);
       dbg('DONE', { blobId, txDigest, onChain: !!txDigest });
       onUploaded({
@@ -334,15 +255,10 @@ export function FileUpload({ onUploaded, compact }: Props) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {['Walrus SDK', 'Tatum RPC', 'Groq AI'].map(tag => (
+              {['Walrus Storage', 'Tatum RPC', 'Groq AI'].map(tag => (
                 <span key={tag} style={{ fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', background: 'white', border: '1px solid var(--border)', color: 'var(--text-2)' }}>{tag}</span>
               ))}
             </div>
-            {!account && (
-              <p style={{ fontSize: '12px', color: 'var(--purple)', marginTop: '4px' }}>
-                Connect your wallet to record uploads on-chain
-              </p>
-            )}
           </div>
         )}
       </div>
