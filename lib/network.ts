@@ -43,11 +43,11 @@ export const WALRUS_PUBLISHER =
 
 // Tatum Sui RPC gateway, keyed per network. Used server-side (the rpc proxy +
 // register route); the browser always goes through /api/rpc, never directly.
+// The network-specific var ALWAYS wins so a stale generic override can never
+// silently point the app at the wrong network; the generic var is last-resort.
 export function tatumRpcUrl(): string {
-  const explicit = process.env.NEXT_PUBLIC_TATUM_SUI_RPC;
-  if (explicit) return explicit;
   const byNet = IS_MAINNET
     ? process.env.NEXT_PUBLIC_TATUM_SUI_MAINNET_RPC
     : process.env.NEXT_PUBLIC_TATUM_SUI_TESTNET_RPC;
-  return byNet || PUBLIC_FULLNODE;
+  return byNet || process.env.NEXT_PUBLIC_TATUM_SUI_RPC || PUBLIC_FULLNODE;
 }
