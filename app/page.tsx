@@ -1,17 +1,17 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { runUpload } from '@/lib/upload';
-import { SUI_CHAIN_ID, SUI_EXPLORER, WALRUS_AGGREGATOR } from '@/lib/network';
+import { SUI_CHAIN_ID } from '@/lib/network';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
-  Search, Database, KeyRound, Link2, Copy, X, Check,
+  Search, Database, Link2, X, Check,
   PanelLeft, ChevronDown,
 } from 'lucide-react';
 
@@ -50,27 +50,16 @@ export default function Home() {
   const [proofExpanded, setProofExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState('');
-  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loaded, setLoaded] = useState(false);
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); }, []);
   useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
-
-  async function copy(text: string, field: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopiedField(c => (c === field ? null : c)), 1600);
-    } catch { /* ignore */ }
-  }
 
   // Add an uploaded file to the vault without switching the view (the chat
   // keeps showing the upload narration).
@@ -140,9 +129,6 @@ export default function Home() {
   });
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
   const allTags = Array.from(new Set(vault.flatMap(i => i.tags || []))).slice(0, 12);
-
-  const aggregator = WALRUS_AGGREGATOR;
-  const suiExplorer = SUI_EXPLORER;
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--base)' }}>
@@ -281,36 +267,24 @@ export default function Home() {
                   <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {selected.filename}
                   </p>
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '3px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{formatBytes(selected.sizeBytes)} · {formatDate(selected.uploadedAt)}</span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <a href={`${aggregator}/v1/blobs/${selected.blobId}`} target="_blank" rel="noopener noreferrer"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--mint-dark)', textDecoration: 'none' }}
-                        onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-                        onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
-                        <Database size={12} strokeWidth={2} /> {selected.blobId.slice(0, 14)}…
-                      </a>
-                      <button onClick={() => copy(selected.blobId, 'blob')} title="Copy blob ID"
-                        style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: copiedField === 'blob' ? 'var(--text-1)' : 'var(--text-3)', padding: '0 2px' }}>
-                        {copiedField === 'blob' ? <Check size={11} strokeWidth={2.5} /> : <Copy size={11} strokeWidth={2} />}</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', flexWrap: 'wrap', fontSize: '11.5px', color: 'var(--text-3)' }}>
+                    <span><span style={{ color: 'var(--text-2)', fontWeight: 600 }}>{formatBytes(selected.sizeBytes)}</span></span>
+                    <span style={{ opacity: 0.4 }}>·</span>
+                    <span>Uploaded {formatDate(selected.uploadedAt)}</span>
+                    <span style={{ opacity: 0.4 }}>·</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--mint-dark)', fontWeight: 600 }}>
+                      <Check size={12} strokeWidth={2.5} /> Stored on Walrus
                     </span>
-                    {selected.txDigest && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <a href={`${suiExplorer}/txblock/${selected.txDigest}`} target="_blank" rel="noopener noreferrer"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--purple)', textDecoration: 'none' }}
-                          onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-                          onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
-                          <Link2 size={12} strokeWidth={2} /> {selected.txDigest.slice(0, 14)}…
-                        </a>
-                        <button onClick={() => copy(selected.txDigest!, 'tx')} title="Copy transaction digest"
-                          style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: copiedField === 'tx' ? 'var(--text-1)' : 'var(--text-3)', padding: '0 2px' }}>
-                          {copiedField === 'tx' ? <Check size={11} strokeWidth={2.5} /> : <Copy size={11} strokeWidth={2} />}</button>
+                    {selected.owner ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--mint-dark)', fontWeight: 600 }}>
+                        <Check size={12} strokeWidth={2.5} /> Owned by you on Sui
                       </span>
-                    )}
-                    {selected.owner && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: 'var(--mint-dark)' }}>
-                        <KeyRound size={12} strokeWidth={2} /> Owned by you
+                    ) : selected.txDigest ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--mint-dark)', fontWeight: 600 }}>
+                        <Check size={12} strokeWidth={2.5} /> Recorded on Sui
                       </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-3)' }}>Recording on Sui…</span>
                     )}
                   </div>
                   {claimMsg && (
