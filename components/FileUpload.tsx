@@ -7,7 +7,7 @@ import { VaultItem } from '@/types/vault';
 const WALRUS_PUBLISHER = (process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space').trim();
 const SUI_NETWORK = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
 
-interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; }
+interface Props { onUploaded: (item: VaultItem) => void; compact?: boolean; collapsed?: boolean; }
 
 // ── Debug logger ──────────────────────────────────────────────────────────
 // Every step is logged with a [ChainMind] prefix and also buffered on
@@ -67,7 +67,7 @@ async function uploadToWalrusREST(file: File): Promise<string> {
   return blobId;
 }
 
-export function FileUpload({ onUploaded, compact }: Props) {
+export function FileUpload({ onUploaded, compact, collapsed }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -178,9 +178,10 @@ export function FileUpload({ onUploaded, compact }: Props) {
         <button
           onClick={() => !loading && inputRef.current?.click()}
           disabled={loading}
+          title={collapsed ? 'Upload file' : undefined}
           style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: '8px',
+            padding: collapsed ? '9px 0' : '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
             background: loading ? 'var(--purple-bg)' : 'var(--purple)',
             color: loading ? 'var(--purple)' : 'var(--base)',
             border: loading ? '1px solid var(--purple-border)' : 'none',
@@ -189,13 +190,13 @@ export function FileUpload({ onUploaded, compact }: Props) {
         >
           {loading ? (
             <>
-              <Loader2 size={14} strokeWidth={2.5} className="lucide-spin" style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px' }}>{steps[stepIdx]}</span>
+              <Loader2 size={15} strokeWidth={2.5} className="lucide-spin" style={{ flexShrink: 0 }} />
+              {!collapsed && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px' }}>{steps[stepIdx]}</span>}
             </>
           ) : (
             <>
-              <Plus size={15} strokeWidth={2.5} />
-              Upload File
+              <Plus size={16} strokeWidth={2.5} style={{ flexShrink: 0 }} />
+              {!collapsed && 'Upload File'}
             </>
           )}
         </button>

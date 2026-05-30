@@ -5,7 +5,7 @@ import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { FileUpload } from '@/components/FileUpload';
 import { motion } from 'motion/react';
-import { WalletButton } from '@/components/WalletButton';
+import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
 import { MotionIcon } from '@/components/MotionIcon';
@@ -155,75 +155,57 @@ export default function Home() {
   const suiExplorer = network === 'mainnet' ? 'https://suivision.xyz' : 'https://testnet.suivision.xyz';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--white)' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--base)' }}>
 
-      {/* ── Header ── */}
-      <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 20px', height: '56px', flexShrink: 0,
-        borderBottom: '1px solid var(--border)', background: 'var(--white)',
-        zIndex: 40,
+      {/* ── Sidebar (collapses to an icon rail) ── */}
+      <aside style={{
+        width: sidebarOpen ? '264px' : '62px', flexShrink: 0, display: 'flex', flexDirection: 'column',
+        borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
+        overflow: 'hidden', transition: 'width 0.2s ease',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+        {/* Brand + collapse toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', padding: sidebarOpen ? '16px 14px 12px' : '16px 0 12px', flexShrink: 0 }}>
+          {sidebarOpen && <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>ChainMind</span>}
           <button
             onClick={() => setSidebarOpen(o => !o)}
             title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer', marginRight: '2px' }}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
           >
             <PanelLeft size={18} strokeWidth={2} />
           </button>
-          <MotionIcon icon={Sparkles} mode="loop" size={19} strokeWidth={2} color="var(--purple)" />
-          <span style={{ fontWeight: 600, fontSize: '17px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>ChainMind</span>
-          <span style={{
-            fontSize: '11px', fontWeight: 600, padding: '2px 9px', borderRadius: '20px', marginLeft: '4px',
-            background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid var(--purple-border)',
-          }}>
-            Sui {network}
-          </span>
         </div>
-        <WalletButton />
-      </header>
 
-      {/* ── Body ── */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Upload */}
+        <div style={{ padding: sidebarOpen ? '2px 12px 8px' : '2px 11px 8px' }}>
+          <FileUpload onUploaded={handleUploaded} compact collapsed={!sidebarOpen} />
+        </div>
 
-        {/* ── Sidebar (collapsible) ── */}
-        <aside style={{
-          width: sidebarOpen ? '280px' : '0px', flexShrink: 0, display: 'flex', flexDirection: 'column',
-          borderRight: sidebarOpen ? '1px solid var(--border)' : 'none', background: 'var(--sidebar-bg)',
-          overflow: 'hidden', transition: 'width 0.2s ease',
-        }}>
-          {/* Upload button */}
-          <div style={{ padding: '14px 14px 10px' }}>
-            <FileUpload onUploaded={handleUploaded} compact />
+        {/* Ask whole vault */}
+        {vault.length > 0 && (
+          <div style={{ padding: sidebarOpen ? '0 12px 8px' : '0 11px 8px' }}>
+            <button
+              onClick={openVaultMode}
+              title="Ask your whole vault"
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'flex-start' : 'center', gap: '9px',
+                padding: sidebarOpen ? '9px 12px' : '9px 0', borderRadius: '9px', fontSize: '13px', fontWeight: 600,
+                cursor: 'pointer', transition: 'background 0.15s',
+                background: vaultMode ? 'var(--purple-bg)' : 'transparent',
+                color: vaultMode ? 'var(--text-1)' : 'var(--text-2)', border: 'none',
+              }}
+              onMouseEnter={e => { if (!vaultMode) e.currentTarget.style.background = 'var(--hover)'; }}
+              onMouseLeave={e => { if (!vaultMode) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <Sparkles size={16} strokeWidth={2} style={{ flexShrink: 0 }} />
+              {sidebarOpen && 'Ask your whole vault'}
+            </button>
           </div>
+        )}
 
-          {/* Ask whole vault */}
-          {vault.length > 0 && (
-            <div style={{ padding: '0 14px 10px' }}>
-              <button
-                onClick={openVaultMode}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
-                  padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
-                  cursor: 'pointer', transition: 'all 0.15s',
-                  background: vaultMode ? 'var(--purple-bg)' : 'var(--white)',
-                  color: vaultMode ? 'var(--purple)' : 'var(--text-1)',
-                  border: `1px solid ${vaultMode ? 'var(--purple-border)' : 'var(--border)'}`,
-                }}
-                onMouseEnter={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--purple)'; }}
-                onMouseLeave={e => { if (!vaultMode) e.currentTarget.style.borderColor = 'var(--border)'; }}
-              >
-                <Sparkles size={15} strokeWidth={2} />
-                Ask your whole vault
-              </button>
-            </div>
-          )}
-
-          {/* Search */}
-          {vault.length > 0 && (
+        {/* Search */}
+        {sidebarOpen && vault.length > 0 && (
             <div style={{ padding: '0 14px 10px' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={13} strokeWidth={2} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
@@ -243,7 +225,7 @@ export default function Home() {
           )}
 
           {/* File list label + storage stat */}
-          {vault.length > 0 && (
+          {sidebarOpen && vault.length > 0 && (
             <div style={{ padding: '4px 16px 6px' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
@@ -274,12 +256,12 @@ export default function Home() {
             </div>
           )}
 
-          {/* File list */}
+          {/* File list — only when expanded */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
-            {filtered.length === 0 && search && (
+            {sidebarOpen && filtered.length === 0 && search && (
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
-            {filtered.map(item => (
+            {sidebarOpen && filtered.map(item => (
               <motion.div
                 key={item.id}
                 onClick={() => { setVaultMode(false); setSelected(item); }}
@@ -314,9 +296,9 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Footer */}
-          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--text-3)' }}>
-            Powered by Walrus · Tatum · Groq
+          {/* Profile (wallet) */}
+          <div style={{ padding: sidebarOpen ? '8px 10px 10px' : '8px 8px 10px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+            <WalletProfile collapsed={!sidebarOpen} />
           </div>
         </aside>
 
@@ -529,7 +511,6 @@ export default function Home() {
             </div>
           )}
         </main>
-      </div>
 
       {/* Toast */}
       {toast && (

@@ -1,36 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  /* Refined dark palette — neutral surfaces, restrained indigo accent */
-  --base:        #0d0d0f;   /* app background behind panels */
-  --white:       #1a1a1d;   /* primary surface (panels, header, cards) */
-  --off-white:   #242428;   /* secondary surface (bubbles, hover, code) */
-  --sidebar-bg:  #141416;   /* sidebar */
-  --border:      #29292e;
-  --border-2:    #3a3a40;
-  --text-1:      #f3f3f5;   /* headings */
-  --text-2:      #a6a7ad;   /* body */
-  --text-3:      #6c6d75;   /* muted */
+  /* Warm neutral dark — monochrome, Claude-style. No green/purple accents. */
+  --base:        #1a1917;   /* app background */
+  --white:       #242320;   /* primary surface (panels, cards) */
+  --off-white:   #2e2c29;   /* secondary surface (bubbles, hover, code) */
+  --sidebar-bg:  #1d1c1a;   /* sidebar */
+  --border:      #383631;
+  --border-2:    #4a4843;
+  --text-1:      #f4f2ec;   /* headings (warm white) */
+  --text-2:      #b4b0a7;   /* body */
+  --text-3:      #847f76;   /* muted */
 
-  /* Accent (indigo) — exposed through old --purple tokens */
-  --purple:      #8b8ff5;   /* light enough for text/icons on dark */
-  --purple-dark: #a3a6f8;
-  --purple-light:#a3a6f8;
-  --purple-bg:   #1c1c28;   /* subtle accent surface */
-  --purple-border:#33344a;
+  /* "Accent" is now neutral — exposed through old --purple tokens */
+  --purple:      #e9e6df;   /* used for active text/icons (near-white) */
+  --purple-dark: #ffffff;
+  --purple-light:#e9e6df;
+  --purple-bg:   #34322d;   /* active / elevated surface */
+  --purple-border:#494640;
 
-  /* Verified (muted teal-green) — exposed through old --mint tokens */
-  --mint:        #4fbf95;
-  --mint-dark:   #4fbf95;
-  --success-bg:  #142420;
-  --success-border:#264a3e;
+  /* "Verified" is now neutral — exposed through old --mint tokens */
+  --mint:        #c9c5bb;
+  --mint-dark:   #c9c5bb;
+  --success-bg:  #2c2a26;
+  --success-border:#494640;
 
-  /* Error */
-  --error:       #e8736a;
-  --error-bg:    #271b1b;
-  --error-border:#52332f;
+  /* Error (kept, muted warm) */
+  --error:       #e0a08f;
+  --error-bg:    #2f2521;
+  --error-border:#4d3a31;
 
-  --hover:       #242427;
+  --hover:       #2a2926;
 }
 
 @theme inline {
@@ -43,12 +43,7 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
 
 /* Accent gradient text — soft blue sweep on dark */
 .grad-text {
-  background: linear-gradient(90deg, #8b8ff5 0%, #b39af8 50%, #8b8ff5 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer 5s linear infinite;
+  color: var(--text-1);
 }
 
 @keyframes shimmer {
