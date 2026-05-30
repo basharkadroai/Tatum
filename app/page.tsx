@@ -7,6 +7,7 @@ import { FileUpload } from '@/components/FileUpload';
 import { WalletButton } from '@/components/WalletButton';
 import { LogoMark } from '@/components/Logo';
 import { WalrusProof } from '@/components/WalrusProof';
+import { FormattedText } from '@/components/FormattedText';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 const SUI_NETWORK_NAME = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet') as 'mainnet' | 'testnet';
@@ -126,8 +127,34 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      setMessages(m => [...m, { role: 'ai', text: data.answer || data.error || 'No answer.' }]);
+
+      if (!res.ok || !res.body) {
+        setMessages(m => [...m, { role: 'ai', text: 'Failed to reach AI.' }]);
+        return;
+      }
+
+      // Stream tokens into a growing AI message
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = '';
+      let started = false;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        if (!started) {
+          started = true;
+          setQaLoading(false);
+          setMessages(m => [...m, { role: 'ai', text: acc }]);
+        } else {
+          setMessages(m => {
+            const copy = [...m];
+            copy[copy.length - 1] = { role: 'ai', text: acc };
+            return copy;
+          });
+        }
+      }
+      if (!started) setMessages(m => [...m, { role: 'ai', text: 'No answer.' }]);
     } catch {
       setMessages(m => [...m, { role: 'ai', text: 'Failed to reach AI.' }]);
     } finally {
@@ -315,11 +342,11 @@ export default function Home() {
                     {m.role === 'ai' && <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--mint-dark)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vault AI</span>}
                     <div style={{
                       maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                      fontSize: '13px', lineHeight: '1.6', whiteSpace: 'pre-wrap',
+                      fontSize: '13px', lineHeight: '1.6',
                       background: m.role === 'user' ? 'var(--purple)' : 'var(--off-white)',
                       color: m.role === 'user' ? 'white' : 'var(--text-1)',
                       border: m.role === 'ai' ? '1px solid var(--border)' : 'none',
-                    }}>{m.text}</div>
+                    }}>{m.role === 'ai' ? <FormattedText text={m.text} /> : m.text}</div>
                   </div>
                 ))}
                 {qaLoading && (
@@ -499,7 +526,7 @@ export default function Home() {
                       color: m.role === 'user' ? 'white' : 'var(--text-1)',
                       border: m.role === 'ai' ? '1px solid var(--border)' : 'none',
                     }}>
-                      {m.text}
+                      {m.role === 'ai' ? <FormattedText text={m.text} /> : m.text}
                     </div>
                   </div>
                 ))}

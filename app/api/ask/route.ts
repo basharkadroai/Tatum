@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { askQuestion } from '@/lib/ai';
+import { streamGroq, buildAskPrompt } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
-  console.log('[ask] request received');
-
   const { content, question } = await req.json();
-
   if (!content || !question) {
-    console.error('[ask] missing content or question');
     return NextResponse.json({ error: 'Missing content or question' }, { status: 400 });
   }
-
-  console.log(`[ask] question: "${question}" | content length: ${content.length} chars`);
-
-  try {
-    const answer = await askQuestion(content, question);
-    console.log(`[ask] answer received (${answer.length} chars)`);
-    return NextResponse.json({ answer });
-  } catch (err) {
-    console.error('[ask] Ollama failed:', err);
-    return NextResponse.json({ error: String(err) }, { status: 502 });
-  }
+  const stream = streamGroq(buildAskPrompt(content, question));
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
 }
