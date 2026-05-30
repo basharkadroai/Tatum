@@ -397,7 +397,7 @@ export default function Home() {
                 </button>
                 {proofExpanded && (
                   <div style={{ marginTop: '12px', animation: 'fadeUp 0.2s ease' }}>
-                    <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} />
+                    <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} txDigest={selected.txDigest} />
                   </div>
                 )}
               </div>

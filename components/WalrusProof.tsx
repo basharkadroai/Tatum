@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Check, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Check, Loader2, AlertTriangle, ExternalLink, Link2 } from 'lucide-react';
 import { WALRUS_AGGREGATOR } from '@/lib/network';
 
 const AGGREGATOR = WALRUS_AGGREGATOR.trim();
@@ -9,12 +9,48 @@ interface Props {
   blobId: string;
   fileType: string;
   filename: string;
+  txDigest?: string;
+}
+
+type ChainState =
+  | { status: 'idle' | 'loading' }
+  | { status: 'ok'; entryId: string; objectUrl: string }
+  | { status: 'fail' };
+
+// Reads the VaultEntry back from the Sui chain via Tatum RPC to PROVE the blob
+// is genuinely registered on-chain — not just that a tx was once sent.
+function useOnChainVerify(txDigest: string | undefined, blobId: string): ChainState {
+  const [state, setState] = useState<ChainState>({ status: 'idle' });
+  useEffect(() => {
+    if (!txDigest) { setState({ status: 'idle' }); return; }
+    let cancelled = false;
+    setState({ status: 'loading' });
+    (async () => {
+      try {
+        const res = await fetch('/api/verify-chain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ digest: txDigest, blobId }),
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        setState(data.verified
+          ? { status: 'ok', entryId: data.entryId, objectUrl: data.objectUrl }
+          : { status: 'fail' });
+      } catch {
+        if (!cancelled) setState({ status: 'fail' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [txDigest, blobId]);
+  return state;
 }
 
 // Fetches the blob back from Walrus to PROVE it's really on decentralized
 // storage (not just in our localStorage). Renders images inline, previews text.
-export function WalrusProof({ blobId, fileType, filename }: Props) {
+export function WalrusProof({ blobId, fileType, filename, txDigest }: Props) {
   const blobUrl = `${AGGREGATOR}/v1/blobs/${blobId}`;
+  const chain = useOnChainVerify(txDigest, blobId);
   const isImage = fileType.startsWith('image/');
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
   const isText =
@@ -79,6 +115,35 @@ export function WalrusProof({ blobId, fileType, filename }: Props) {
           Open raw blob <ExternalLink size={11} strokeWidth={2} />
         </a>
       </div>
+
+      {/* On-chain verification — reads the VaultEntry back via Tatum Sui RPC */}
+      {txDigest && chain.status !== 'idle' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
+              background: chain.status === 'ok' ? 'var(--success-bg)' : chain.status === 'fail' ? 'var(--error-bg)' : 'var(--off-white)',
+              border: `1px solid ${chain.status === 'ok' ? 'var(--success-border)' : chain.status === 'fail' ? 'var(--error-border)' : 'var(--border)'}`,
+              color: chain.status === 'ok' ? 'var(--mint-dark)' : chain.status === 'fail' ? 'var(--error)' : 'var(--text-3)',
+            }}
+          >
+            {chain.status === 'loading' && <><Loader2 size={12} strokeWidth={2.5} className="lucide-spin" /> Verifying on-chain via Tatum…</>}
+            {chain.status === 'ok' && <><Check size={12} strokeWidth={2.5} /> Verified on-chain via Tatum — read back from Sui</>}
+            {chain.status === 'fail' && <><AlertTriangle size={12} strokeWidth={2.5} /> On-chain record not found</>}
+          </span>
+          {chain.status === 'ok' && (
+            <a
+              href={chain.objectUrl} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--purple)', textDecoration: 'none', fontWeight: 600 }}
+              onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+              onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+            >
+              View VaultEntry object <Link2 size={11} strokeWidth={2} />
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Preview */}
       {isImage && (
