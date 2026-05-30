@@ -100,15 +100,23 @@ export default function Home() {
           tx.pure.u64(item.sizeBytes),
         ],
       });
+      console.log('[claim] signing on', SUI_CHAIN_ID, 'wallet', account.address);
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      console.log('[claim] success', res.digest);
       updateItem(item.id, { txDigest: res.digest, owner: account.address });
       setClaimMsg('✓ Claimed — you now own this on-chain');
     } catch (err) {
-      const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-      if (msg.includes('password') || msg.includes('set up') || msg.includes('forbidden')) {
-        setClaimMsg("Your wallet isn't set up for app signing yet — but this file is already recorded on-chain via Tatum, so claiming is optional.");
+      const raw = err instanceof Error ? err.message : String(err);
+      // Surface the real error so we can diagnose (was previously hidden)
+      console.error('[claim] FAILED:', raw);
+      try { console.error('[claim] detail:', JSON.stringify(err, Object.getOwnPropertyNames(err as object))); } catch {}
+      const low = raw.toLowerCase();
+      if (low.includes('password') || low.includes('set up') || low.includes('forbidden')) {
+        setClaimMsg('Wallet not set up for app signing (use a seed-phrase account). File is already on-chain via Tatum.');
+      } else if (low.includes('reject') || low.includes('cancel') || low.includes('denied')) {
+        setClaimMsg('You declined the signature. File is already on-chain via Tatum.');
       } else {
-        setClaimMsg('Claim skipped — the file is already recorded on-chain via Tatum.');
+        setClaimMsg(`Claim error: ${raw.slice(0, 110)}`);
       }
     } finally {
       setClaiming(false);
