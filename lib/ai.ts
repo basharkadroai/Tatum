@@ -63,7 +63,9 @@ export function streamGroq(messages: ChatMsg[], temperature = 0.5, ai?: AiOverri
   const encoder = new TextEncoder();
   const { url, key, model } = resolveChat(ai);
   const headers = { ...resolveChat(ai).headers, Authorization: `Bearer ${key}` };
-  const body = JSON.stringify({ model, messages, temperature, max_tokens: 1024, stream: true });
+  // 8192 so "thinking" models (Gemini 3.x, GPT-5.x) don't exhaust the budget on
+  // internal reasoning and truncate the visible answer mid-sentence.
+  const body = JSON.stringify({ model, messages, temperature, max_tokens: 8192, stream: true });
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
