@@ -29,7 +29,7 @@ export function ModelMenu({ config, onChange, openUp = false }: { config: AiConf
     // If we already have a key for this provider, just switch to it.
     if (config?.provider === id && config.apiKey) { setOpen(false); return; }
     setKeyFor(id);
-    setModel(meta.model);
+    setModel(config?.provider === id && config.model ? config.model : meta.model);
     setApiKey(config?.provider === id ? config.apiKey : '');
   }
   function saveKey() {
@@ -90,7 +90,9 @@ export function ModelMenu({ config, onChange, openUp = false }: { config: AiConf
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-1)' }}>
                 <ProviderLogo provider={keyFor} size={16} /> {AI_PROVIDERS.find(p => p.id === keyFor)?.label}
               </div>
-              <input value={model} onChange={e => setModel(e.target.value)} placeholder="Model" style={input} />
+              <select value={model} onChange={e => setModel(e.target.value)} style={{ ...input, cursor: 'pointer' }}>
+                {(AI_PROVIDERS.find(p => p.id === keyFor)?.models ?? []).map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
               <input value={apiKey} onChange={e => setApiKey(e.target.value)} type="password" placeholder="API key" autoComplete="off" style={{ ...input, fontFamily: 'ui-monospace, monospace' }} />
               <p style={{ fontSize: '10.5px', color: 'var(--text-3)', margin: 0 }}>Stored only in your browser · sent per-request · never saved on our servers.</p>
               <div style={{ display: 'flex', gap: '6px' }}>
