@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { streamGroq, askSystemPrompt, ChatMsg } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
-  const { content, question, history } = await req.json();
+  const { content, question, history, ai } = await req.json();
   if (!question) {
     return NextResponse.json({ error: 'Missing question' }, { status: 400 });
   }
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     : [];
 
   const messages: ChatMsg[] = [askSystemPrompt(content), ...prior, { role: 'user', content: question }];
-  return new Response(streamGroq(messages), {
+  return new Response(streamGroq(messages, 0.5, ai), {
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
   });
 }

@@ -37,6 +37,7 @@ It's a working demonstration of the exact "verifiable, user-owned AI data / agen
 | 🔍 **Smart retrieval** | Vault Q&A sends every file's summary (breadth) but only the top-k relevant files' full content (depth) — fast and scalable as the vault grows. |
 | 📥 **Decentralized restore** | Connect your wallet (or paste an address) and your vault **rebuilds from Sui + Walrus** — files owned by that wallet are pulled back and their content re-fetched from Walrus. Truly portable. |
 | 🪄 **Auto-read restored files** | Open a restored file and it **automatically re-reads itself from Walrus** with AI (vision/transcription/extraction) — no dead ends, no buttons. |
+| 🔑 **Bring your own key (BYOK)** | Chat with **OpenAI, Anthropic Claude, or Google Gemini** using your own API key — or just use the built-in default (Groq). Keys live only in your browser, are sent per-request, and are **never stored server-side**. |
 | 🧰 **MCP server (Tatum-backed)** | A Model Context Protocol server lets any AI assistant (Claude Desktop, etc.) query the on-chain vault — every tool reads through **Tatum's Sui RPC**. |
 | 🌐 **Mainnet-ready** | One env var flips the entire app between testnet (default, free) and mainnet. |
 | 📱 **Polished UX** | Claude-style chat, animated cinematic background, responsive mobile layout, reduced-motion support. |
@@ -96,7 +97,7 @@ Any file is **stored on Walrus + recorded on Sui** regardless of type. AI *readi
 | Layer | Technology |
 |---|---|
 | Frontend | Next.js 16 (App Router) + React 19 |
-| AI | **Groq** — `llama-3.3-70b-versatile` (chat), `llama-4-scout-17b-16e-instruct` (vision), `whisper-large-v3-turbo` (transcription) |
+| AI | **Groq** default — `llama-3.3-70b-versatile` (chat), `llama-4-scout-17b-16e-instruct` (vision), `whisper-large-v3-turbo` (transcription). **BYOK**: OpenAI · Anthropic · Gemini via OpenAI-compatible endpoints |
 | Decentralized storage | **Walrus** (testnet) |
 | Blockchain | **Sui** (testnet; mainnet-ready) + Move smart contract |
 | RPC | **Tatum Sui RPC Gateway** — writes, reads, verification |

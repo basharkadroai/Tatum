@@ -4,6 +4,31 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 export type ChatMsg = { role: 'system' | 'user' | 'assistant'; content: string };
 
+// ── BYOK: any OpenAI-compatible provider (chat only) ──
+export type AiOverride = { provider?: string; model?: string; apiKey?: string };
+
+const PROVIDERS: Record<string, { baseURL: string; defaultModel: string }> = {
+  groq:      { baseURL: 'https://api.groq.com/openai/v1',                          defaultModel: GROQ_MODEL },
+  openai:    { baseURL: 'https://api.openai.com/v1',                                defaultModel: 'gpt-5.5' },
+  anthropic: { baseURL: 'https://api.anthropic.com/v1',                             defaultModel: 'claude-sonnet-4-6' },
+  gemini:    { baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',  defaultModel: 'gemini-3.5-flash' },
+};
+
+// Resolve which endpoint/key/model to use. If the user supplied their own key
+// (BYOK), use that provider; otherwise fall back to our server-side Groq.
+function resolveChat(ai?: AiOverride): { url: string; key: string; model: string; headers: Record<string, string> } {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (ai?.apiKey && ai.provider && PROVIDERS[ai.provider] && ai.provider !== 'groq') {
+    const p = PROVIDERS[ai.provider];
+    if (ai.provider === 'anthropic') headers['anthropic-version'] = '2023-06-01';
+    return { url: `${p.baseURL}/chat/completions`, key: ai.apiKey, model: ai.model?.trim() || p.defaultModel, headers };
+  }
+  // BYOK Groq key allowed too; else server key
+  const key = ai?.provider === 'groq' && ai.apiKey ? ai.apiKey : GROQ_API_KEY;
+  const model = ai?.provider === 'groq' && ai.model?.trim() ? ai.model.trim() : GROQ_MODEL;
+  return { url: GROQ_URL, key, model, headers };
+}
+
 async function complete(messages: ChatMsg[], opts: { json?: boolean; temperature?: number } = {}): Promise<string> {
   const res = await fetch(GROQ_URL, {
     method: 'POST',
@@ -21,19 +46,22 @@ async function complete(messages: ChatMsg[], opts: { json?: boolean; temperature
   return data.choices?.[0]?.message?.content as string;
 }
 
-// Streams a Groq chat completion as a plain-text ReadableStream (token by token).
-export function streamGroq(messages: ChatMsg[], temperature = 0.5): ReadableStream<Uint8Array> {
+// Streams a chat completion as a plain-text ReadableStream (token by token).
+// Defaults to our Groq; if `ai` carries a BYOK key, streams from that provider.
+export function streamGroq(messages: ChatMsg[], temperature = 0.5, ai?: AiOverride): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  const { url, key, model } = resolveChat(ai);
+  const headers = { ...resolveChat(ai).headers, Authorization: `Bearer ${key}` };
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const res = await fetch(GROQ_URL, {
+        const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-          body: JSON.stringify({ model: GROQ_MODEL, messages, temperature, max_tokens: 1024, stream: true }),
+          headers,
+          body: JSON.stringify({ model, messages, temperature, max_tokens: 1024, stream: true }),
         });
         if (!res.ok || !res.body) {
-          controller.enqueue(encoder.encode(`AI error (${res.status}). Please retry.`));
+          controller.enqueue(encoder.encode(`AI error (${res.status}). Check your model/API key and retry.`));
           controller.close();
           return;
         }

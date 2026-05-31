@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { streamGroq, vaultSystemPrompt, ChatMsg } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
-  const { docs, question, history } = await req.json();
+  const { docs, question, history, ai } = await req.json();
   if (!Array.isArray(docs) || docs.length === 0 || !question) {
     return NextResponse.json({ error: 'Missing docs or question' }, { status: 400 });
   }
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     : [];
 
   const messages: ChatMsg[] = [vaultSystemPrompt(docs), ...prior, { role: 'user', content: question }];
-  return new Response(streamGroq(messages), {
+  return new Response(streamGroq(messages, 0.5, ai), {
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
   });
 }

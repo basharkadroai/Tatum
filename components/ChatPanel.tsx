@@ -6,6 +6,7 @@ import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
 import type { VaultItem } from '@/types/vault';
 import type { UploadEvent, UploadStep } from '@/lib/upload';
+import type { AiConfig } from '@/lib/aiConfig';
 
 export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[] };
 
@@ -26,12 +27,13 @@ interface Props {
   onUploaded?: (item: VaultItem) => void;
   onEmptyChange?: (empty: boolean) => void;   // fires when the empty/greeting state toggles
   onCitation?: (label: string) => void;        // open a file when a [citation] pill is clicked
+  aiConfig?: AiConfig | null;                   // BYOK: provider/model/key for chat
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, mobile, disabled,
-  uploadRunner, onUploaded, onEmptyChange, onCitation,
+  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -62,7 +64,7 @@ export function ChatPanel({
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildBody(question, history)),
+        body: JSON.stringify({ ...buildBody(question, history), ai: aiConfig || undefined }),
         signal: ac.signal,
       });
       if (!res.ok || !res.body) {

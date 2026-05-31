@@ -11,6 +11,8 @@ import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
 import { selectVaultDocs } from '@/lib/retrieve';
+import { ModelPicker } from '@/components/ModelPicker';
+import { loadAiConfig, saveAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
@@ -76,11 +78,13 @@ export default function Home() {
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [aiConfig, setAiConfig] = useState<AiConfig | null>(null);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
-  useEffect(() => { setVault(loadVault()); setLoaded(true); }, []);
+  useEffect(() => { setVault(loadVault()); setLoaded(true); setAiConfig(loadAiConfig()); }, []);
+  function updateAiConfig(c: AiConfig | null) { setAiConfig(c); saveAiConfig(c); }
   // On phones the sidebar becomes a slide-in drawer; keep its content expanded
   // and let `mobileNavOpen` control visibility.
   useEffect(() => {
@@ -369,6 +373,9 @@ export default function Home() {
             ))}
           </div>
 
+          {/* AI model picker (BYOK) */}
+          {sidebarOpen && <ModelPicker config={aiConfig} onChange={updateAiConfig} />}
+
           {/* Restore vault from chain (read-only, by owner address) */}
           {sidebarOpen && (
             <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
@@ -442,6 +449,7 @@ export default function Home() {
                   resetKey="vault"
                   centered
                   mobile={isMobile}
+                  aiConfig={aiConfig}
                   onEmptyChange={setHomeEmpty}
                   onCitation={openCitedFile}
                   greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}
@@ -587,6 +595,7 @@ export default function Home() {
                   resetKey={selected.id}
                   endpoint="/api/ask"
                   mobile={isMobile}
+                  aiConfig={aiConfig}
                   buildBody={(question, history) => ({ content: selected.content, question, history })}
                   suggestions={selected.questions && selected.questions.length > 0
                     ? selected.questions
