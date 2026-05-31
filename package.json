@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@animateicons/react": "^0.3.3",
-    "@lobehub/icons": "^5.10.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@mysten/dapp-kit": "^1.0.6",
     "@mysten/sui": "^2.17.0",
