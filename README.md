@@ -4,7 +4,7 @@
 > Upload anything → it's stored on **Walrus**, recorded **on Sui via Tatum**, read by **AI**, and **verifiable on-chain** — a knowledge base you actually *own* and can restore from the chain on any device.
 
 ### 🔗 Live app: **https://chainmind-seven.vercel.app**
-### 📦 Repo: **https://github.com/Smiley617/Tatum**
+### 📦 Repo: **https://github.com/basharkadroai/Tatum**
 
 ---
 
@@ -162,8 +162,8 @@ See [`mcp/README.md`](mcp/README.md) for the Claude Desktop config.
 
 ### 1. Clone & install
 ```bash
-git clone https://github.com/Smiley617/Tatum
-cd chainmind
+git clone https://github.com/basharkadroai/Tatum
+cd Tatum
 npm install
 ```
 

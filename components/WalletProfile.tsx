@@ -8,6 +8,7 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
   const account = useCurrentAccount();
   const { mutate: disconnect } = useDisconnectWallet();
   const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const short = account ? `${account.address.slice(0, 6)}…${account.address.slice(-4)}` : '';
   const initials = account ? account.address.slice(2, 4).toUpperCase() : '';
@@ -57,28 +58,48 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
   }
 
   if (collapsed) {
+    // Rail view — show status only; disconnecting requires the expanded sidebar
+    // (avoids an accidental one-click disconnect).
     return (
-      <button onClick={() => disconnect()} title={`${short} · click to disconnect`}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+      <div title={`${short} · Sui ${NETWORK}`}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '4px 0' }}>
         {avatar}
-      </button>
+      </div>
     );
   }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 8px', borderRadius: '10px' }}>
       {avatar}
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{short}</p>
-        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '1px' }}>Sui {NETWORK}</p>
-      </div>
-      <button onClick={() => disconnect()} title="Disconnect"
-        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '7px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', flexShrink: 0 }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-3)'; }}
-      >
-        <LogOut size={15} strokeWidth={2} />
-      </button>
+      {confirming ? (
+        <>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)' }}>Disconnect?</p>
+          </div>
+          <button onClick={() => { disconnect(); setConfirming(false); }} title="Confirm disconnect"
+            style={{ padding: '4px 10px', borderRadius: '7px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', flexShrink: 0, background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--error)' }}>
+            Yes
+          </button>
+          <button onClick={() => setConfirming(false)} title="Cancel"
+            style={{ padding: '4px 10px', borderRadius: '7px', fontSize: '12px', cursor: 'pointer', flexShrink: 0, background: 'none', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+            No
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{short}</p>
+            <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '1px' }}>Sui {NETWORK}</p>
+          </div>
+          <button onClick={() => setConfirming(true)} title="Disconnect"
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '7px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', flexShrink: 0 }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-3)'; }}
+          >
+            <LogOut size={15} strokeWidth={2} />
+          </button>
+        </>
+      )}
     </div>
   );
 }
