@@ -94,6 +94,14 @@ export default function Home() {
     return () => window.removeEventListener('resize', apply);
   }, []);
   useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
+  // Auto-read a file with AI when opened if it has no real summary yet (e.g. just
+  // restored from chain) — so it's ready before the user reads or asks anything.
+  useEffect(() => {
+    if (selected && needsAnalysis(selected) && analyzingId !== selected.id) {
+      analyzeRestoredFile(selected);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
 
   // Reconstruct the files OWNED by an address on-chain (VaultEntry objects, read
   // from Sui via Tatum) and pull their content back from Walrus. Read-only — no
@@ -187,7 +195,7 @@ export default function Home() {
   // Fetch the blob back from Walrus and run the AI analysis to fill in the
   // summary/tags/content for a restored (or unanalyzed) file.
   async function analyzeRestoredFile(item: VaultItem) {
-    if (analyzingId) return;
+    if (analyzingId === item.id) return;
     setAnalyzingId(item.id);
     try {
       const res = await fetch(`${WALRUS_AGGREGATOR}/v1/blobs/${item.blobId}`);
@@ -535,21 +543,10 @@ export default function Home() {
                     {selected.summary}
                   </p>
                 )}
-                {summaryExpanded && needsAnalysis(selected) && (
-                  <button
-                    onClick={() => analyzeRestoredFile(selected)}
-                    disabled={analyzingId === selected.id}
-                    style={{
-                      marginTop: '10px', display: 'inline-flex', alignItems: 'center', gap: '7px',
-                      padding: '8px 14px', borderRadius: '9px', fontSize: '12.5px', fontWeight: 700,
-                      border: '1px solid var(--purple-border)', background: 'var(--purple-bg)', color: 'var(--purple)',
-                      cursor: analyzingId === selected.id ? 'default' : 'pointer', opacity: analyzingId === selected.id ? 0.7 : 1,
-                    }}
-                  >
-                    {analyzingId === selected.id
-                      ? <><Loader2 size={14} strokeWidth={2.5} className="lucide-spin" /> Reading from Walrus…</>
-                      : <><Database size={14} strokeWidth={2} /> Read this file with AI</>}
-                  </button>
+                {summaryExpanded && analyzingId === selected.id && (
+                  <p style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'var(--text-3)' }}>
+                    <Loader2 size={13} strokeWidth={2.5} className="lucide-spin" /> Reading this file from Walrus with AI…
+                  </p>
                 )}
                 {summaryExpanded && selected.tags && selected.tags.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
