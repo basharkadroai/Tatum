@@ -4,7 +4,9 @@ import { WALRUS_PUBLISHER as WALRUS_PUBLISHER_RAW } from '@/lib/network';
 const WALRUS_PUBLISHER = WALRUS_PUBLISHER_RAW.trim();
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const VISION_MAX = 3 * 1024 * 1024;
-const EXTRACT_MAX = 4 * 1024 * 1024;
+const EXTRACT_MAX = 10 * 1024 * 1024;
+const DOC_EXTS = ['pdf', 'docx', 'xlsx', 'xls', 'pptx'];
+const AV_EXTS = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'mpga', 'mpeg', 'aac', 'mp4', 'webm', 'mov', 'm4v'];
 
 const CODE_OR_TEXT = ['txt', 'md', 'mdx', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'html', 'htm', 'xml', 'svg', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash', 'zsh', 'sql', 'rs', 'go', 'java', 'kt', 'swift', 'c', 'cpp', 'cc', 'h', 'hpp', 'cs', 'css', 'scss', 'less', 'env', 'log', 'gitignore', 'dockerfile', 'lock', 'gql', 'graphql', 'vue', 'svelte', 'r', 'lua', 'pl', 'srt', 'vtt', 'tex', 'rst'];
 
@@ -43,7 +45,7 @@ async function uploadToWalrus(file: File): Promise<string> {
 async function extractText(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (file.type.startsWith('text/') || CODE_OR_TEXT.includes(ext)) return readAsText(file);
-  if (['pdf', 'docx', 'xlsx', 'xls'].includes(ext) && file.size <= EXTRACT_MAX) {
+  if (DOC_EXTS.includes(ext) && file.size <= EXTRACT_MAX) {
     try {
       const form = new FormData();
       form.append('file', file);
@@ -66,9 +68,21 @@ async function extractText(file: File): Promise<string> {
   return '';
 }
 
+// Transcribe audio/video to text via Groq Whisper (server route).
+async function transcribe(file: File): Promise<string> {
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/transcribe', { method: 'POST', body: form });
+    if (res.ok) return (await res.json()).content ?? '';
+  } catch { /* fall through */ }
+  return '';
+}
+
 type Analysis = { summary: string; tags: string[]; questions: string[]; content: string };
 
 export async function analyzeFile(file: File): Promise<Analysis> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   const isImage = file.type.startsWith('image/');
   if (isImage && file.size <= VISION_MAX) {
     const dataUrl = await readAsDataURL(file);
@@ -77,9 +91,15 @@ export async function analyzeFile(file: File): Promise<Analysis> {
     const summary = data.summary ?? 'Could not analyze this image.';
     return { summary, tags: data.tags ?? ['image'], questions: data.questions ?? [], content: summary };
   }
-  const content = await extractText(file);
+
+  // Audio / video → transcribe with Whisper, then summarize the transcript.
+  const isAV = file.type.startsWith('audio/') || file.type.startsWith('video/') || AV_EXTS.includes(ext);
+  const content = isAV ? await transcribe(file) : await extractText(file);
   if (!content.trim()) {
-    return { summary: 'No readable text could be extracted from this file.', tags: [], questions: [], content: '' };
+    return {
+      summary: isAV ? 'No speech could be transcribed from this file.' : 'No readable text could be extracted from this file.',
+      tags: [], questions: [], content: '',
+    };
   }
   const res = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
   const data = await res.json();

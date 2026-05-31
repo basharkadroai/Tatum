@@ -10,7 +10,7 @@ A decentralized AI knowledge vault. Upload any document — stored permanently o
 
 ## What it does
 
-1. **Upload any file** — PDF, DOCX, XLSX, TXT, MD, JSON, CSV, code, images, anything
+1. **Upload any file** — PDF, DOCX, XLSX, **PPTX**, TXT, MD, JSON, CSV, code, **images** (vision), **audio & video** (transcribed via Whisper), anything
 2. **Walrus** stores the file as an erasure-coded blob (permanent, decentralized). The app then **retrieves the blob back from Walrus live** ("Live on Walrus — retrieved just now") to *prove* it's really on decentralized storage.
 3. **Groq AI** analyzes it on upload — summary, topic **tags**, and file-specific **suggested questions** in one pass (`llama-3.3-70b-versatile`).
 4. **Sui transaction** records the `blobId` on-chain via **Tatum RPC** — a `VaultEntry` object as verifiable proof of storage. Users can optionally **claim it with their own wallet** for true on-chain ownership.

@@ -28,6 +28,13 @@ export async function POST(req: NextRequest) {
       content = wb.SheetNames.map((n: string) =>
         `=== ${n} ===\n${XLSX.utils.sheet_to_csv(wb.Sheets[n])}`
       ).join('\n');
+    } else if (
+      ext === 'pptx' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ) {
+      const { parseOffice } = require('officeparser');
+      const ast = await parseOffice(buffer);
+      content = typeof ast?.toText === 'function' ? ast.toText() : String(ast ?? '');
     }
   } catch (err) {
     console.error('[extract] failed:', err);
