@@ -229,11 +229,11 @@ export default function Home() {
   const allTags = Array.from(new Set(vault.flatMap(i => i.tags || []))).slice(0, 12);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--base)' }}>
+    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--base)' }}>
 
       {/* ── Sidebar — icon rail on desktop, slide-in drawer on mobile ── */}
       <aside style={isMobile ? {
-        position: 'fixed', top: 0, left: 0, height: '100%', width: '280px', maxWidth: '85vw', zIndex: 50,
+        position: 'fixed', top: 0, left: 0, height: '100dvh', width: '280px', maxWidth: '85vw', zIndex: 50,
         transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.25s ease',
         display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
         overflow: 'hidden', boxShadow: mobileNavOpen ? '0 0 40px rgba(0,0,0,0.55)' : 'none',

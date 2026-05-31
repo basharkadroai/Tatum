@@ -168,63 +168,67 @@ export function ChatPanel({
   const isEmpty = messages.length === 0 && !loading && !streaming;
   const busy = loading || streaming;
 
-  // ── Input box (shared between centered + bottom layouts) ──
-  const inputBox = (
-    <div style={{
-      display: 'flex', gap: '8px', alignItems: 'flex-end',
-      border: '1px solid var(--border)', borderRadius: '16px', padding: '8px 8px 8px 8px',
-      background: 'var(--off-white)',
-    }}>
-      {uploadRunner && (
-        <>
-          <input ref={fileRef} type="file" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleAttach(f); e.target.value = ''; }} />
-          <button
-            onClick={() => !busy && fileRef.current?.click()}
-            disabled={busy}
-            title="Upload a file"
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
-              background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-2)',
-              cursor: busy ? 'default' : 'pointer',
-            }}
-            onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
-          >
-            <Plus size={18} strokeWidth={2.5} />
-          </button>
-        </>
-      )}
-      <textarea
-        ref={taRef}
-        value={input}
-        rows={1}
-        disabled={disabled}
-        onChange={e => setInput(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-        placeholder={placeholder}
-        style={{
-          flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
-          fontSize: '14px', lineHeight: '1.5', color: 'var(--text-1)', fontFamily: 'inherit',
-          maxHeight: '160px', padding: '7px 4px',
-        }}
-      />
-      {busy ? (
-        <button onClick={stop} title="Stop generating" style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
-          background: 'var(--off-white)', color: 'var(--text-1)', border: '1px solid var(--border)', cursor: 'pointer',
-        }}><Square size={13} strokeWidth={2.5} fill="currentColor" /></button>
-      ) : (
-        <button onClick={() => send()} disabled={!input.trim() || disabled} title="Send" style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
-          background: 'var(--purple)', color: 'var(--base)', border: 'none',
-          cursor: input.trim() && !disabled ? 'pointer' : 'default',
-          opacity: input.trim() && !disabled ? 1 : 0.4, transition: 'opacity 0.15s',
-        }}><MotionIcon icon={ArrowUp} mode="bob" size={17} strokeWidth={2.5} color="currentColor" /></button>
-      )}
+  const fileInput = uploadRunner && (
+    <input ref={fileRef} type="file" className="hidden"
+      onChange={e => { const f = e.target.files?.[0]; if (f) handleAttach(f); e.target.value = ''; }} />
+  );
+  const plusBtn = (sz: number) => uploadRunner && (
+    <button onClick={() => !busy && fileRef.current?.click()} disabled={busy} title="Upload a file"
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: `${sz}px`, height: `${sz}px`, borderRadius: '10px', flexShrink: 0,
+        background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-2)',
+        cursor: busy ? 'default' : 'pointer',
+      }}
+      onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
+    ><Plus size={Math.round(sz / 2)} strokeWidth={2.5} /></button>
+  );
+  const sendBtn = (sz: number, radius: string) => busy ? (
+    <button onClick={stop} title="Stop generating" style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: `${sz}px`, height: `${sz}px`, borderRadius: radius, flexShrink: 0,
+      background: 'var(--off-white)', color: 'var(--text-1)', border: '1px solid var(--border)', cursor: 'pointer',
+    }}><Square size={13} strokeWidth={2.5} fill="currentColor" /></button>
+  ) : (
+    <button onClick={() => send()} disabled={!input.trim() || disabled} title="Send" style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: `${sz}px`, height: `${sz}px`, borderRadius: radius, flexShrink: 0,
+      background: 'var(--purple)', color: 'var(--base)', border: 'none',
+      cursor: input.trim() && !disabled ? 'pointer' : 'default',
+      opacity: input.trim() && !disabled ? 1 : 0.4, transition: 'opacity 0.15s',
+    }}><MotionIcon icon={ArrowUp} mode="bob" size={Math.round(sz / 2.3)} strokeWidth={2.5} color="currentColor" /></button>
+  );
+  const textarea = (rows: number, fontSize: string, minHeight: string) => (
+    <textarea
+      ref={taRef} value={input} rows={rows} disabled={disabled}
+      onChange={e => setInput(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+      placeholder={placeholder}
+      style={{
+        flex: 1, width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent',
+        fontSize, lineHeight: '1.5', color: 'var(--text-1)', fontFamily: 'inherit',
+        minHeight, maxHeight: '160px', padding: '7px 4px',
+      }}
+    />
+  );
+
+  // ── Input box. Mobile = bigger Claude-style card (textarea on top, controls below). ──
+  const inputBox = mobile ? (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '24px', padding: '14px 16px 10px', background: 'var(--off-white)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {fileInput}
+      {textarea(2, '16px', '48px')}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {plusBtn(40) || <span />}
+        {sendBtn(44, '50%')}
+      </div>
+    </div>
+  ) : (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', border: '1px solid var(--border)', borderRadius: '16px', padding: '8px', background: 'var(--off-white)' }}>
+      {fileInput}
+      {plusBtn(36)}
+      {textarea(1, '14px', 'auto')}
+      {sendBtn(36, '10px')}
     </div>
   );
 
@@ -250,6 +254,26 @@ export function ChatPanel({
     </div>
   );
 
+  // Mobile: suggestions sit beside each other in a horizontal scroll row.
+  const chipsMobile = (
+    <div className="tag-strip" style={{ display: 'flex', gap: '8px', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: '2px' }}>
+      {suggestions.map(q => (
+        <button key={q} onClick={() => send(q)} disabled={disabled}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '7px', flexShrink: 0, whiteSpace: 'nowrap',
+            fontSize: '13px', padding: '9px 14px', borderRadius: '14px',
+            background: 'rgba(20,19,17,0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+            border: '1px solid var(--border)', color: 'var(--text-2)', cursor: disabled ? 'default' : 'pointer',
+            opacity: disabled ? 0.5 : 1,
+          }}
+        >
+          <span>{q}</span>
+          <ArrowUpRight size={13} strokeWidth={2} style={{ opacity: 0.45, flexShrink: 0 }} />
+        </button>
+      ))}
+    </div>
+  );
+
   // Greeting + logo block (shared between layouts)
   const greetingBlock = greeting && (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 12px)' }}>
@@ -267,12 +291,20 @@ export function ChatPanel({
     // the suggestions just above it.
     if (mobile) {
       return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '12px' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {greetingBlock}
+            {greeting && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+                {greetingIcon && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={greetingIcon} alt="ChainMind" style={{ width: 'clamp(44px, 13vw, 58px)', height: 'clamp(44px, 13vw, 58px)', objectFit: 'contain' }} />
+                )}
+                <h1 style={{ fontSize: 'clamp(26px, 7vw, 32px)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center', textShadow: '0 2px 22px rgba(0,0,0,0.55)' }}>{greeting}</h1>
+              </div>
+            )}
           </div>
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: 'env(safe-area-inset-bottom, 6px)' }}>
-            {chips}
+            {chipsMobile}
             {inputBox}
           </div>
         </div>
