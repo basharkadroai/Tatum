@@ -543,6 +543,7 @@ export default function Home() {
                 <ChatPanel
                   resetKey={selected.id}
                   endpoint="/api/ask"
+                  mobile={isMobile}
                   buildBody={(question, history) => ({ content: selected.content, question, history })}
                   suggestions={selected.questions && selected.questions.length > 0
                     ? selected.questions
