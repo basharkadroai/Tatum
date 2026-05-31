@@ -403,6 +403,7 @@ export default function Home() {
                 <ChatPanel
                   resetKey="vault"
                   centered
+                  mobile={isMobile}
                   onEmptyChange={setHomeEmpty}
                   onCitation={openCitedFile}
                   greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}

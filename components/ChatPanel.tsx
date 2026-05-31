@@ -19,6 +19,7 @@ interface Props {
   greeting?: string;          // shown centered above the input on the empty state
   greetingIcon?: string;      // optional logo image shown beside the greeting
   centered?: boolean;         // center the empty state vertically (home/new-chat look)
+  mobile?: boolean;           // Claude-style empty state: greeting centered, input pinned bottom
   disabled?: boolean;         // disable sending text (e.g. no docs yet)
   // Attach + narrate an upload inside the chat
   uploadRunner?: (file: File, emit: (e: UploadEvent) => void) => Promise<VaultItem | null>;
@@ -29,7 +30,7 @@ interface Props {
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
-  aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, disabled,
+  aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, mobile, disabled,
   uploadRunner, onUploaded, onEmptyChange, onCitation,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -249,19 +250,37 @@ export function ChatPanel({
     </div>
   );
 
+  // Greeting + logo block (shared between layouts)
+  const greetingBlock = greeting && (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 12px)' }}>
+      {greetingIcon && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={greetingIcon} alt="ChainMind" style={{ width: 'clamp(26px, 6vw, 40px)', height: 'clamp(26px, 6vw, 40px)', objectFit: 'contain', flexShrink: 0 }} />
+      )}
+      <h1 style={{ fontSize: 'clamp(20px, 5vw, 30px)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center', textShadow: '0 2px 22px rgba(0,0,0,0.55)' }}>{greeting}</h1>
+    </div>
+  );
+
   // ── Centered "home" layout when empty ──
   if (centered && isEmpty) {
+    // Mobile (Claude-style): greeting floats center, input pinned to bottom with
+    // the suggestions just above it.
+    if (mobile) {
+      return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {greetingBlock}
+          </div>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: 'env(safe-area-inset-bottom, 6px)' }}>
+            {chips}
+            {inputBox}
+          </div>
+        </div>
+      );
+    }
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
-        {greeting && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 12px)' }}>
-            {greetingIcon && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={greetingIcon} alt="ChainMind" style={{ width: 'clamp(26px, 6vw, 40px)', height: 'clamp(26px, 6vw, 40px)', objectFit: 'contain', flexShrink: 0 }} />
-            )}
-            <h1 style={{ fontSize: 'clamp(20px, 5vw, 30px)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-1)', textAlign: 'center', textShadow: '0 2px 22px rgba(0,0,0,0.55)' }}>{greeting}</h1>
-          </div>
-        )}
+        {greetingBlock}
         <div style={{ width: '100%', maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {inputBox}
           {chips}
