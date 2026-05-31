@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
-import { runUpload } from '@/lib/upload';
+import { runUpload, analyzeFile } from '@/lib/upload';
 import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
@@ -14,7 +14,7 @@ import { selectVaultDocs } from '@/lib/retrieve';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
-  PanelLeft, ChevronDown, Menu,
+  PanelLeft, ChevronDown, Menu, Loader2,
 } from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
@@ -75,6 +75,7 @@ export default function Home() {
   const [restoreAddr, setRestoreAddr] = useState('');
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
@@ -176,6 +177,35 @@ export default function Home() {
       return next;
     });
     setSelected(prev => (prev && prev.id === id ? { ...prev, ...patch } : prev));
+  }
+
+  // A restored file has no real AI summary yet (placeholder) — offer to read it.
+  function needsAnalysis(item: VaultItem) {
+    const s = (item.summary || '').toLowerCase();
+    return !s || s.startsWith('restored from') || s.startsWith('no readable');
+  }
+  // Fetch the blob back from Walrus and run the AI analysis to fill in the
+  // summary/tags/content for a restored (or unanalyzed) file.
+  async function analyzeRestoredFile(item: VaultItem) {
+    if (analyzingId) return;
+    setAnalyzingId(item.id);
+    try {
+      const res = await fetch(`${WALRUS_AGGREGATOR}/v1/blobs/${item.blobId}`);
+      if (!res.ok) throw new Error(`Walrus ${res.status}`);
+      const blob = await res.blob();
+      const file = new File([blob], item.filename, { type: item.fileType || blob.type || 'application/octet-stream' });
+      const a = await analyzeFile(file);
+      updateItem(item.id, {
+        summary: a.summary,
+        tags: a.tags,
+        questions: a.questions,
+        content: (a.content || item.content || '').slice(0, 12000),
+      });
+    } catch {
+      updateItem(item.id, { summary: 'Could not read this file from Walrus — please try again.' });
+    } finally {
+      setAnalyzingId(null);
+    }
   }
 
   // Optional: let the user record the file under THEIR own wallet address on Sui.
@@ -504,6 +534,22 @@ export default function Home() {
                   <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: '1.65', animation: 'fadeUp 0.2s ease' }}>
                     {selected.summary}
                   </p>
+                )}
+                {summaryExpanded && needsAnalysis(selected) && (
+                  <button
+                    onClick={() => analyzeRestoredFile(selected)}
+                    disabled={analyzingId === selected.id}
+                    style={{
+                      marginTop: '10px', display: 'inline-flex', alignItems: 'center', gap: '7px',
+                      padding: '8px 14px', borderRadius: '9px', fontSize: '12.5px', fontWeight: 700,
+                      border: '1px solid var(--purple-border)', background: 'var(--purple-bg)', color: 'var(--purple)',
+                      cursor: analyzingId === selected.id ? 'default' : 'pointer', opacity: analyzingId === selected.id ? 0.7 : 1,
+                    }}
+                  >
+                    {analyzingId === selected.id
+                      ? <><Loader2 size={14} strokeWidth={2.5} className="lucide-spin" /> Reading from Walrus…</>
+                      : <><Database size={14} strokeWidth={2} /> Read this file with AI</>}
+                  </button>
                 )}
                 {summaryExpanded && selected.tags && selected.tags.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>

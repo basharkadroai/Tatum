@@ -68,7 +68,7 @@ async function extractText(file: File): Promise<string> {
 
 type Analysis = { summary: string; tags: string[]; questions: string[]; content: string };
 
-async function analyze(file: File): Promise<Analysis> {
+export async function analyzeFile(file: File): Promise<Analysis> {
   const isImage = file.type.startsWith('image/');
   if (isImage && file.size <= VISION_MAX) {
     const dataUrl = await readAsDataURL(file);
@@ -132,7 +132,7 @@ export async function runUpload(file: File, emit: (e: UploadEvent) => void, owne
 
   // Step 3 — AI read
   emit({ kind: 'start', label: `Reading and understanding the file with AI` });
-  const { summary, tags, questions, content } = await analyze(file);
+  const { summary, tags, questions, content } = await analyzeFile(file);
   emit({ kind: 'done', detail: `Indexed and ready for questions` });
   emit({ kind: 'summary', text: `${summary}\n\nAsk me anything about it.` });
 
