@@ -73,14 +73,19 @@ export function streamGroq(messages: ChatMsg[], temperature = 0.5, ai?: AiOverri
   // doesn't burn through its free daily token quota.
   const byok = !!(ai?.apiKey && ai.provider && ai.provider !== 'groq');
   const maxTokens = byok ? 8192 : 2048;
-  const body = JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: true });
+  // On the shared default key, if the 70B model is out of its daily tokens, fall
+  // back to a model with a much higher free quota so the default keeps working.
+  const FALLBACK_GROQ = 'llama-3.1-8b-instant';
+  const mkBody = (m: string) => JSON.stringify({ model: m, messages, temperature, max_tokens: maxTokens, stream: true });
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
         let res: Response | null = null;
+        let m = model;
         for (let attempt = 1; attempt <= 3; attempt++) {
-          res = await fetch(url, { method: 'POST', headers, body });
+          res = await fetch(url, { method: 'POST', headers, body: mkBody(m) });
           if (res.ok && res.body) break;
+          if (res.status === 429 && !byok && m !== FALLBACK_GROQ) { m = FALLBACK_GROQ; continue; }
           if ((res.status === 429 || res.status >= 500) && attempt < 3) { await sleep(attempt * 700); continue; }
           break;
         }
