@@ -11,7 +11,6 @@ import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
 import { selectVaultDocs } from '@/lib/retrieve';
-import { ModelPicker } from '@/components/ModelPicker';
 import { loadAiConfig, saveAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
@@ -373,9 +372,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* AI model picker (BYOK) */}
-          {sidebarOpen && <ModelPicker config={aiConfig} onChange={updateAiConfig} />}
-
           {/* Restore vault from chain (read-only, by owner address) */}
           {sidebarOpen && (
             <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
@@ -450,6 +446,7 @@ export default function Home() {
                   centered
                   mobile={isMobile}
                   aiConfig={aiConfig}
+                  onAiConfigChange={updateAiConfig}
                   onEmptyChange={setHomeEmpty}
                   onCitation={openCitedFile}
                   greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}
@@ -596,6 +593,7 @@ export default function Home() {
                   endpoint="/api/ask"
                   mobile={isMobile}
                   aiConfig={aiConfig}
+                  onAiConfigChange={updateAiConfig}
                   buildBody={(question, history) => ({ content: selected.content, question, history })}
                   suggestions={selected.questions && selected.questions.length > 0
                     ? selected.questions

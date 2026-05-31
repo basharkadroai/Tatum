@@ -5,14 +5,17 @@ export type AiConfig = { provider: string; model: string; apiKey: string };
 const KEY = 'chainmind_ai';
 
 export const AI_PROVIDERS = [
-  { id: 'groq', label: 'ChainMind default', model: 'llama-3.3-70b-versatile', needsKey: false },
-  { id: 'openai', label: 'OpenAI', model: 'gpt-5.5', needsKey: true },
-  { id: 'anthropic', label: 'Anthropic · Claude', model: 'claude-sonnet-4-6', needsKey: true },
-  { id: 'gemini', label: 'Google · Gemini', model: 'gemini-3.5-flash', needsKey: true },
+  { id: 'groq', label: 'ChainMind default', short: 'Default', model: 'llama-3.3-70b-versatile', needsKey: false },
+  { id: 'openai', label: 'OpenAI', short: 'GPT', model: 'gpt-5.5', needsKey: true },
+  { id: 'anthropic', label: 'Anthropic · Claude', short: 'Claude', model: 'claude-sonnet-4-6', needsKey: true },
+  { id: 'gemini', label: 'Google · Gemini', short: 'Gemini', model: 'gemini-3.5-flash', needsKey: true },
 ] as const;
 
 export function providerLabel(id?: string): string {
   return AI_PROVIDERS.find(p => p.id === id)?.label ?? 'ChainMind default';
+}
+export function providerShort(id?: string): string {
+  return AI_PROVIDERS.find(p => p.id === id)?.short ?? 'Default';
 }
 
 export function loadAiConfig(): AiConfig | null {

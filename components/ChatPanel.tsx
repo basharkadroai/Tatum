@@ -4,6 +4,7 @@ import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus } from 'luc
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
+import { ModelMenu } from './ModelMenu';
 import type { VaultItem } from '@/types/vault';
 import type { UploadEvent, UploadStep } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
@@ -28,12 +29,13 @@ interface Props {
   onEmptyChange?: (empty: boolean) => void;   // fires when the empty/greeting state toggles
   onCitation?: (label: string) => void;        // open a file when a [citation] pill is clicked
   aiConfig?: AiConfig | null;                   // BYOK: provider/model/key for chat
+  onAiConfigChange?: (c: AiConfig | null) => void;  // in-prompt model switcher
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, mobile, disabled,
-  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig,
+  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -215,13 +217,18 @@ export function ChatPanel({
     />
   );
 
+  const modelMenu = onAiConfigChange ? <ModelMenu config={aiConfig ?? null} onChange={onAiConfigChange} /> : null;
+
   // ── Input box. Mobile = bigger Claude-style card (textarea on top, controls below). ──
   const inputBox = mobile ? (
     <div style={{ border: '1px solid var(--border)', borderRadius: '24px', padding: '14px 16px 10px', background: 'var(--off-white)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
       {fileInput}
       {textarea(2, '16px', '48px')}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        {plusBtn(40) || <span />}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          {plusBtn(40)}
+          {modelMenu}
+        </div>
         {sendBtn(44, '50%')}
       </div>
     </div>
@@ -229,6 +236,7 @@ export function ChatPanel({
     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', border: '1px solid var(--border)', borderRadius: '16px', padding: '8px', background: 'var(--off-white)' }}>
       {fileInput}
       {plusBtn(36)}
+      {modelMenu}
       {textarea(1, '14px', 'auto')}
       {sendBtn(36, '10px')}
     </div>
