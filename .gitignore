@@ -41,3 +41,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.local
+
+# internal / local-only (kept out of the public repo)
+SUBMISSION.md
+CLAUDE.md
+AGENTS.md
