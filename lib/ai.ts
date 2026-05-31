@@ -52,8 +52,10 @@ function statusMessage(status: number, detail = ''): string {
   if (status === 401 || status === 403) return 'Your API key was rejected — please check it and try again.';
   if (status === 400 || status === 404) return 'That model isn\'t available for this key — try another model.';
   if (status === 429) {
-    if (d.includes('per day') || d.includes('daily') || d.includes('tpd') || d.includes('quota'))
+    if (d.includes('per day') || d.includes('tpd'))
       return 'The free default model hit its daily limit. Switch to your own API key (the model menu at the top of the prompt box), or try again later.';
+    if (d.includes('limit: 0') || d.includes('free_tier') || d.includes('billing') || d.includes('check your plan'))
+      return 'This model isn\'t available on your current plan or free quota — pick a different model from the menu (e.g. gemini-3.5-flash).';
     return 'Rate limited by the provider — wait a few seconds and retry.';
   }
   if (status >= 500) return 'The model is temporarily unavailable (provider overloaded) — please retry.';
