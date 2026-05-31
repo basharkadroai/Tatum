@@ -47,10 +47,15 @@ async function complete(messages: ChatMsg[], opts: { json?: boolean; temperature
 }
 
 // Human-readable message per HTTP status from the provider.
-function statusMessage(status: number): string {
+function statusMessage(status: number, detail = ''): string {
+  const d = detail.toLowerCase();
   if (status === 401 || status === 403) return 'Your API key was rejected — please check it and try again.';
   if (status === 400 || status === 404) return 'That model isn\'t available for this key — try another model.';
-  if (status === 429) return 'Rate limited by the provider — wait a few seconds and retry.';
+  if (status === 429) {
+    if (d.includes('per day') || d.includes('daily') || d.includes('tpd') || d.includes('quota'))
+      return 'The free default model hit its daily limit. Switch to your own API key (the model menu at the top of the prompt box), or try again later.';
+    return 'Rate limited by the provider — wait a few seconds and retry.';
+  }
   if (status >= 500) return 'The model is temporarily unavailable (provider overloaded) — please retry.';
   return `AI error (${status}). Please retry.`;
 }
@@ -63,9 +68,12 @@ export function streamGroq(messages: ChatMsg[], temperature = 0.5, ai?: AiOverri
   const encoder = new TextEncoder();
   const { url, key, model } = resolveChat(ai);
   const headers = { ...resolveChat(ai).headers, Authorization: `Bearer ${key}` };
-  // 8192 so "thinking" models (Gemini 3.x, GPT-5.x) don't exhaust the budget on
-  // internal reasoning and truncate the visible answer mid-sentence.
-  const body = JSON.stringify({ model, messages, temperature, max_tokens: 8192, stream: true });
+  // BYOK (the user's own key) gets a big cap so "thinking" models (Gemini 3.x,
+  // GPT-5.x) don't truncate. The shared default key uses a modest cap so it
+  // doesn't burn through its free daily token quota.
+  const byok = !!(ai?.apiKey && ai.provider && ai.provider !== 'groq');
+  const maxTokens = byok ? 8192 : 2048;
+  const body = JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: true });
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -77,7 +85,9 @@ export function streamGroq(messages: ChatMsg[], temperature = 0.5, ai?: AiOverri
           break;
         }
         if (!res || !res.ok || !res.body) {
-          controller.enqueue(encoder.encode(statusMessage(res?.status ?? 0)));
+          let detail = '';
+          try { detail = (JSON.parse(await res!.text())?.error?.message) || ''; } catch { /* ignore */ }
+          controller.enqueue(encoder.encode(statusMessage(res?.status ?? 0, detail)));
           controller.close();
           return;
         }
