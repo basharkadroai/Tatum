@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { ProviderLogo } from './BrandIcons';
-import { AI_PROVIDERS, providerShort, type AiConfig } from '@/lib/aiConfig';
+import { AI_PROVIDERS, providerShort, savedEntry, useDefault, setProvider, type AiConfig } from '@/lib/aiConfig';
 
 // In-prompt model switcher (Claude/ChatGPT style): a small chip showing the
 // active model's logo + name; click opens a menu to switch provider and, for
@@ -24,18 +24,21 @@ export function ModelMenu({ config, onChange, openUp = false }: { config: AiConf
   }, [open]);
 
   function choose(id: string) {
-    if (id === 'groq') { onChange(null); setOpen(false); setKeyFor(null); return; }
+    if (id === 'groq') { useDefault(); onChange(null); setOpen(false); setKeyFor(null); return; }
+    // Always open the panel (prefilled with this provider's saved model + key)
+    // so the model can be changed and each provider's key is remembered.
     const meta = AI_PROVIDERS.find(p => p.id === id)!;
-    // If we already have a key for this provider, just switch to it.
-    if (config?.provider === id && config.apiKey) { setOpen(false); return; }
+    const saved = savedEntry(id);
     setKeyFor(id);
-    setModel(config?.provider === id && config.model ? config.model : meta.model);
-    setApiKey(config?.provider === id ? config.apiKey : '');
+    setModel(saved?.model || meta.model);
+    setApiKey(saved?.apiKey || '');
   }
   function saveKey() {
     if (!keyFor || !apiKey.trim()) return;
     const meta = AI_PROVIDERS.find(p => p.id === keyFor)!;
-    onChange({ provider: keyFor, model: model.trim() || meta.model, apiKey: apiKey.trim() });
+    const m = model.trim() || meta.model;
+    setProvider(keyFor, m, apiKey.trim());
+    onChange({ provider: keyFor, model: m, apiKey: apiKey.trim() });
     setOpen(false);
     setKeyFor(null);
   }

@@ -11,7 +11,7 @@ import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
 import { selectVaultDocs } from '@/lib/retrieve';
-import { loadAiConfig, saveAiConfig, type AiConfig } from '@/lib/aiConfig';
+import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
@@ -83,7 +83,7 @@ export default function Home() {
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); setAiConfig(loadAiConfig()); }, []);
-  function updateAiConfig(c: AiConfig | null) { setAiConfig(c); saveAiConfig(c); }
+  function updateAiConfig(c: AiConfig | null) { setAiConfig(c); }
   // On phones the sidebar becomes a slide-in drawer; keep its content expanded
   // and let `mobileNavOpen` control visibility.
   useEffect(() => {

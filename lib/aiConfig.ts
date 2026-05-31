@@ -1,6 +1,9 @@
-// BYOK (bring-your-own-key) config, stored locally in the browser. The key is
-// only sent per-request to our chat routes and never persisted server-side.
+// BYOK config, stored locally in the browser. Each provider's model + key is
+// remembered independently, so switching providers (and back) never loses a key.
+// Keys are only sent per-request to our chat routes, never persisted server-side.
 export type AiConfig = { provider: string; model: string; apiKey: string };
+type Entry = { model: string; apiKey: string };
+type Store = { active: string; keys: Record<string, Entry> };
 
 const KEY = 'chainmind_ai';
 
@@ -18,13 +21,46 @@ export function providerShort(id?: string): string {
   return AI_PROVIDERS.find(p => p.id === id)?.short ?? 'Default';
 }
 
-export function loadAiConfig(): AiConfig | null {
-  if (typeof window === 'undefined') return null;
-  try { const v = localStorage.getItem(KEY); return v ? JSON.parse(v) : null; } catch { return null; }
+function loadStore(): Store {
+  if (typeof window === 'undefined') return { active: 'groq', keys: {} };
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || '{}');
+    // migrate the old single-config shape { provider, model, apiKey }
+    if (v && v.provider && v.apiKey && !v.keys) {
+      return { active: v.provider, keys: { [v.provider]: { model: v.model, apiKey: v.apiKey } } };
+    }
+    return { active: v.active || 'groq', keys: v.keys || {} };
+  } catch { return { active: 'groq', keys: {} }; }
+}
+function persist(s: Store) {
+  if (typeof window !== 'undefined') localStorage.setItem(KEY, JSON.stringify(s));
 }
 
-export function saveAiConfig(c: AiConfig | null) {
-  if (typeof window === 'undefined') return;
-  if (c && c.provider !== 'groq') localStorage.setItem(KEY, JSON.stringify(c));
-  else localStorage.removeItem(KEY); // default = our Groq, nothing to store
+// The currently-active config (null = our default Groq).
+export function loadAiConfig(): AiConfig | null {
+  const s = loadStore();
+  if (s.active === 'groq') return null;
+  const e = s.keys[s.active];
+  if (!e?.apiKey) return null;
+  return { provider: s.active, model: e.model, apiKey: e.apiKey };
+}
+
+// A provider's previously-saved model + key (for prefilling the picker).
+export function savedEntry(provider: string): Entry | null {
+  return loadStore().keys[provider] ?? null;
+}
+
+// Switch back to the built-in default.
+export function useDefault() {
+  const s = loadStore();
+  s.active = 'groq';
+  persist(s);
+}
+
+// Save a provider's model + key and make it active.
+export function setProvider(provider: string, model: string, apiKey: string) {
+  const s = loadStore();
+  s.keys[provider] = { model, apiKey };
+  s.active = provider;
+  persist(s);
 }

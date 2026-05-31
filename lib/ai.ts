@@ -46,22 +46,36 @@ async function complete(messages: ChatMsg[], opts: { json?: boolean; temperature
   return data.choices?.[0]?.message?.content as string;
 }
 
+// Human-readable message per HTTP status from the provider.
+function statusMessage(status: number): string {
+  if (status === 401 || status === 403) return 'Your API key was rejected — please check it and try again.';
+  if (status === 400 || status === 404) return 'That model isn\'t available for this key — try another model.';
+  if (status === 429) return 'Rate limited by the provider — wait a few seconds and retry.';
+  if (status >= 500) return 'The model is temporarily unavailable (provider overloaded) — please retry.';
+  return `AI error (${status}). Please retry.`;
+}
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 // Streams a chat completion as a plain-text ReadableStream (token by token).
 // Defaults to our Groq; if `ai` carries a BYOK key, streams from that provider.
+// Retries transient errors (429 / 5xx) a couple of times before giving up.
 export function streamGroq(messages: ChatMsg[], temperature = 0.5, ai?: AiOverride): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const { url, key, model } = resolveChat(ai);
   const headers = { ...resolveChat(ai).headers, Authorization: `Bearer ${key}` };
+  const body = JSON.stringify({ model, messages, temperature, max_tokens: 1024, stream: true });
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ model, messages, temperature, max_tokens: 1024, stream: true }),
-        });
-        if (!res.ok || !res.body) {
-          controller.enqueue(encoder.encode(`AI error (${res.status}). Check your model/API key and retry.`));
+        let res: Response | null = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          res = await fetch(url, { method: 'POST', headers, body });
+          if (res.ok && res.body) break;
+          if ((res.status === 429 || res.status >= 500) && attempt < 3) { await sleep(attempt * 700); continue; }
+          break;
+        }
+        if (!res || !res.ok || !res.body) {
+          controller.enqueue(encoder.encode(statusMessage(res?.status ?? 0)));
           controller.close();
           return;
         }
