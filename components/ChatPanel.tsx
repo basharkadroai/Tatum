@@ -217,7 +217,7 @@ export function ChatPanel({
     />
   );
 
-  const modelMenu = onAiConfigChange ? <ModelMenu config={aiConfig ?? null} onChange={onAiConfigChange} /> : null;
+  const modelMenu = onAiConfigChange ? <ModelMenu config={aiConfig ?? null} onChange={onAiConfigChange} openUp={mobile} /> : null;
 
   // ── Input box. Mobile = bigger Claude-style card (textarea on top, controls below). ──
   const inputBox = mobile ? (

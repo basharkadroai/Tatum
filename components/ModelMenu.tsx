@@ -7,7 +7,7 @@ import { AI_PROVIDERS, providerShort, type AiConfig } from '@/lib/aiConfig';
 // In-prompt model switcher (Claude/ChatGPT style): a small chip showing the
 // active model's logo + name; click opens a menu to switch provider and, for
 // BYOK providers, paste an API key.
-export function ModelMenu({ config, onChange }: { config: AiConfig | null; onChange: (c: AiConfig | null) => void }) {
+export function ModelMenu({ config, onChange, openUp = false }: { config: AiConfig | null; onChange: (c: AiConfig | null) => void; openUp?: boolean }) {
   const [open, setOpen] = useState(false);
   const [keyFor, setKeyFor] = useState<string | null>(null); // provider awaiting a key
   const [model, setModel] = useState('');
@@ -66,7 +66,7 @@ export function ModelMenu({ config, onChange }: { config: AiConfig | null; onCha
 
       {open && (
         <div style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 60, width: '256px',
+          position: 'absolute', [openUp ? 'bottom' : 'top']: 'calc(100% + 8px)', left: 0, zIndex: 60, width: '256px',
           background: 'var(--white)', border: '1px solid var(--border-2)', borderRadius: '14px',
           boxShadow: '0 12px 40px rgba(0,0,0,0.45)', padding: '6px', animation: 'fadeUp 0.15s ease',
         }}>
