@@ -217,7 +217,11 @@ export function ChatPanel({
     />
   );
 
-  const modelMenu = onAiConfigChange ? <ModelMenu config={aiConfig ?? null} onChange={onAiConfigChange} openUp={mobile} /> : null;
+  // Menu drops DOWN only on the centered home (input sits mid-screen); everywhere
+  // the input is pinned to the bottom (any chat, file detail, mobile) it opens UP
+  // so the prompt box never shifts.
+  const menuOpensUp = mobile || !(centered && isEmpty);
+  const modelMenu = onAiConfigChange ? <ModelMenu config={aiConfig ?? null} onChange={onAiConfigChange} openUp={menuOpensUp} /> : null;
 
   // ── Input box. Mobile = bigger Claude-style card (textarea on top, controls below). ──
   const inputBox = mobile ? (
