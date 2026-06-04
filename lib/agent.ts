@@ -5,6 +5,7 @@
 // each behind a user-confirmation gate before any wallet/on-chain action.
 import { createAgent, tool } from 'langchain';
 import { ChatGroq } from '@langchain/groq';
+import { TavilySearch } from '@langchain/tavily';
 import * as z from 'zod';
 
 // Matches the doc shape the client already sends to /api/ask-vault.
@@ -41,13 +42,24 @@ export function buildVaultAgent(docs: VaultDoc[], temperature = 0) {
 
   const model = new ChatGroq({ model: GROQ_TOOL_MODEL, temperature });
 
+  // Web search via Tavily (real-time, LLM-optimized). Only enabled when a key is
+  // set (TAVILY_API_KEY) — free tier is plenty for prompts.
+  const tools = process.env.TAVILY_API_KEY
+    ? [searchVault, new TavilySearch({ maxResults: 5 })]
+    : [searchVault];
+
   return createAgent({
     model,
-    tools: [searchVault],
+    tools,
     systemPrompt:
       "You are ChainMind's assistant. The user owns files stored on-chain. " +
       'When a question is about their files, ALWAYS call search_vault first, then answer ' +
-      'using only the tool results. Trust the tool output. Be concise. ' +
+      'using only the tool results. Trust the tool output. ' +
+      'When the user needs current or external information, use the web search (tavily) tool, ' +
+      'then cite what you found. ' +
+      'When the user asks you to create/write/generate something (a document, plan, code, etc.), ' +
+      'produce the finished content as your answer — the app will then offer to store it on-chain. ' +
+      'Be concise. ' +
       'Whenever you mention a file from the vault, write its exact name in SQUARE BRACKETS, ' +
       'e.g. [Day 0-4 Lessons.txt], so it renders as a clickable link. ' +
       'Never wrap file names in asterisks or quotes.',
@@ -66,12 +78,26 @@ export async function runVaultAgent(docs: VaultDoc[], question: string): Promise
 // An event in the agent's activity chain — what the agent is doing, step by step.
 export type AgentEvent =
   | { type: 'step'; tool: string; label: string }
-  | { type: 'answer'; text: string };
+  | { type: 'answer'; text: string }
+  // After generating content, offer to store it on-chain (the client handles the
+  // choice — "Store" runs the existing Walrus+Sui upload pipeline).
+  | { type: 'offer'; kind: 'store'; filename: string; question: string };
 
 // Friendly, human-readable label for a tool call shown in the chain.
 function stepLabel(tool: string, args: Record<string, unknown>): string {
-  if (tool === 'search_vault') return `Searching your vault for “${String(args.query ?? '')}”`;
+  const q = String(args.query ?? '');
+  if (tool === 'search_vault') return `Searching your vault for “${q}”`;
+  if (tool.includes('tavily') || tool.includes('search')) return `Searching the web for “${q}”`;
   return `Running ${tool}`;
+}
+
+// Did the user ask the agent to CREATE something (worth offering to store)?
+function isGenerative(question: string): boolean {
+  return /\b(create|write|generate|make|build|draft|design|compose|code|script|prd|document|plan|spec|readme|guide|outline|essay|story|report)\b/i.test(question);
+}
+function suggestFilename(question: string): string {
+  const slug = question.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 6).join('-');
+  return `${slug || 'chainmind-note'}.md`;
 }
 
 // Groq Llama occasionally emits a malformed tool call → 400 "tool_use_failed".
@@ -87,6 +113,7 @@ function isToolFormatError(err: unknown): boolean {
 export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string): AsyncGenerator<AgentEvent> {
   type Msg = { content?: unknown; tool_calls?: { name: string; args: Record<string, unknown> }[] };
   const MAX_ATTEMPTS = 3;
+  let lastAnswer = '';
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let answered = false;
     try {
@@ -104,10 +131,15 @@ export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string
             // results (also string content, no tool_calls) — never treat those as the answer.
             if (node !== 'tools' && (!m.tool_calls || m.tool_calls.length === 0) && typeof m.content === 'string' && m.content.trim()) {
               answered = true;
+              lastAnswer = m.content;
               yield { type: 'answer', text: m.content };
             }
           }
         }
+      }
+      // After a substantial generated answer, offer to store it on-chain.
+      if (isGenerative(question) && lastAnswer.trim().length > 200) {
+        yield { type: 'offer', kind: 'store', filename: suggestFilename(question), question: 'Want to store this on-chain (Walrus + Sui)?' };
       }
       return; // run completed
     } catch (err) {

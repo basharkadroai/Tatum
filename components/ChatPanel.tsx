@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic } from 'lucide-react';
+import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic, Database } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
@@ -11,7 +11,7 @@ import type { VaultItem } from '@/types/vault';
 import type { UploadEvent, UploadStep } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
 
-export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[] };
+export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[]; offer?: { kind: 'store'; filename: string; question: string; resolved?: boolean } };
 
 interface Props {
   resetKey: string;
@@ -159,7 +159,7 @@ export function ChatPanel({
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
-          let ev: { type: string; label?: string; text?: string; message?: string };
+          let ev: { type: string; label?: string; text?: string; message?: string; kind?: 'store'; filename?: string; question?: string };
           try { ev = JSON.parse(trimmed); } catch { continue; }
           const isFirst = !holderAdded;
           holderAdded = true;
@@ -172,6 +172,7 @@ export function ChatPanel({
             if (ev.type === 'step') { markPrevDone(steps); steps.push({ label: ev.label ?? 'Working', status: 'running' }); }
             else if (ev.type === 'answer') { markPrevDone(steps); last.text = ev.text ?? ''; }
             else if (ev.type === 'error') { markPrevDone(steps); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
+            else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) { last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?' }; }
             last.steps = steps;
             c[c.length - 1] = last;
             return c;
@@ -217,6 +218,18 @@ export function ChatPanel({
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx(c => (c === idx ? null : c)), 1600);
     } catch { /* ignore */ }
+  }
+
+  // Mark a store-offer as answered (the buttons disappear).
+  const resolveOffer = (i: number) =>
+    setMessages(ms => ms.map((mm, idx) => (idx === i && mm.offer ? { ...mm, offer: { ...mm.offer, resolved: true } } : mm)));
+  // "Store on-chain" → run the existing upload pipeline (Walrus + Sui via Tatum)
+  // on the generated content, reusing the same narrated flow as a file upload.
+  function storeGenerated(i: number) {
+    const m = messages[i];
+    if (!m?.offer || !uploadRunner || busy) return;
+    resolveOffer(i);
+    handleAttach(new File([m.text], m.offer.filename, { type: 'text/markdown' }));
   }
 
   // Attach a file from the chat and narrate the upload pipeline as an animated
@@ -493,6 +506,20 @@ export function ChatPanel({
                     <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
                   )}
                 </div>
+                {m.role === 'ai' && m.offer && !m.offer.resolved && uploadRunner && !busy && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', padding: '12px 14px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--off-white)', maxWidth: '440px' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-1)' }}>{m.offer.question}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'ui-monospace, monospace' }}>{m.offer.filename}</span>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
+                      <button onClick={() => storeGenerated(i)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, padding: '7px 12px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer' }}>
+                        <Database size={13} strokeWidth={2.2} /> Store on-chain
+                      </button>
+                      <button onClick={() => resolveOffer(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 12px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer' }}>
+                        Not now
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {m.role === 'ai' && !(m.steps && m.steps.length) && !(streaming && i === messages.length - 1) && (
                   <div style={{ display: 'flex', gap: '14px', marginTop: '4px' }}>
                     <button onClick={() => copyMsg(m.text, i)} style={copiedIdx === i ? { ...actionBtn, color: '#65ca9d' } : actionBtn}>

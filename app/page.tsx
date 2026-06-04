@@ -378,7 +378,20 @@ export default function Home() {
           )}
 
           {/* File list — only when expanded */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: sidebarExpanded ? '0 8px 12px' : '4px 8px 12px', transition: `padding 0.28s ${sidebarEase}` }}>
+          <div
+            style={{
+              flex: sidebarExpanded ? '1 1 auto' : '0 0 0px',
+              minHeight: 0,
+              maxHeight: sidebarExpanded ? '999px' : 0,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              padding: sidebarExpanded ? '0 8px 12px' : '0 8px',
+              opacity: sidebarExpanded ? 1 : 0,
+              transform: sidebarExpanded ? 'translateX(0)' : 'translateX(-8px)',
+              pointerEvents: sidebarExpanded ? 'auto' : 'none',
+              transition: `flex-basis 0.28s ${sidebarEase}, max-height 0.28s ${sidebarEase}, padding 0.28s ${sidebarEase}, opacity 0.16s ease, transform 0.28s ${sidebarEase}`,
+            }}
+          >
             {sidebarExpanded && hasVault && filtered.length === 0 && search && (
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
@@ -387,7 +400,6 @@ export default function Home() {
                 key={item.id}
                 item={item}
                 active={selected?.id === item.id}
-                collapsed={!sidebarExpanded}
                 onSelect={() => { setSelected(item); setMobileNavOpen(false); }}
               />
             ))}
