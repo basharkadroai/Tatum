@@ -237,12 +237,18 @@ export function ChatPanel({
       </div>
     </div>
   ) : (
-    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', border: '1px solid var(--border)', borderRadius: '16px', padding: '8px', background: 'var(--off-white)' }}>
+    // Desktop: Claude-style stacked card — textarea spans full width on top, controls
+    // sit on a row below so long, wrapping text never collides with the buttons.
+    <div style={{ border: '1px solid var(--border)', borderRadius: '16px', padding: '10px 14px 8px', background: 'var(--off-white)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
       {fileInput}
-      {plusBtn(36)}
-      {modelMenu}
-      {textarea(1, '14px', 'auto')}
-      {sendBtn(36, '10px')}
+      {textarea(1, '15px', 'auto')}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          {plusBtn(36)}
+          {modelMenu}
+        </div>
+        {sendBtn(36, '10px')}
+      </div>
     </div>
   );
 
