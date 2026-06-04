@@ -95,9 +95,24 @@ function stepLabel(tool: string, args: Record<string, unknown>): string {
 function isGenerative(question: string): boolean {
   return /\b(create|write|generate|make|build|draft|design|compose|code|script|prd|document|plan|spec|readme|guide|outline|essay|story|report)\b/i.test(question);
 }
-function suggestFilename(question: string): string {
+// Pick a sensible extension for the generated content (any text/code type).
+function detectExt(question: string, answer: string): string {
+  const inQ = question.match(/\.([a-z0-9]{1,5})\b/i);
+  if (inQ) return inQ[1].toLowerCase();
+  const kw: Record<string, string> = { python: 'py', javascript: 'js', typescript: 'ts', html: 'html', css: 'css', json: 'json', csv: 'csv', sql: 'sql', yaml: 'yml', markdown: 'md', readme: 'md', text: 'txt' };
+  const hay = (question + ' ' + answer.slice(0, 200)).toLowerCase();
+  for (const k of Object.keys(kw)) if (new RegExp(`\\b${k}\\b`).test(hay)) return kw[k];
+  const fence = answer.match(/```([a-z0-9]+)/i);
+  if (fence) {
+    const fm: Record<string, string> = { py: 'py', python: 'py', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', tsx: 'tsx', jsx: 'jsx', html: 'html', css: 'css', json: 'json', bash: 'sh', sh: 'sh', sql: 'sql', yaml: 'yml', yml: 'yml', go: 'go', rust: 'rs', markdown: 'md', md: 'md' };
+    const l = fence[1].toLowerCase();
+    if (fm[l]) return fm[l];
+  }
+  return 'md';
+}
+function suggestFilename(question: string, answer: string): string {
   const slug = question.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 6).join('-');
-  return `${slug || 'chainmind-note'}.md`;
+  return `${slug || 'chainmind-note'}.${detectExt(question, answer)}`;
 }
 
 // Groq Llama occasionally emits a malformed tool call → 400 "tool_use_failed".
@@ -110,8 +125,16 @@ function isToolFormatError(err: unknown): boolean {
 // Stream the agent loop as a sequence of chain events (steps, then the answer).
 // Retries the whole run a couple of times if Groq rejects a malformed tool call,
 // surfacing a "retrying" step so the chain stays honest about what happened.
-export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string): AsyncGenerator<AgentEvent> {
+export type ChatTurn = { role?: string; text?: string };
+export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string, history: ChatTurn[] = []): AsyncGenerator<AgentEvent> {
   type Msg = { content?: unknown; tool_calls?: { name: string; args: Record<string, unknown> }[] };
+  // Short-term memory: replay recent turns so the agent has context within the chat.
+  const priorMsgs = (Array.isArray(history) ? history : [])
+    .filter(m => m && (m.role === 'user' || m.role === 'ai') && m.text)
+    .slice(-8)
+    .map(m => ({ role: m.role === 'ai' ? ('assistant' as const) : ('user' as const), content: String(m.text) }));
+  const inputMessages = [...priorMsgs, { role: 'user' as const, content: question }];
+
   const MAX_ATTEMPTS = 3;
   let lastAnswer = '';
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -120,7 +143,7 @@ export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string
       // First attempt deterministic (temp 0); retries add a little heat so a
       // rare malformed tool call isn't reproduced identically.
       const agent = buildVaultAgent(docs, attempt === 1 ? 0 : 0.4);
-      const stream = await agent.stream({ messages: [{ role: 'user', content: question }] }, { streamMode: 'updates' });
+      const stream = await agent.stream({ messages: inputMessages }, { streamMode: 'updates' });
       for await (const chunk of stream) {
         for (const [node, value] of Object.entries(chunk) as [string, { messages?: Msg[] }][]) {
           for (const m of value?.messages ?? []) {
@@ -139,7 +162,7 @@ export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string
       }
       // After a substantial generated answer, offer to store it on-chain.
       if (isGenerative(question) && lastAnswer.trim().length > 200) {
-        yield { type: 'offer', kind: 'store', filename: suggestFilename(question), question: 'Want to store this on-chain (Walrus + Sui)?' };
+        yield { type: 'offer', kind: 'store', filename: suggestFilename(question, lastAnswer), question: 'Want to store this on-chain (Walrus + Sui)?' };
       }
       return; // run completed
     } catch (err) {

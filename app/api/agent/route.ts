@@ -5,16 +5,17 @@ import { streamVaultAgentEvents, VaultDoc } from '@/lib/agent';
 // NDJSON — one JSON event per line: {type:'step',...} for each action, then
 // {type:'answer',text} at the end. The UI renders the chain + final answer live.
 export async function POST(req: NextRequest) {
-  const { docs, question } = await req.json();
+  const { docs, question, history } = await req.json();
   if (!Array.isArray(docs) || !question || typeof question !== 'string') {
     return NextResponse.json({ error: 'Missing docs or question' }, { status: 400 });
   }
+  const turns = Array.isArray(history) ? history : [];
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        for await (const event of streamVaultAgentEvents(docs as VaultDoc[], question)) {
+        for await (const event of streamVaultAgentEvents(docs as VaultDoc[], question, turns)) {
           controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
         }
       } catch (err) {
