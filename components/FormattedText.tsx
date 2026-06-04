@@ -1,4 +1,37 @@
-import React from 'react';
+'use client';
+import React, { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
+
+// A code/file window: sidebar-colored (not navy), with a language label and a
+// copy button in the top-right. Works for any file type (html, md, py, …).
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* ignore */ }
+  };
+  return (
+    <div style={{ position: 'relative', margin: '8px 0', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--sidebar-bg)', overflow: 'hidden' }}>
+      {lang && (
+        <span style={{ position: 'absolute', top: '9px', left: '13px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.02em', color: 'var(--text-3)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{lang.toLowerCase()}</span>
+      )}
+      <button
+        onClick={copy} title="Copy"
+        style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 1, display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: copied ? '#65ca9d' : 'var(--text-2)', background: 'var(--off-white)', border: '1px solid var(--border)', borderRadius: '7px', padding: '4px 8px', cursor: 'pointer', transition: 'color 0.15s' }}
+        onMouseEnter={e => { if (!copied) e.currentTarget.style.color = 'var(--text-1)'; }}
+        onMouseLeave={e => { if (!copied) e.currentTarget.style.color = 'var(--text-2)'; }}
+      >
+        {copied ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
+      </button>
+      <pre style={{ margin: 0, padding: '34px 14px 14px', background: 'transparent', color: 'var(--text-1)', overflow: 'auto', fontSize: '12.5px', lineHeight: 1.5, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
 
 // Inline: **bold**, `code`, [citation] pills
 function renderInline(text: string, keyBase: string, onCitation?: (label: string) => void): React.ReactNode[] {
@@ -48,18 +81,11 @@ export function FormattedText({ text, onCitation }: { text: string; onCitation?:
   segments.forEach((segment, segIdx) => {
     const isCode = segIdx % 2 === 1;
     if (isCode) {
-      // Strip optional leading language identifier line
-      const body = segment.replace(/^[a-zA-Z0-9_-]*\n/, '');
-      out.push(
-        <pre key={`code-${segIdx}`} style={{
-          margin: '8px 0', padding: '12px 14px', borderRadius: '10px',
-          background: '#0f172a', color: '#e2e8f0', overflow: 'auto',
-          fontSize: '12.5px', lineHeight: 1.5,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        }}>
-          <code>{body}</code>
-        </pre>
-      );
+      // Capture + strip an optional leading language/file-type identifier line.
+      const langMatch = segment.match(/^([a-zA-Z0-9_+#-]+)\n/);
+      const lang = langMatch ? langMatch[1] : undefined;
+      const body = segment.replace(/^[a-zA-Z0-9_+#-]*\n/, '');
+      out.push(<CodeBlock key={`code-${segIdx}`} code={body} lang={lang} />);
       return;
     }
 
