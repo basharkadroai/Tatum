@@ -275,16 +275,17 @@ export default function Home() {
       {/* ── Sidebar — icon rail on desktop, slide-in drawer on mobile ── */}
       <aside style={isMobile ? {
         position: 'fixed', top: 0, left: 0, height: '100dvh', width: '280px', maxWidth: '85vw', zIndex: 50,
-        transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.25s ease',
+        transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
+        willChange: 'transform',
         display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
         overflow: 'hidden', boxShadow: mobileNavOpen ? '0 0 40px rgba(0,0,0,0.55)' : 'none',
       } : {
         width: sidebarOpen ? '264px' : '62px', flexShrink: 0, display: 'flex', flexDirection: 'column',
         borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
-        overflow: 'hidden', transition: 'width 0.2s ease',
+        overflow: 'hidden', transition: 'width 0.28s cubic-bezier(0.32, 0.72, 0, 1)', willChange: 'width',
       }}>
         {/* Brand + collapse/close toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', padding: sidebarOpen ? '16px 14px 12px' : '16px 0 12px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', padding: sidebarOpen ? '16px 14px 12px' : '16px 0 12px', flexShrink: 0, transition: 'padding 0.28s cubic-bezier(0.32, 0.72, 0, 1)' }}>
           {sidebarOpen && (
             <button onClick={() => { setSelected(null); setMobileNavOpen(false); }} title="Home" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
               ChainMind
