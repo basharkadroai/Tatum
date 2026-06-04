@@ -15,7 +15,7 @@ type DictOpts = { onTranscript: (text: string) => void; onError?: (code: string)
 let sharedCtx: AudioContext | null = null;
 function getCtx(): AudioContext {
   if (!sharedCtx) sharedCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
-  return sharedCtx;
+  return sharedCtx as AudioContext;
 }
 
 export function useDictation({ onTranscript, onError }: DictOpts) {
