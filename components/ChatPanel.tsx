@@ -5,6 +5,7 @@ import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
 import { ModelMenu } from './ModelMenu';
+import AgentMascot from './AgentMascot';
 import type { VaultItem } from '@/types/vault';
 import type { UploadEvent, UploadStep } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
@@ -30,12 +31,13 @@ interface Props {
   onCitation?: (label: string) => void;        // open a file when a [citation] pill is clicked
   aiConfig?: AiConfig | null;                   // BYOK: provider/model/key for chat
   onAiConfigChange?: (c: AiConfig | null) => void;  // in-prompt model switcher
+  agent?: boolean;                              // route through the LangChain agent (/api/agent) + show its activity chain
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, mobile, disabled,
-  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange,
+  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange, agent,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -112,7 +114,86 @@ export function ChatPanel({
     const history = messages.slice(-6);
     setMessages(m => [...m, { role: 'user', text: q }]);
     setInput('');
-    runCompletion(q, history);
+    (agent ? runAgent : runCompletion)(q, history);
+  }
+
+  // Agent mode: stream the agent's activity chain (/api/agent NDJSON) and render
+  // each action as a live step in the same chain the uploads use, then the answer.
+  async function runAgent(question: string, history: ChatMessage[]) {
+    setLoading(true);
+    setStreaming(false);
+    const ac = new AbortController();
+    abortRef.current = ac;
+    let holderAdded = false;
+    const markPrevDone = (steps: UploadStep[]) => {
+      for (let i = steps.length - 1; i >= 0; i--) {
+        if (steps[i].status === 'running') { steps[i] = { ...steps[i], status: 'done' }; break; }
+      }
+    };
+    try {
+      const res = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildBody(question, history)),
+        signal: ac.signal,
+      });
+      if (!res.ok || !res.body) {
+        setMessages(m => [...m, { role: 'ai', text: 'Failed to reach the agent. Please retry.' }]);
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let ev: { type: string; label?: string; text?: string; message?: string };
+          try { ev = JSON.parse(trimmed); } catch { continue; }
+          const isFirst = !holderAdded;
+          holderAdded = true;
+          if (isFirst) { setLoading(false); setStreaming(true); }
+          setMessages(m => {
+            const c = [...m];
+            if (isFirst) c.push({ role: 'ai', text: '', steps: [] });
+            const last = { ...c[c.length - 1] };
+            const steps = [...(last.steps ?? [])];
+            if (ev.type === 'step') { markPrevDone(steps); steps.push({ label: ev.label ?? 'Working', status: 'running' }); }
+            else if (ev.type === 'answer') { markPrevDone(steps); last.text = ev.text ?? ''; }
+            else if (ev.type === 'error') { markPrevDone(steps); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
+            last.steps = steps;
+            c[c.length - 1] = last;
+            return c;
+          });
+        }
+      }
+      // Finalize: close any still-running step; ensure there's an answer.
+      setMessages(m => {
+        if (!holderAdded) return [...m, { role: 'ai', text: 'No answer.' }];
+        const c = [...m];
+        const last = { ...c[c.length - 1] };
+        const steps = [...(last.steps ?? [])];
+        markPrevDone(steps);
+        if (!last.text) last.text = 'Done.';
+        last.steps = steps;
+        c[c.length - 1] = last;
+        return c;
+      });
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') {
+        setMessages(m => [...m, { role: 'ai', text: 'Failed to reach the agent.' }]);
+      }
+    } finally {
+      setLoading(false);
+      setStreaming(false);
+      abortRef.current = null;
+      setTimeout(() => taRef.current?.focus(), 50);
+    }
   }
   function stop() { abortRef.current?.abort(); setStreaming(false); setLoading(false); }
   function regenerate() {
@@ -385,11 +466,11 @@ export function ChatPanel({
               </div>
             ))}
             {loading && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-2)' }}>{aiLabel}</span>
-                <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                  {[0, 200, 400].map(d => (<div key={d} style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--text-3)', animation: `dotpulse 1.2s ease ${d}ms infinite` }} />))}
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <AgentMascot state="working" size={46} />
+                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-2)' }}>
+                  {agent ? 'On it…' : 'Thinking…'}
+                </span>
               </div>
             )}
             <div ref={endRef} />

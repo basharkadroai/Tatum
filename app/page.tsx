@@ -453,6 +453,7 @@ export default function Home() {
                   greeting={vault.length === 0 ? 'Upload a file to begin' : 'What do you want to know?'}
                   greetingIcon="/logo.png"
                   endpoint="/api/ask-vault"
+                  agent
                   buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), question, history })}
                   suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}

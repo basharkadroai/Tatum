@@ -1,17 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runVaultAgent, VaultDoc } from '@/lib/agent';
+import { streamVaultAgentEvents, VaultDoc } from '@/lib/agent';
 
-// Step 1 of the ChainMind agent: read-only. Takes the user's vault docs + a
-// question, runs the LangChain/Groq agent loop, returns the final answer.
+// ChainMind agent (step 1: read-only). Streams the agent's activity chain as
+// NDJSON — one JSON event per line: {type:'step',...} for each action, then
+// {type:'answer',text} at the end. The UI renders the chain + final answer live.
 export async function POST(req: NextRequest) {
   const { docs, question } = await req.json();
   if (!Array.isArray(docs) || !question || typeof question !== 'string') {
     return NextResponse.json({ error: 'Missing docs or question' }, { status: 400 });
   }
-  try {
-    const answer = await runVaultAgent(docs as VaultDoc[], question);
-    return NextResponse.json({ answer });
-  } catch (err) {
-    return NextResponse.json({ error: `Agent failed: ${String(err).slice(0, 200)}` }, { status: 500 });
-  }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const event of streamVaultAgentEvents(docs as VaultDoc[], question)) {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
+        }
+      } catch (err) {
+        controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message: String(err).slice(0, 200) }) + '\n'));
+      }
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
 }
