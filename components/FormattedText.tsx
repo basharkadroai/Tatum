@@ -95,7 +95,9 @@ export function FormattedText({ text, onCitation }: { text: string; onCitation?:
     // Prose: line-by-line
     const lines = segment.split('\n');
     let bullets: { ordered: boolean; items: string[] } | null = null;
-    const flush = (key: string) => {
+    let table: string[] | null = null;
+
+    const flushBullets = (key: string) => {
       if (!bullets) return;
       const items = bullets.items;
       out.push(
@@ -112,20 +114,61 @@ export function FormattedText({ text, onCitation }: { text: string; onCitation?:
       bullets = null;
     };
 
+    // Markdown tables → a real <table> (so | … | rows don't show as raw text).
+    const sepRe = /^\|?[\s:|-]*-[\s:|-]*\|?$/;
+    const cellsOf = (r: string) => r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+    const flushTable = (key: string) => {
+      if (!table) return;
+      const rows = table;
+      table = null;
+      const header = cellsOf(rows[0]);
+      const dataRows = rows.slice(1).filter(r => !sepRe.test(r.trim()));
+      out.push(
+        <div key={key} style={{ overflowX: 'auto', margin: '8px 0' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '13px' }}>
+            <thead>
+              <tr>{header.map((h, i) => <th key={i} style={{ textAlign: 'left', padding: '6px 11px', borderBottom: '1px solid var(--border-2)', fontWeight: 700, color: 'var(--text-1)' }}>{renderInline(h, `${key}-h${i}`, onCitation)}</th>)}</tr>
+            </thead>
+            <tbody>
+              {dataRows.map((r, ri) => (
+                <tr key={ri}>{cellsOf(r).map((c, ci) => <td key={ci} style={{ padding: '6px 11px', borderBottom: '1px solid var(--border)', verticalAlign: 'top', color: 'var(--text-2)' }}>{renderInline(c, `${key}-r${ri}c${ci}`, onCitation)}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    };
+
     lines.forEach((line, idx) => {
       const t = line.trim();
       const key = `s${segIdx}-l${idx}`;
+      const isRow = /^\|.*\|$/.test(t);
+      const nextTrim = (lines[idx + 1] ?? '').trim();
+
+      // Accumulate / close table blocks first.
+      if (table) {
+        if (isRow) { table.push(t); return; }
+        flushTable(`${key}-pre`);
+      } else if (isRow && sepRe.test(nextTrim) && nextTrim.includes('-')) {
+        flushBullets(`${key}-pre`);
+        table = [t];
+        return;
+      }
+
       const heading = t.match(/^(#{1,3})\s+(.*)$/);
       const numbered = t.match(/^\d+\.\s+(.*)$/);
 
-      if (t.startsWith('- ') || t.startsWith('* ')) {
-        if (!bullets || bullets.ordered) { flush(`${key}-pre`); bullets = { ordered: false, items: [] }; }
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) {
+        flushBullets(`${key}-pre`);
+        out.push(<hr key={key} style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '12px 0' }} />);
+      } else if (t.startsWith('- ') || t.startsWith('* ')) {
+        if (!bullets || bullets.ordered) { flushBullets(`${key}-pre`); bullets = { ordered: false, items: [] }; }
         bullets.items.push(t.slice(2));
       } else if (numbered) {
-        if (!bullets || !bullets.ordered) { flush(`${key}-pre`); bullets = { ordered: true, items: [] }; }
+        if (!bullets || !bullets.ordered) { flushBullets(`${key}-pre`); bullets = { ordered: true, items: [] }; }
         bullets.items.push(numbered[1]);
       } else {
-        flush(`${key}-pre`);
+        flushBullets(`${key}-pre`);
         if (heading) {
           const level = heading[1].length;
           const size = level === 1 ? '16px' : level === 2 ? '14.5px' : '13px';
@@ -135,7 +178,8 @@ export function FormattedText({ text, onCitation }: { text: string; onCitation?:
         }
       }
     });
-    flush(`s${segIdx}-final`);
+    flushBullets(`s${segIdx}-final`);
+    flushTable(`s${segIdx}-finalt`);
   });
 
   return <>{out}</>;
