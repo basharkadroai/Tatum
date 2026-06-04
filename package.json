@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@animateicons/react": "^0.3.3",
+    "@langchain/groq": "^1.2.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@mysten/dapp-kit": "^1.0.6",
     "@mysten/sui": "^2.17.0",
     "@mysten/walrus": "^1.1.7",
     "@tanstack/react-query": "^5.100.14",
+    "langchain": "^1.4.4",
     "lucide-react": "^1.17.0",
     "mammoth": "^1.12.0",
     "motion": "^12.40.0",
