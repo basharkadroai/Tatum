@@ -268,6 +268,9 @@ export default function Home() {
   });
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
   const allTags = Array.from(new Set(vault.flatMap(i => i.tags || []))).slice(0, 12);
+  const sidebarExpanded = isMobile || sidebarOpen;
+  const hasVault = vault.length > 0;
+  const sidebarEase = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--base)' }}>
@@ -280,21 +283,32 @@ export default function Home() {
         display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
         overflow: 'hidden', boxShadow: mobileNavOpen ? '0 0 40px rgba(0,0,0,0.55)' : 'none',
       } : {
-        width: sidebarOpen ? '264px' : '62px', flexShrink: 0, display: 'flex', flexDirection: 'column',
+        width: sidebarExpanded ? '264px' : '62px', flexShrink: 0, display: 'flex', flexDirection: 'column',
         borderRight: '1px solid var(--border)', background: 'var(--sidebar-bg)',
-        overflow: 'hidden', transition: 'width 0.28s cubic-bezier(0.32, 0.72, 0, 1)', willChange: 'width',
+        overflow: 'hidden', transition: `width 0.28s ${sidebarEase}`, willChange: 'width',
       }}>
         {/* Brand + collapse/close toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', padding: sidebarOpen ? '16px 14px 12px' : '16px 0 12px', flexShrink: 0, transition: 'padding 0.28s cubic-bezier(0.32, 0.72, 0, 1)' }}>
-          {sidebarOpen && (
-            <button onClick={() => { setSelected(null); setMobileNavOpen(false); }} title="Home" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
-              ChainMind
-            </button>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: sidebarExpanded ? '8px' : 0, padding: sidebarExpanded ? '16px 14px 12px' : '16px 13px 12px', flexShrink: 0, transition: `gap 0.28s ${sidebarEase}, padding 0.28s ${sidebarEase}` }}>
+          <button
+            onClick={() => { setSelected(null); setMobileNavOpen(false); }}
+            title="Home"
+            aria-hidden={!sidebarExpanded}
+            tabIndex={sidebarExpanded ? 0 : -1}
+            style={{
+              background: 'none', border: 'none', cursor: sidebarExpanded ? 'pointer' : 'default', padding: 0,
+              fontWeight: 700, fontSize: '18px', color: 'var(--text-1)', textAlign: 'left',
+              width: sidebarExpanded ? '154px' : 0, opacity: sidebarExpanded ? 1 : 0,
+              transform: sidebarExpanded ? 'translateX(0)' : 'translateX(-8px)',
+              overflow: 'hidden', whiteSpace: 'nowrap', pointerEvents: sidebarExpanded ? 'auto' : 'none',
+              transition: `width 0.28s ${sidebarEase}, opacity 0.16s ease, transform 0.28s ${sidebarEase}`,
+            }}
+          >
+            ChainMind
+          </button>
           <button
             onClick={() => { if (isMobile) setMobileNavOpen(false); else setSidebarOpen(o => !o); }}
-            title={isMobile ? 'Close menu' : sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer' }}
+            title={isMobile ? 'Close menu' : sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0 }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
           >
@@ -302,8 +316,9 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Search */}
-        {sidebarOpen && vault.length > 0 && (
+        <div className="sidebar-middle sidebar-reveal" data-expanded={sidebarExpanded ? 'true' : 'false'}>
+          {/* Search */}
+          {hasVault && (
             <div style={{ padding: '12px 14px 10px' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={13} strokeWidth={2} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
@@ -323,7 +338,7 @@ export default function Home() {
           )}
 
           {/* File list label + storage stat */}
-          {sidebarOpen && vault.length > 0 && (
+          {hasVault && (
             <div style={{ padding: '4px 16px 6px' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
@@ -360,10 +375,10 @@ export default function Home() {
 
           {/* File list — only when expanded */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
-            {sidebarOpen && filtered.length === 0 && search && (
+            {hasVault && filtered.length === 0 && search && (
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
-            {sidebarOpen && filtered.map(item => (
+            {hasVault && filtered.map(item => (
               <FileListItem
                 key={item.id}
                 item={item}
@@ -374,8 +389,7 @@ export default function Home() {
           </div>
 
           {/* Restore vault from chain (read-only, by owner address) */}
-          {sidebarOpen && (
-            <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
+          <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
               {!restoreOpen ? (
                 <button
                   onClick={() => { setRestoreOpen(true); setRestoreAddr(account?.address || ''); setRestoreMsg(''); }}
@@ -409,12 +423,12 @@ export default function Home() {
                   {restoreMsg && <p style={{ fontSize: '11px', color: 'var(--text-3)', margin: '2px 2px 0' }}>{restoreMsg}</p>}
                 </div>
               )}
-            </div>
-          )}
+          </div>
+        </div>
 
           {/* Profile (wallet) */}
-          <div style={{ padding: sidebarOpen ? '8px 10px 10px' : '8px 8px 10px', borderTop: '1px solid var(--border)', flexShrink: 0, marginTop: '8px' }}>
-            <WalletProfile collapsed={!sidebarOpen} />
+          <div style={{ padding: sidebarExpanded ? '8px 10px 10px' : '8px 8px 10px', borderTop: '1px solid var(--border)', flexShrink: 0, marginTop: '8px', transition: `padding 0.28s ${sidebarEase}` }}>
+            <WalletProfile collapsed={!sidebarExpanded} />
           </div>
         </aside>
 

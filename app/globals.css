@@ -31,6 +31,7 @@
   --error-border:#4d3a31;
 
   --hover:       #2a2926;
+  --sidebar-motion: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @theme inline {
@@ -78,6 +79,32 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
 .file-item:hover { background: var(--hover); }
 .file-item.active { background: var(--purple-bg); }
 
+.sidebar-middle {
+  flex: 1;
+  min-height: 0;
+  min-width: 232px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-reveal {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  transition:
+    opacity 0.18s ease 0.05s,
+    transform 0.28s var(--sidebar-motion);
+}
+
+.sidebar-reveal[data-expanded="false"] {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  transition-delay: 0s;
+}
+
 .lucide-spin { animation: spin 0.8s linear infinite; }
 
 /* Single-line tag strip: scrolls horizontally, no visible scrollbar */
@@ -96,5 +123,11 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
     overflow-y: auto !important;
     overscroll-behavior: contain;
     padding: 12px 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-reveal {
+    transition: none;
   }
 }

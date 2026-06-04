@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus } from 'lucide-react';
+import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
 import { ModelMenu } from './ModelMenu';
 import AgentMascot from './AgentMascot';
+import { useDictation, Waveform } from './dictation';
 import type { VaultItem } from '@/types/vault';
 import type { UploadEvent, UploadStep } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
@@ -48,6 +49,11 @@ export function ChatPanel({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Voice input (hold-to-talk): streams text into the box as you speak.
+  const baseRef = useRef('');
+  const dict = useDictation({
+    onTranscript: t => setInput((baseRef.current ? baseRef.current + ' ' : '') + t),
+  });
 
   useEffect(() => { setMessages([]); setInput(''); abortRef.current?.abort(); }, [resetKey]);
   useEffect(() => { onEmptyChange?.(messages.length === 0 && !loading && !streaming); }, [messages.length, loading, streaming, onEmptyChange]);
@@ -287,6 +293,25 @@ export function ChatPanel({
       opacity: input.trim() && !disabled ? 1 : 0.4, transition: 'opacity 0.15s',
     }}><MotionIcon icon={ArrowUp} mode="bob" size={Math.round(sz / 2.3)} strokeWidth={2.5} color="currentColor" /></button>
   );
+  // Hold-to-talk mic: press to start, release (anywhere) to stop.
+  const micBtn = (sz: number, radius: string) => (
+    <button
+      title={dict.recording ? 'Release to stop' : 'Hold to talk'}
+      disabled={disabled || busy}
+      onPointerDown={e => { e.preventDefault(); if (disabled || busy) return; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ } baseRef.current = input.trim(); dict.start(); }}
+      onPointerUp={() => { if (dict.recording) dict.stop(); }}
+      onPointerCancel={() => { if (dict.recording) dict.stop(); }}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: `${sz}px`, height: `${sz}px`, borderRadius: radius, flexShrink: 0, touchAction: 'none',
+        background: dict.recording ? 'rgba(101,202,157,0.18)' : 'transparent',
+        border: '1px solid var(--border)', color: dict.recording ? '#65ca9d' : 'var(--text-2)',
+        cursor: disabled || busy ? 'default' : 'pointer', transition: 'background 0.15s, color 0.15s',
+      }}
+      onMouseEnter={e => { if (!disabled && !busy && !dict.recording) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; } }}
+      onMouseLeave={e => { if (!dict.recording) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; } }}
+    ><Mic size={Math.round(sz / 2.1)} strokeWidth={2.2} /></button>
+  );
   const textarea = (rows: number, fontSize: string, minHeight: string) => (
     <textarea
       ref={taRef} value={input} rows={rows} disabled={disabled}
@@ -314,12 +339,16 @@ export function ChatPanel({
     <div style={{ border: '1px solid var(--border)', borderRadius: '24px', padding: '14px 16px 10px', background: 'var(--off-white)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
       {fileInput}
       {textarea(2, '16px', '48px')}
+      {dict.recording && <Waveform analyser={dict.analyser} height={32} />}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           {plusBtn(40)}
           {modelMenu}
         </div>
-        {sendBtn(44, '50%')}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {micBtn(44, '50%')}
+          {sendBtn(44, '50%')}
+        </div>
       </div>
     </div>
   ) : (
@@ -328,12 +357,16 @@ export function ChatPanel({
     <div style={{ border: '1px solid var(--border)', borderRadius: '16px', padding: '10px 14px 8px', background: 'var(--off-white)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
       {fileInput}
       {textarea(1, '15px', 'auto')}
+      {dict.recording && <Waveform analyser={dict.analyser} height={30} />}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           {plusBtn(36)}
           {modelMenu}
         </div>
-        {sendBtn(36, '10px')}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {micBtn(36, '10px')}
+          {sendBtn(36, '10px')}
+        </div>
       </div>
     </div>
   );
