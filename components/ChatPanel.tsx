@@ -439,9 +439,14 @@ export function ChatPanel({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '760px', margin: '0 auto' }}>
             {messages.map((m, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', animation: 'fadeUp 0.2s ease' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', color: m.role === 'user' ? 'var(--text-3)' : 'var(--text-2)' }}>
-                  {m.role === 'user' ? 'You' : aiLabel}
-                </span>
+                {m.role === 'user' ? (
+                  <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', color: 'var(--text-3)' }}>You</span>
+                ) : (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', color: 'var(--text-2)' }}>
+                    <AgentMascot size={22} state={(streaming || loading) && i === messages.length - 1 ? 'working' : 'idle'} />
+                    {aiLabel}
+                  </span>
+                )}
                 <div style={{
                   fontSize: '14px', lineHeight: '1.7', color: 'var(--text-1)',
                   background: m.role === 'user' ? 'var(--off-white)' : 'transparent',
@@ -466,11 +471,12 @@ export function ChatPanel({
               </div>
             ))}
             {loading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <AgentMascot state="working" size={46} />
-                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-2)' }}>
-                  {agent ? 'On it…' : 'Thinking…'}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', color: 'var(--text-2)' }}>
+                  <AgentMascot size={22} state="working" />
+                  {aiLabel}
                 </span>
+                <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>{agent ? 'On it…' : 'Thinking…'}</span>
               </div>
             )}
             <div ref={endRef} />
