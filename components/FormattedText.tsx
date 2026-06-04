@@ -35,11 +35,14 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 
 // Inline: **bold**, `code`, [citation] pills
 function renderInline(text: string, keyBase: string, onCitation?: (label: string) => void): React.ReactNode[] {
-  // Split on bold and inline-code, keeping delimiters
-  const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  // Split on bold, italic and inline-code, keeping delimiters
+  const tokens = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`)/g);
   return tokens.flatMap((tok, i) => {
     if (tok.startsWith('**') && tok.endsWith('**')) {
       return [<strong key={`${keyBase}-b${i}`}>{tok.slice(2, -2)}</strong>];
+    }
+    if (tok.startsWith('*') && tok.endsWith('*') && tok.length > 2) {
+      return [<em key={`${keyBase}-i${i}`}>{tok.slice(1, -1)}</em>];
     }
     if (tok.startsWith('`') && tok.endsWith('`') && tok.length > 1) {
       return [

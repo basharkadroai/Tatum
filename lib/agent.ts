@@ -47,7 +47,10 @@ export function buildVaultAgent(docs: VaultDoc[], temperature = 0) {
     systemPrompt:
       "You are ChainMind's assistant. The user owns files stored on-chain. " +
       'When a question is about their files, ALWAYS call search_vault first, then answer ' +
-      'using only the tool results. Trust the tool output. Be concise.',
+      'using only the tool results. Trust the tool output. Be concise. ' +
+      'Whenever you mention a file from the vault, write its exact name in SQUARE BRACKETS, ' +
+      'e.g. [Day 0-4 Lessons.txt], so it renders as a clickable link. ' +
+      'Never wrap file names in asterisks or quotes.',
   });
 }
 

@@ -438,10 +438,8 @@ export function ChatPanel({
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '760px', margin: '0 auto' }}>
             {messages.map((m, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', animation: 'fadeUp 0.2s ease' }}>
-                {m.role === 'user' ? (
-                  <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', color: 'var(--text-3)' }}>You</span>
-                ) : (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: m.role === 'user' ? 'flex-end' : 'stretch', animation: 'fadeUp 0.2s ease' }}>
+                {m.role === 'ai' && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', color: 'var(--text-2)' }}>
                     <AgentMascot size={22} state={(streaming || loading) && i === messages.length - 1 ? 'working' : 'idle'} />
                     {aiLabel}
@@ -451,8 +449,10 @@ export function ChatPanel({
                   fontSize: '14px', lineHeight: '1.7', color: 'var(--text-1)',
                   background: m.role === 'user' ? 'var(--off-white)' : 'transparent',
                   border: m.role === 'user' ? '1px solid var(--border)' : 'none',
-                  borderRadius: m.role === 'user' ? '12px' : 0,
+                  borderRadius: m.role === 'user' ? '14px' : 0,
                   padding: m.role === 'user' ? '10px 14px' : 0,
+                  maxWidth: m.role === 'user' ? '80%' : undefined,
+                  whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
                   {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} />}
                   {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} onCitation={onCitation} /> : null) : m.text}
