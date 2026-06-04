@@ -316,9 +316,10 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="sidebar-middle sidebar-reveal" data-expanded={sidebarExpanded ? 'true' : 'false'}>
+        <div className="sidebar-middle" data-expanded={sidebarExpanded ? 'true' : 'false'}>
           {/* Search */}
           {hasVault && (
+            <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
             <div style={{ padding: '12px 14px 10px' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={13} strokeWidth={2} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
@@ -335,10 +336,12 @@ export default function Home() {
                 />
               </div>
             </div>
+            </div>
           )}
 
           {/* File list label + storage stat */}
           {hasVault && (
+            <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
             <div style={{ padding: '4px 16px 6px' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
@@ -371,11 +374,12 @@ export default function Home() {
                 )
               )}
             </div>
+            </div>
           )}
 
           {/* File list — only when expanded */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
-            {hasVault && filtered.length === 0 && search && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: sidebarExpanded ? '0 8px 12px' : '4px 8px 12px', transition: `padding 0.28s ${sidebarEase}` }}>
+            {sidebarExpanded && hasVault && filtered.length === 0 && search && (
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
             {hasVault && filtered.map(item => (
@@ -383,12 +387,14 @@ export default function Home() {
                 key={item.id}
                 item={item}
                 active={selected?.id === item.id}
+                collapsed={!sidebarExpanded}
                 onSelect={() => { setSelected(item); setMobileNavOpen(false); }}
               />
             ))}
           </div>
 
           {/* Restore vault from chain (read-only, by owner address) */}
+          <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
           <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
               {!restoreOpen ? (
                 <button
@@ -423,6 +429,7 @@ export default function Home() {
                   {restoreMsg && <p style={{ fontSize: '11px', color: 'var(--text-3)', margin: '2px 2px 0' }}>{restoreMsg}</p>}
                 </div>
               )}
+          </div>
           </div>
         </div>
 

@@ -82,24 +82,27 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
 .sidebar-middle {
   flex: 1;
   min-height: 0;
-  min-width: 232px;
   width: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.sidebar-reveal {
+.sidebar-expanded-panel {
   opacity: 1;
+  max-height: 180px;
   transform: translateX(0);
   pointer-events: auto;
+  overflow: hidden;
   transition:
+    max-height 0.28s var(--sidebar-motion),
     opacity 0.18s ease 0.05s,
     transform 0.28s var(--sidebar-motion);
 }
 
-.sidebar-reveal[data-expanded="false"] {
+.sidebar-expanded-panel[data-expanded="false"] {
   opacity: 0;
+  max-height: 0;
   transform: translateX(-8px);
   pointer-events: none;
   transition-delay: 0s;
@@ -127,7 +130,7 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-reveal {
+  .sidebar-expanded-panel {
     transition: none;
   }
 }
