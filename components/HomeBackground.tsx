@@ -23,6 +23,10 @@ export function HomeBackground({ mode = 'hero' }: { mode?: 'hero' | 'chat' }) {
       ) : (
         <video
           autoPlay muted loop playsInline preload="metadata" poster="/bg-poster.jpg"
+          disableRemotePlayback
+          // Opening the mic can make the browser briefly pause media while it
+          // re-inits the audio device; resume immediately so it doesn't stall.
+          onPause={e => { const v = e.currentTarget; if (!v.ended) v.play().catch(() => {}); }}
           style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.95 }}
         >
           <source src="/bg.mp4" type="video/mp4" />

@@ -126,9 +126,12 @@ export function Waveform({ analyser, color = '#ffffff', height = 30 }: { analyse
     const data = new Uint8Array(analyser.fftSize);
     hist.current = [];
     let raf = 0;
-    const spacing = 4; // px between bars
-    const barW = 2;
-    const draw = () => {
+    let lastPush = 0;
+    let peak = 0;
+    const spacing = 6;    // px between bars (wider = calmer)
+    const barW = 2.5;
+    const interval = 70;  // ms between new bars → slow, readable scroll
+    const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -136,23 +139,23 @@ export function Waveform({ analyser, color = '#ffffff', height = 30 }: { analyse
         canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
-      // Current amplitude (RMS of the time-domain signal).
+      // Amplitude: blend RMS (loudness) and peak, with high gain so quiet speech shows.
       analyser.getByteTimeDomainData(data);
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) { const x = (data[i] - 128) / 128; sum += x * x; }
-      const level = Math.min(1, Math.sqrt(sum / data.length) * 3.2);
+      let sum = 0, mx = 0;
+      for (let i = 0; i < data.length; i++) { const x = Math.abs((data[i] - 128) / 128); sum += x * x; if (x > mx) mx = x; }
+      const rms = Math.sqrt(sum / data.length);
+      const level = Math.min(1, Math.max(rms * 6.5, mx * 1.6));
+      if (level > peak) peak = level;
 
       const n = Math.max(8, Math.floor(w / spacing));
       const arr = hist.current;
-      arr.push(level);
-      while (arr.length > n) arr.shift();
+      if (now - lastPush >= interval) { arr.push(peak); while (arr.length > n) arr.shift(); lastPush = now; peak = 0; }
 
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = color;
       const mid = h / 2;
       for (let i = 0; i < arr.length; i++) {
-        const v = arr[i];
-        const bh = Math.max(2, v * (h - 2));
+        const bh = Math.max(2.5, arr[i] * (h - 3));
         const x = w - (arr.length - i) * spacing; // newest on the right, scrolls left
         if (x < -barW) continue;
         ctx.beginPath();
@@ -160,7 +163,7 @@ export function Waveform({ analyser, color = '#ffffff', height = 30 }: { analyse
         ctx.fill();
       }
     };
-    draw();
+    raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
   }, [analyser, color]);
   return <canvas ref={ref} style={{ width: '100%', height: `${height}px`, display: 'block' }} />;
