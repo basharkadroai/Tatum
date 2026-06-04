@@ -8,6 +8,7 @@ import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
+import AgentMascot from '@/components/AgentMascot';
 import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
 import { selectVaultDocs } from '@/lib/retrieve';
@@ -287,7 +288,8 @@ export default function Home() {
         {/* Brand + collapse/close toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', padding: sidebarOpen ? '16px 14px 12px' : '16px 0 12px', flexShrink: 0, transition: 'padding 0.28s cubic-bezier(0.32, 0.72, 0, 1)' }}>
           {sidebarOpen && (
-            <button onClick={() => { setSelected(null); setMobileNavOpen(false); }} title="Home" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
+            <button onClick={() => { setSelected(null); setMobileNavOpen(false); }} title="Home" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
+              <AgentMascot size={26} state="idle" />
               ChainMind
             </button>
           )}
