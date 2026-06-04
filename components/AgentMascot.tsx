@@ -1,14 +1,13 @@
 'use client';
 // ChainMind's agent character — an original blocky-green pixel creature, animated
-// frame-by-frame (a real sprite/flipbook, not a tweened static icon). Frames are
-// laid out as a horizontal strip and advanced with CSS steps(), the standard 2026
-// technique for pixel-art character animation.
-//   • idle    → breathes/blinks (alive)
-//   • working → hops like it got a notification, then turns to its LEFT side and
-//               types at a laptop (screen flickers)
-// Each frame is a 16×16 pixel map. G green · E face(dark) · S screen · W glow · K keys
+// frame-by-frame (a real sprite/flipbook advanced with CSS steps()).
+//   • idle    → breathes/blinks (front view — DO NOT change, this look is approved)
+//   • working → the SAME creature turns left through in-between frames, then types
+//               at a (big) laptop, then turns back. One continuous, connected motion.
+// 16×16 maps. G green · E face(dark) · S screen · W glow · K keyboard
 type State = 'idle' | 'working';
 
+// ── Front view (approved look) ──
 const NEUTRAL = [
   '   GG      GG   ',
   '   GG      GG   ',
@@ -27,54 +26,70 @@ const NEUTRAL = [
   '                ',
   '                ',
 ];
-
-// Blink: top half of the eyes filled in (eyes look shut for one frame).
 const BLINK = NEUTRAL.map((r, i) => (i === 5 ? '  GGGGGGGGGGGG  ' : r));
 
-// Hop: raised, eyes wide, mouth open — startled by a "notification".
-const HOP = [
-  '  GGGGGGGGGGGG  ',
-  '  GGGGGGGGGGGG  ',
-  '  GGGGGGGGGGGG  ',
-  '  GGEEGGGGEEGG  ',
-  '  GGEEGGGGEEGG  ',
-  '  GGEEGGGGEEGG  ',
-  '  GGGGGGGGGGGG  ',
-  '  GGGGEEEEGGGG  ',
-  '  GGGGGGGGGGGG  ',
-  '  GGGGGGGGGGGG  ',
+// ── Turn frames: SAME creature, eyes/mouth shift left as it rotates ──
+const TURN1 = [
   '   GG      GG   ',
   '   GG      GG   ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GEEGGGGEEGGG  ',
+  '  GEEGGGGEEGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGEEGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGG      GGG  ',
+  '  GGG      GGG  ',
   '                ',
   '                ',
+];
+const TURN2 = [
+  '   GG     GG    ',
+  '   GG     GG    ',
+  '  GGGGGGGGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GEEGGEEGGGG   ',
+  '  GEEGGEEGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GGGEEGGGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GGG     GGG   ',
+  '  GGG     GGG   ',
   '                ',
   '                ',
 ];
 
-// Left profile, typing at a laptop on its left side.
-const LEFT_A = [
-  '                ',
-  '         GGGG   ',
-  '        GGGGGG  ',
-  '        EGGGGG  ',
-  '        GGGGGG  ',
-  '   SSSSS GGGGG  ',
-  '   SSSSS GGGGG  ',
-  '   SSSSS GGGGG  ',
-  '  KKKKKKGGGGGG  ',
-  '        GGGGGG  ',
-  '        GG  GG  ',
-  '        GG  GG  ',
-  '                ',
-  '                ',
+// ── Working: same (turned) creature behind a big laptop, typing ──
+const WORK_A = [
+  '   GG     GG    ',
+  '   GG     GG    ',
+  '  GGGGGGGGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GEEGGEEGGGG   ',
+  '  GGGGGGGGGGG   ',
+  '  GGGGGGGGGGG   ',
+  ' SSSSSSSGGGGG   ',
+  ' SSSSSSSGGGGG   ',
+  ' SSSSSSSGGGGG   ',
+  'KKKKKKKKKGGGG   ',
+  'KKKKKKKKKGGGG   ',
+  '  GG      GGG   ',
+  '  GG      GGG   ',
   '                ',
   '                ',
 ];
-// Typing frame B: screen glows + body bobs up a pixel.
-const LEFT_B = LEFT_A.map((r, i) => (i === 6 ? '   SWWWS GGGGG  ' : r));
+const WORK_B = WORK_A.map((r, i) => (i === 8 ? ' SWWWWWSGGGGG   ' : r));
 
 const IDLE = [NEUTRAL, NEUTRAL, NEUTRAL, NEUTRAL, NEUTRAL, BLINK];
-const WORK = [HOP, LEFT_A, LEFT_B, LEFT_A, LEFT_B];
+// Turn in → type → turn back, looping from the exact front pose (connected motion).
+const WORK = [NEUTRAL, TURN1, TURN2, WORK_A, WORK_B, WORK_A, WORK_B, WORK_A, WORK_B, TURN2, TURN1];
 
 export default function AgentMascot({
   size = 28,
@@ -87,10 +102,10 @@ export default function AgentMascot({
 }) {
   const P: Record<string, string> = {
     G: color,
-    E: '#15201b', // face (dark)
-    S: '#20302a', // laptop screen
-    W: '#c5f3da', // screen glow
-    K: '#2f7d5e', // keyboard
+    E: '#15201b',
+    S: '#20302a',
+    W: '#c5f3da',
+    K: '#2f7d5e',
   };
   const working = state === 'working';
   const frames = working ? WORK : IDLE;
@@ -102,7 +117,7 @@ export default function AgentMascot({
     ),
   );
 
-  const dur = working ? 1.6 : 2.6;
+  const dur = working ? (WORK.length * 0.32).toFixed(2) : '2.6';
   const animName = working ? 'cmm-work' : 'cmm-idle';
 
   return (
