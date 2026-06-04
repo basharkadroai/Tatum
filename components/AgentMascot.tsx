@@ -1,29 +1,80 @@
 'use client';
-// ChainMind's agent character — a pixel-art CHAIN LINK creature (on-brand: a single
-// chunky link with a face). Same green + pixel style. Articulated motion: it hangs
-// and sways like a real link — a slow gentle sway when idle, a livelier sway plus a
-// pulsing glow when the agent is working.
+// ChainMind's agent character — an original blocky-green pixel creature, animated
+// frame-by-frame (a real sprite/flipbook, not a tweened static icon). Frames are
+// laid out as a horizontal strip and advanced with CSS steps(), the standard 2026
+// technique for pixel-art character animation.
+//   • idle    → breathes/blinks (alive)
+//   • working → hops like it got a notification, then turns to its LEFT side and
+//               types at a laptop (screen flickers)
+// Each frame is a 16×16 pixel map. G green · E face(dark) · S screen · W glow · K keys
 type State = 'idle' | 'working';
 
-// 16×16 link. G green · H highlight · D shade · E eye · W eye-shine
-const LINK = [
+const NEUTRAL = [
+  '   GG      GG   ',
+  '   GG      GG   ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGEEGGGGEEGG  ',
+  '  GGEEGGGGEEGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGEEGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGG      GGG  ',
+  '  GGG      GGG  ',
   '                ',
-  '      GGGG      ',
-  '    HGGGGGGD    ',
-  '    GWGGGGWG    ',
-  '    GEGGGGEG    ',
-  '    GGGGGGGG    ',
-  '    GG    GD    ',
-  '    GG    GD    ',
-  '    GG    GD    ',
-  '    GGGGGGGG    ',
-  '     GGGGGG     ',
-  '      GGGG      ',
+  '                ',
+];
+
+// Blink: top half of the eyes filled in (eyes look shut for one frame).
+const BLINK = NEUTRAL.map((r, i) => (i === 5 ? '  GGGGGGGGGGGG  ' : r));
+
+// Hop: raised, eyes wide, mouth open — startled by a "notification".
+const HOP = [
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGEEGGGGEEGG  ',
+  '  GGEEGGGGEEGG  ',
+  '  GGEEGGGGEEGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGEEEEGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '  GGGGGGGGGGGG  ',
+  '   GG      GG   ',
+  '   GG      GG   ',
   '                ',
   '                ',
   '                ',
   '                ',
 ];
+
+// Left profile, typing at a laptop on its left side.
+const LEFT_A = [
+  '                ',
+  '         GGGG   ',
+  '        GGGGGG  ',
+  '        EGGGGG  ',
+  '        GGGGGG  ',
+  '   SSSSS GGGGG  ',
+  '   SSSSS GGGGG  ',
+  '   SSSSS GGGGG  ',
+  '  KKKKKKGGGGGG  ',
+  '        GGGGGG  ',
+  '        GG  GG  ',
+  '        GG  GG  ',
+  '                ',
+  '                ',
+  '                ',
+  '                ',
+];
+// Typing frame B: screen glows + body bobs up a pixel.
+const LEFT_B = LEFT_A.map((r, i) => (i === 6 ? '   SWWWS GGGGG  ' : r));
+
+const IDLE = [NEUTRAL, NEUTRAL, NEUTRAL, NEUTRAL, NEUTRAL, BLINK];
+const WORK = [HOP, LEFT_A, LEFT_B, LEFT_A, LEFT_B];
 
 export default function AgentMascot({
   size = 28,
@@ -34,37 +85,35 @@ export default function AgentMascot({
   state?: State;
   color?: string;
 }) {
-  const working = state === 'working';
-  const PALETTE: Record<string, string> = {
+  const P: Record<string, string> = {
     G: color,
-    H: '#93e3bd',
-    D: '#3a9b74',
-    E: '#18241f',
-    W: '#ecfff7',
+    E: '#15201b', // face (dark)
+    S: '#20302a', // laptop screen
+    W: '#c5f3da', // screen glow
+    K: '#2f7d5e', // keyboard
   };
-  const glow = '#c5f3da';
+  const working = state === 'working';
+  const frames = working ? WORK : IDLE;
+  const N = frames.length;
 
-  const pixels = LINK.flatMap((row, y) =>
-    [...row].map((ch, x) => (ch === ' ' ? null : <rect key={`${x}-${y}`} x={x} y={y} width={1.04} height={1.04} fill={PALETTE[ch]} />)),
+  const rects = frames.flatMap((f, fi) =>
+    f.flatMap((row, y) =>
+      [...row].map((ch, x) => (ch === ' ' ? null : <rect key={`${fi}-${x}-${y}`} x={x + fi * 16} y={y} width={1} height={1} fill={P[ch]} />)),
+    ),
   );
 
-  const swayAnim = working ? 'cmm-sway-fast 1s ease-in-out infinite' : 'cmm-sway 4.2s ease-in-out infinite';
+  const dur = working ? 1.6 : 2.6;
+  const animName = working ? 'cmm-work' : 'cmm-idle';
 
   return (
     <span style={{ display: 'inline-block', lineHeight: 0 }} role="img" aria-label="ChainMind agent">
       <style>{`
-        @keyframes cmm-sway{0%,100%{transform:rotate(-3.5deg)}50%{transform:rotate(3.5deg)}}
-        @keyframes cmm-sway-fast{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}
-        @keyframes cmm-glow{0%,100%{opacity:0}50%{opacity:.9}}
-        .cmm-link{transform-box:fill-box;transform-origin:50% 6%}
-        @media (prefers-reduced-motion: reduce){.cmm-link{animation:none!important}.cmm-glow{animation:none!important}}
+        @keyframes cmm-idle{from{transform:translateX(0)}to{transform:translateX(-${16 * IDLE.length}px)}}
+        @keyframes cmm-work{from{transform:translateX(0)}to{transform:translateX(-${16 * WORK.length}px)}}
+        @media (prefers-reduced-motion: reduce){.cmm-strip{animation:none!important}}
       `}</style>
-      <svg width={size} height={size} viewBox="0 0 16 16" shapeRendering="crispEdges" style={{ overflow: 'visible' }}>
-        <g className="cmm-link" style={{ animation: swayAnim }}>
-          {pixels}
-          {/* working glow — a soft pulse across the link's brow */}
-          <rect className="cmm-glow" x="4" y="2" width="8" height="1" fill={glow} opacity="0" style={{ animation: working ? 'cmm-glow .9s ease-in-out infinite' : 'none' }} />
-        </g>
+      <svg width={size} height={size} viewBox="0 0 16 16" shapeRendering="crispEdges" style={{ overflow: 'hidden' }}>
+        <g className="cmm-strip" style={{ animation: `${animName} ${dur}s steps(${N}) infinite` }}>{rects}</g>
       </svg>
     </span>
   );
