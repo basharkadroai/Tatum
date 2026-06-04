@@ -378,20 +378,7 @@ export default function Home() {
           )}
 
           {/* File list — only when expanded */}
-          <div
-            style={{
-              flex: sidebarExpanded ? '1 1 auto' : '0 0 0px',
-              minHeight: 0,
-              maxHeight: sidebarExpanded ? '999px' : 0,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              padding: sidebarExpanded ? '0 8px 12px' : '0 8px',
-              opacity: sidebarExpanded ? 1 : 0,
-              transform: sidebarExpanded ? 'translateX(0)' : 'translateX(-8px)',
-              pointerEvents: sidebarExpanded ? 'auto' : 'none',
-              transition: `flex-basis 0.28s ${sidebarEase}, max-height 0.28s ${sidebarEase}, padding 0.28s ${sidebarEase}, opacity 0.16s ease, transform 0.28s ${sidebarEase}`,
-            }}
-          >
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px 12px' }}>
             {sidebarExpanded && hasVault && filtered.length === 0 && search && (
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
@@ -477,6 +464,7 @@ export default function Home() {
             <div style={{ flex: 1, minHeight: 0 }}>
                 <ChatPanel
                   resetKey="vault"
+                  persistKey="chainmind_chat_home"
                   centered
                   mobile={isMobile}
                   aiConfig={aiConfig}
@@ -625,6 +613,7 @@ export default function Home() {
               <div style={{ flex: 1, minHeight: 0 }}>
                 <ChatPanel
                   resetKey={selected.id}
+                  persistKey={`chainmind_chat_${selected.id}`}
                   endpoint="/api/ask"
                   mobile={isMobile}
                   aiConfig={aiConfig}

@@ -33,12 +33,13 @@ interface Props {
   aiConfig?: AiConfig | null;                   // BYOK: provider/model/key for chat
   onAiConfigChange?: (c: AiConfig | null) => void;  // in-prompt model switcher
   agent?: boolean;                              // route through the LangChain agent (/api/agent) + show its activity chain
+  persistKey?: string;                          // when set, this chat's messages are saved/restored (per-file history)
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, mobile, disabled,
-  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange, agent,
+  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange, agent, persistKey,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -55,7 +56,31 @@ export function ChatPanel({
     onTranscript: t => setInput((baseRef.current ? baseRef.current + ' ' : '') + t),
   });
 
-  useEffect(() => { setMessages([]); setInput(''); abortRef.current?.abort(); }, [resetKey]);
+  // Persistent chat history: when `persistKey` is set, load this chat's saved
+  // messages on (re)open and save them on change (per-file history lives in
+  // localStorage, keyed by file). msgKeyRef tracks which key the current
+  // messages belong to; skipFirstSave avoids overwriting saved data with the
+  // freshly-loaded set on mount/key change.
+  const msgKeyRef = useRef<string | undefined>(undefined);
+  const skipFirstSave = useRef(true);
+  useEffect(() => {
+    abortRef.current?.abort();
+    setInput('');
+    msgKeyRef.current = persistKey;
+    skipFirstSave.current = true;
+    if (persistKey && typeof window !== 'undefined') {
+      try { const raw = localStorage.getItem(persistKey); setMessages(raw ? (JSON.parse(raw) as ChatMessage[]) : []); }
+      catch { setMessages([]); }
+    } else {
+      setMessages([]);
+    }
+  }, [resetKey, persistKey]);
+  useEffect(() => {
+    if (skipFirstSave.current) { skipFirstSave.current = false; return; }
+    const k = msgKeyRef.current;
+    if (!k || typeof window === 'undefined') return;
+    try { localStorage.setItem(k, JSON.stringify(messages)); } catch { /* ignore */ }
+  }, [messages]);
   useEffect(() => { onEmptyChange?.(messages.length === 0 && !loading && !streaming); }, [messages.length, loading, streaming, onEmptyChange]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => {
