@@ -213,10 +213,12 @@ export function ChatPanel({
       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
       placeholder={placeholder}
       style={{
-        flex: 1, width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent',
+        display: 'block', width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent',
         fontSize, lineHeight: '1.5', color: 'var(--text-1)', fontFamily: 'inherit',
-        minHeight, maxHeight: '45vh', padding: '7px 4px',
-      }}
+        minHeight, maxHeight: '45vh', padding: '7px 4px', boxSizing: 'border-box',
+        // Native auto-grow (2026 baseline: Chrome/Edge/Safari); JS effect below covers the rest.
+        fieldSizing: 'content',
+      } as React.CSSProperties}
     />
   );
 
