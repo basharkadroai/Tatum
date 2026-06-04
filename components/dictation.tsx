@@ -3,24 +3,35 @@ import React, { useEffect, useRef, useState } from 'react';
 
 // Free voice input. Primary: the browser's Web Speech API (SpeechRecognition) —
 // streams text live as you speak. Fallback (Firefox / unsupported): record with
-// MediaRecorder and transcribe via /api/transcribe (Groq Whisper). A separate
-// getUserMedia stream feeds an AnalyserNode so we can draw the live waveform.
+// MediaRecorder and transcribe via /api/transcribe (Groq Whisper). A getUserMedia
+// stream feeds an AnalyserNode for the live waveform.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type DictOpts = { onTranscript: (text: string) => void; onError?: (code: string) => void };
+
+// One shared AudioContext, reused across sessions. Creating/closing a context per
+// use makes the OS re-init the audio device, which briefly stutters other media
+// (e.g. the background video). We resume/suspend the same context instead.
+let sharedCtx: AudioContext | null = null;
+function getCtx(): AudioContext {
+  if (!sharedCtx) sharedCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+  return sharedCtx;
+}
 
 export function useDictation({ onTranscript, onError }: DictOpts) {
   const [recording, setRecording] = useState(false);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const streaming = typeof window !== 'undefined' && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
-  const ref = useRef<{ rec?: any; stream?: MediaStream; ctx?: AudioContext; recorder?: MediaRecorder; chunks: Blob[] }>({ chunks: [] });
+  const ref = useRef<{ rec?: any; stream?: MediaStream; src?: MediaStreamAudioSourceNode; an?: AnalyserNode; recorder?: MediaRecorder; chunks: Blob[] }>({ chunks: [] });
   const finalRef = useRef('');
 
   const cleanup = () => {
     const r = ref.current;
     try { r.rec?.stop(); } catch { /* ignore */ }
+    try { r.src?.disconnect(); } catch { /* ignore */ }
     r.stream?.getTracks().forEach(t => t.stop());
-    try { r.ctx?.close(); } catch { /* ignore */ }
+    // Keep the shared context alive (suspended) to avoid device re-init glitches.
+    try { sharedCtx?.suspend(); } catch { /* ignore */ }
     ref.current = { chunks: [] };
     setAnalyser(null);
   };
@@ -29,15 +40,22 @@ export function useDictation({ onTranscript, onError }: DictOpts) {
     if (recording) return;
     finalRef.current = '';
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Disable audio processing so opening the mic doesn't reconfigure the system
+      // audio device (the cause of the ~1s background-video stutter).
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
       ref.current.stream = stream;
-      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      const ctx: AudioContext = new Ctx();
+
+      const ctx = getCtx();
+      if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* ignore */ } }
       const src = ctx.createMediaStreamSource(stream);
       const an = ctx.createAnalyser();
-      an.fftSize = 256;
+      an.fftSize = 512;
+      an.smoothingTimeConstant = 0.6;
       src.connect(an);
-      ref.current.ctx = ctx;
+      ref.current.src = src;
+      ref.current.an = an;
       setAnalyser(an);
       setRecording(true);
 
@@ -75,7 +93,6 @@ export function useDictation({ onTranscript, onError }: DictOpts) {
 
   const stop = async () => {
     const r = ref.current;
-    // Fallback path: finalize the recording and transcribe via Whisper.
     if (r.recorder && r.recorder.state !== 'inactive') {
       await new Promise<void>(resolve => { r.recorder!.onstop = () => resolve(); r.recorder!.stop(); });
       const blob = new Blob(r.chunks, { type: r.recorder.mimeType || 'audio/webm' });
@@ -91,39 +108,55 @@ export function useDictation({ onTranscript, onError }: DictOpts) {
     setRecording(false);
   };
 
-  // Stop everything if the component unmounts mid-recording.
   useEffect(() => cleanup, []);
 
   return { recording, streaming, analyser, start, stop };
 }
 
-// Live waveform drawn from the AnalyserNode (rAF, no React re-renders per frame).
-export function Waveform({ analyser, color = '#65ca9d', height = 34 }: { analyser: AnalyserNode | null; color?: string; height?: number }) {
+// Live waveform — white, minimal, linear. New samples enter on the RIGHT and the
+// trace scrolls LEFT while recording. rAF only; no React re-renders per frame.
+export function Waveform({ analyser, color = '#ffffff', height = 30 }: { analyser: AnalyserNode | null; color?: string; height?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const hist = useRef<number[]>([]);
   useEffect(() => {
     const canvas = ref.current;
     if (!analyser || !canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const data = new Uint8Array(analyser.frequencyBinCount);
+    const data = new Uint8Array(analyser.fftSize);
+    hist.current = [];
     let raf = 0;
+    const spacing = 4; // px between bars
+    const barW = 2;
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth, h = canvas.clientHeight;
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; ctx.scale(dpr, dpr); }
-      analyser.getByteFrequencyData(data);
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      // Current amplitude (RMS of the time-domain signal).
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) { const x = (data[i] - 128) / 128; sum += x * x; }
+      const level = Math.min(1, Math.sqrt(sum / data.length) * 3.2);
+
+      const n = Math.max(8, Math.floor(w / spacing));
+      const arr = hist.current;
+      arr.push(level);
+      while (arr.length > n) arr.shift();
+
       ctx.clearRect(0, 0, w, h);
-      const bars = 32;
-      const step = Math.floor(data.length / bars) || 1;
-      const bw = w / bars;
       ctx.fillStyle = color;
-      for (let i = 0; i < bars; i++) {
-        const v = data[i * step] / 255;
-        const bh = Math.max(2, v * h);
-        const x = i * bw + bw * 0.25;
+      const mid = h / 2;
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        const bh = Math.max(2, v * (h - 2));
+        const x = w - (arr.length - i) * spacing; // newest on the right, scrolls left
+        if (x < -barW) continue;
         ctx.beginPath();
-        ctx.roundRect(x, (h - bh) / 2, bw * 0.5, bh, 1.5);
+        ctx.roundRect(x, mid - bh / 2, barW, bh, barW / 2);
         ctx.fill();
       }
     };

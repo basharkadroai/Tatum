@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ConnectModal, useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 import { LogOut, Wallet } from 'lucide-react';
 import { SUI_NETWORK as NETWORK } from '@/lib/network';
@@ -23,9 +23,7 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
     transition: `opacity 0.16s ease, max-width 0.28s ${ease}, transform 0.28s ${ease}`,
   };
 
-  useEffect(() => {
-    if (collapsed && confirming) setConfirming(false);
-  }, [collapsed, confirming]);
+  const showConfirming = confirming && !collapsed;
 
   const avatar = (
     <div style={{
@@ -70,7 +68,7 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
         borderRadius: '10px', transition: `gap 0.28s ${ease}, padding 0.28s ${ease}`,
       }}>
       {avatar}
-      {confirming ? (
+      {showConfirming ? (
         <>
           <div style={{ minWidth: 0, flex: 1, ...revealStyle }}>
             <p style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)' }}>Disconnect?</p>
