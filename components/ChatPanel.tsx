@@ -54,7 +54,10 @@ export function ChatPanel({
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    // Grow with content (Claude-style) up to ~45% of the viewport before scrolling,
+    // so the user always sees what they're typing instead of it hiding behind a scroll.
+    const cap = Math.round(window.innerHeight * 0.45);
+    ta.style.height = Math.min(ta.scrollHeight, cap) + 'px';
   }, [input]);
 
   async function runCompletion(question: string, history: ChatMessage[]) {
@@ -212,7 +215,7 @@ export function ChatPanel({
       style={{
         flex: 1, width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent',
         fontSize, lineHeight: '1.5', color: 'var(--text-1)', fontFamily: 'inherit',
-        minHeight, maxHeight: '160px', padding: '7px 4px',
+        minHeight, maxHeight: '45vh', padding: '7px 4px',
       }}
     />
   );
