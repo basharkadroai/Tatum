@@ -12,7 +12,7 @@ import type { UploadEvent, UploadStep } from '@/lib/upload';
 import { uploadToWalrus } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
 
-export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[]; offer?: { kind: 'store'; filename: string; question: string; content?: string; resolved?: boolean } };
+export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[]; offer?: { kind: 'store'; filename: string; question: string; content?: string; message?: string; resolved?: boolean } };
 
 interface Props {
   resetKey: string;
@@ -222,12 +222,14 @@ export function ChatPanel({
             const last = { ...c[c.length - 1] };
             const steps = [...(last.steps ?? [])];
             if (ev.type === 'step') { markPrevDone(steps); steps.push({ label: ev.label ?? 'Working', status: 'running' }); }
-            else if (ev.type === 'answer') { markPrevDone(steps); last.text = ev.text ?? ''; }
+            else if (ev.type === 'token') { markPrevDone(steps); last.text = (last.text ?? '') + (ev.text ?? ''); }  // live streaming
+            else if (ev.type === 'reset') { last.text = ''; }                                                       // retry → clear partial
+            else if (ev.type === 'answer') { markPrevDone(steps); last.text = ev.text ?? ''; }                      // final cleaned (replaces)
             else if (ev.type === 'error') { markPrevDone(steps); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
             else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) {
               markPrevDone(steps);
               steps.push({ label: `Created ${ev.filename ?? 'file'}`, status: 'done' });
-              last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content };
+              last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content, message: ev.message };
             }
             last.steps = steps;
             c[c.length - 1] = last;
@@ -595,7 +597,7 @@ export function ChatPanel({
                       <Database size={15} strokeWidth={2} />
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)' }}>Store on-chain</div>
+                      <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.message || 'Store this on-chain'}</div>
                       <div style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.filename} · Walrus + Sui</div>
                     </div>
                     <button onClick={() => storeGenerated(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer', flexShrink: 0 }}>Store</button>

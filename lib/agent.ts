@@ -59,7 +59,9 @@ export function buildVaultAgent(docs: VaultDoc[], temperature = 0) {
       'then cite what you found. ' +
       'When the user asks you to create/write/generate something (a document, plan, code, etc.), ' +
       'produce the finished content as your answer, then on the VERY LAST line add a marker exactly like ' +
-      '[[STORE:suggested-filename.ext]] — pick a short filename with the right extension (.md, .py, .json, .html, …). ' +
+      '[[STORE:suggested-filename.ext|a short, specific one-line invitation to save THIS thing]] — ' +
+      'pick a short filename with the right extension (.md, .py, .json, .html, …) and write the message so it ' +
+      'fits what you made (e.g. "Save this Fibonacci script to your vault?" or "Keep this market report on-chain?"). ' +
       'Only add that marker when you actually created a file/document/code worth saving; never add it for plain answers or questions. ' +
       'Be concise. ' +
       'Whenever you mention a file from the vault, write its exact name in SQUARE BRACKETS, ' +
@@ -80,11 +82,13 @@ export async function runVaultAgent(docs: VaultDoc[], question: string): Promise
 // An event in the agent's activity chain — what the agent is doing, step by step.
 export type AgentEvent =
   | { type: 'step'; tool: string; label: string }
-  | { type: 'answer'; text: string }
+  | { type: 'token'; text: string }            // live answer token (streamed)
+  | { type: 'reset' }                          // clear streamed answer (on retry)
+  | { type: 'answer'; text: string }           // final, cleaned answer (replaces streamed)
   // After generating content, offer to store it on-chain (the client handles the
   // choice — "Store" runs the existing Walrus+Sui upload pipeline). `content` is
-  // the exact artifact to store (just the code block, or the whole answer).
-  | { type: 'offer'; kind: 'store'; filename: string; question: string; content: string };
+  // the exact artifact to store; `message` is a short, context-aware line.
+  | { type: 'offer'; kind: 'store'; filename: string; question: string; content: string; message?: string };
 
 // Friendly, human-readable label for a tool call shown in the chain.
 function stepLabel(tool: string, args: Record<string, unknown>): string {
@@ -94,12 +98,12 @@ function stepLabel(tool: string, args: Record<string, unknown>): string {
   return `Running ${tool}`;
 }
 
-// Clean the model's [[STORE:filename]] marker → suggested filename (or null)
-// and the answer with the marker removed.
-function parseStoreMarker(answer: string): { filename: string | null; text: string } {
-  const m = answer.match(/\[\[STORE:\s*([^\]]+?)\s*\]\]\s*$/i);
+// Clean the model's [[STORE:filename|message]] marker → suggested filename,
+// optional context message, and the answer with the marker removed.
+function parseStoreMarker(answer: string): { filename: string | null; message?: string; text: string } {
+  const m = answer.match(/\[\[STORE:\s*([^\]|]+?)\s*(?:\|\s*([^\]]*?))?\s*\]\]\s*$/i);
   if (!m) return { filename: null, text: answer };
-  return { filename: m[1].trim(), text: answer.slice(0, m.index).trimEnd() };
+  return { filename: m[1].trim(), message: m[2]?.trim() || undefined, text: answer.slice(0, m.index).trimEnd() };
 }
 // Pick a sensible extension for the generated content (any text/code type).
 function detectExt(question: string, answer: string): string {
@@ -150,38 +154,47 @@ export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string
   const inputMessages = [...priorMsgs, { role: 'user' as const, content: question }];
 
   const MAX_ATTEMPTS = 3;
-  let lastAnswer = '';
-  let storeFilename: string | null = null;
+  const TAIL = 8; // hold back enough chars to detect a split "[[STORE:" marker
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let answered = false;
+    let acc = '';        // full answer text accumulated from streamed tokens
+    let emitted = 0;     // chars already streamed to the client
+    let markerHit = false;
+    if (attempt > 1) yield { type: 'reset' }; // clear any partial from the failed attempt
     try {
       // First attempt deterministic (temp 0); retries add a little heat so a
       // rare malformed tool call isn't reproduced identically.
       const agent = buildVaultAgent(docs, attempt === 1 ? 0 : 0.4);
-      const stream = await agent.stream({ messages: inputMessages }, { streamMode: 'updates' });
-      for await (const chunk of stream) {
-        for (const [node, value] of Object.entries(chunk) as [string, { messages?: Msg[] }][]) {
-          for (const m of value?.messages ?? []) {
-            for (const tc of m.tool_calls ?? []) {
-              yield { type: 'step', tool: tc.name, label: stepLabel(tc.name, tc.args) };
-            }
-            // Only the MODEL node produces answers. The 'tools' node carries tool
-            // results (also string content, no tool_calls) — never treat those as the answer.
-            if (node !== 'tools' && (!m.tool_calls || m.tool_calls.length === 0) && typeof m.content === 'string' && m.content.trim()) {
-              answered = true;
-              // The model adds [[STORE:filename]] when it created something worth saving.
-              const parsed = parseStoreMarker(m.content);
-              storeFilename = parsed.filename;
-              lastAnswer = parsed.text;
-              yield { type: 'answer', text: parsed.text };
+      // 'updates' → tool steps for the chain; 'messages' → live answer tokens.
+      const stream = await agent.stream({ messages: inputMessages }, { streamMode: ['updates', 'messages'] });
+      for await (const item of stream as AsyncIterable<[string, unknown]>) {
+        const [mode, data] = item;
+        if (mode === 'updates') {
+          for (const value of Object.values(data as Record<string, { messages?: Msg[] }>)) {
+            for (const m of value?.messages ?? []) {
+              for (const tc of m.tool_calls ?? []) yield { type: 'step', tool: tc.name, label: stepLabel(tc.name, tc.args) };
             }
           }
+        } else if (mode === 'messages') {
+          const chunk = (data as [{ content?: unknown }, unknown])[0];
+          const piece = typeof chunk?.content === 'string' ? chunk.content : '';
+          if (!piece) continue;
+          answered = true;
+          acc += piece;
+          if (markerHit) continue;
+          // Stream everything that's safe to show — up to the store marker if it
+          // has started, else hold back a small tail so a partial marker never flashes.
+          const mi = acc.indexOf('[[STORE');
+          const safeEnd = mi >= 0 ? mi : Math.max(emitted, acc.length - TAIL);
+          if (mi >= 0) markerHit = true;
+          if (safeEnd > emitted) { yield { type: 'token', text: acc.slice(emitted, safeEnd) }; emitted = safeEnd; }
         }
       }
-      // Model decided this is worth storing → offer the specific artifact on-chain.
-      if (storeFilename && lastAnswer.trim().length > 0) {
-        const content = extractArtifact(lastAnswer);
-        yield { type: 'offer', kind: 'store', filename: sanitizeFilename(storeFilename, lastAnswer), question: 'Want to store this on-chain (Walrus + Sui)?', content };
+      // Finalize: send the cleaned full answer (replaces streamed text + removes marker).
+      const parsed = parseStoreMarker(acc);
+      yield { type: 'answer', text: parsed.text };
+      if (parsed.filename && parsed.text.trim().length > 0) {
+        yield { type: 'offer', kind: 'store', filename: sanitizeFilename(parsed.filename, parsed.text), message: parsed.message, content: extractArtifact(parsed.text), question: 'Want to store this on-chain (Walrus + Sui)?' };
       }
       return; // run completed
     } catch (err) {
