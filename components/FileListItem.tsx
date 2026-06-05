@@ -60,9 +60,9 @@ export function FileListItem({ item, active, onSelect, onDelete }: { item: Vault
             >
               <button
                 onClick={e => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', padding: '8px 9px', borderRadius: '7px', border: 'none', background: 'transparent', color: 'var(--error)', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, textAlign: 'left' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--error-bg)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', padding: '8px 9px', borderRadius: '7px', border: 'none', background: 'transparent', color: '#e0796b', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, textAlign: 'left', transition: 'background 0.12s, color 0.12s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#c0392b'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#e0796b'; }}
               ><Trash2 size={14} strokeWidth={2} /> Delete</button>
             </div>
           )}

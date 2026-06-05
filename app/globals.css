@@ -82,8 +82,10 @@ html, body { height: 100%; background: var(--base); color: var(--text-1); -webki
 .sidebar-middle {
   flex: 1;
   min-height: 0;
-  min-width: 232px;
-  width: 232px;
+  /* Match the expanded sidebar width so the file-list scrollbar sits flush
+     against the sidebar's right edge (not inset). */
+  min-width: 264px;
+  width: 264px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
