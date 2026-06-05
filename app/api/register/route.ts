@@ -26,6 +26,17 @@ function keypair(): Ed25519Keypair {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function entryIdFromResult(result: {
+  events?: Array<{ type?: string; parsedJson?: unknown }> | null;
+  objectChanges?: Array<{ type?: string; objectType?: string; objectId?: string }> | null;
+}) {
+  const event = result.events?.find(e => e.type?.endsWith('::vault::BlobRegistered'));
+  const parsed = event?.parsedJson;
+  if (parsed && typeof parsed === 'object' && 'entry_id' in parsed) return String(parsed.entry_id);
+  const created = result.objectChanges?.find(c => c.type === 'created' && c.objectType?.endsWith('::vault::VaultEntry'));
+  return created?.objectId;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { blobId, filename, fileType, fileSize, owner } = await req.json();
@@ -59,13 +70,13 @@ export async function POST(req: NextRequest) {
         const result = await client.signAndExecuteTransaction({
           signer: kp,
           transaction: tx,
-          options: { showEffects: true },
+          options: { showEffects: true, showEvents: true, showObjectChanges: true },
         });
         if (result.effects?.status?.status === 'failure') {
           throw new Error(`Sui tx failed: ${result.effects.status.error ?? 'unknown'}`);
         }
         console.log('[register] tx:', result.digest, `(attempt ${attempt})`);
-        return NextResponse.json({ digest: result.digest });
+        return NextResponse.json({ digest: result.digest, entryId: entryIdFromResult(result) });
       } catch (err) {
         lastErr = err;
         const msg = String(err);

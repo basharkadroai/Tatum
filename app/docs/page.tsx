@@ -26,6 +26,7 @@ export default function DocsPage() {
         <div style={barInner}>
           <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.01em' }}>ChainMind <span style={{ color: 'var(--text-3)', fontWeight: 600 }}>Docs</span></span>
           <span style={{ display: 'flex', gap: '20px' }}>
+            <Link href="/marketplace" style={{ ...link, fontSize: '13px' }}>Marketplace</Link>
             <Link href="/mcp-guide" style={{ ...link, fontSize: '13px' }}>MCP server</Link>
             <Link href="/" style={{ ...link, fontSize: '13px' }}>Open app</Link>
           </span>

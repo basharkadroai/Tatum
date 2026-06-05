@@ -8,6 +8,10 @@ export interface VaultItem {
   uploadedAt: string;
   sizeBytes: number;
   txDigest?: string;
+  entryId?: string;
+  listingId?: string;
+  priceMist?: string;
+  listed?: boolean;
   owner?: string; // set when the user claims the file on-chain with their own wallet
   tags?: string[]; // AI-generated topic tags
   questions?: string[]; // AI-generated suggested questions for this file

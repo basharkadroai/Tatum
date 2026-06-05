@@ -140,12 +140,16 @@ export async function runUpload(file: File, emit: (e: UploadEvent) => void, owne
   // Step 2 — Sui via Tatum
   emit({ kind: 'start', label: `Recording an on-chain proof on Sui via Tatum` });
   let txDigest: string | undefined;
+  let entryId: string | undefined;
   const body = JSON.stringify({ blobId, filename: file.name, fileType: file.type || 'application/octet-stream', fileSize: file.size, owner });
   for (let attempt = 1; attempt <= 3 && !txDigest; attempt++) {
     try {
       const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
       const data = await res.json();
-      if (res.ok && data.digest) txDigest = data.digest;
+      if (res.ok && data.digest) {
+        txDigest = data.digest;
+        if (data.entryId) entryId = data.entryId;
+      }
     } catch { /* retry */ }
   }
   emit(txDigest
@@ -166,6 +170,7 @@ export async function runUpload(file: File, emit: (e: UploadEvent) => void, owne
     summary,
     content: content.slice(0, 12000),
     txDigest,
+    entryId,
     owner: txDigest && owner ? owner : undefined,
     tags,
     questions,

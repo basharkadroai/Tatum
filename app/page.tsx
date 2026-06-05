@@ -15,7 +15,7 @@ import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
-  PanelLeft, ChevronDown, Menu, Loader2, SquarePen,
+  PanelLeft, ChevronDown, Menu, Loader2, SquarePen, ShoppingCart,
 } from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
@@ -163,7 +163,7 @@ export default function Home() {
             id: crypto.randomUUID(),
             filename: e.filename, fileType: e.fileType, blobId: e.blobId,
             summary: 'Restored from the on-chain vault (Sui + Walrus).',
-            content: '', txDigest: e.txDigest, owner: e.owner,
+            content: '', txDigest: e.txDigest, entryId: e.entryId, owner: e.owner,
             tags: [], questions: [], uploadedAt: new Date().toISOString(), sizeBytes: e.sizeBytes,
           });
         }
@@ -279,7 +279,17 @@ export default function Home() {
       console.log('[claim] signing on', SUI_CHAIN_ID, 'wallet', account.address);
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       console.log('[claim] success', res.digest);
-      updateItem(item.id, { txDigest: res.digest, owner: account.address });
+      let entryId: string | undefined;
+      try {
+        const verify = await fetch('/api/verify-chain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ digest: res.digest, blobId: item.blobId }),
+        });
+        const data = await verify.json();
+        if (data?.entryId) entryId = String(data.entryId);
+      } catch { /* best effort */ }
+      updateItem(item.id, { txDigest: res.digest, entryId, owner: account.address });
       setClaimMsg('Claimed — you now own this on-chain');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
@@ -368,6 +378,13 @@ export default function Home() {
               >
                 <SquarePen size={15} strokeWidth={2} /> New chat
               </button>
+              <a href="/marketplace" title="Open the ChainMind marketplace"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '8px', padding: '9px 12px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
+              >
+                <ShoppingCart size={15} strokeWidth={2} /> Marketplace
+              </a>
             </div>
           </div>
           {/* Search */}
