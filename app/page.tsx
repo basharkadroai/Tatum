@@ -263,6 +263,7 @@ export default function Home() {
           tx.pure.string(item.filename),
           tx.pure.string(item.fileType || 'application/octet-stream'),
           tx.pure.u64(item.sizeBytes),
+          tx.pure.address(account.address), // recipient — the 5th arg register() requires
         ],
       });
       console.log('[claim] signing on', SUI_CHAIN_ID, 'wallet', account.address);
