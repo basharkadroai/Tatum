@@ -28,7 +28,9 @@ export async function uploadToWalrus(file: File): Promise<string> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=5`, { method: 'PUT', body: file });
+      // epochs=53 — the max the testnet publisher accepts (~53 days), so blobs
+      // don't expire mid-demo (verified: 100+ is rejected).
+      const res = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=53`, { method: 'PUT', body: file });
       if (!res.ok) throw new Error(`Walrus upload failed (${res.status})`);
       const data = await res.json();
       const blobId = data.newlyCreated?.blobObject?.blobId ?? data.alreadyCertified?.blobId;

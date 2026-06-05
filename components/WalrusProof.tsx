@@ -59,31 +59,39 @@ export function WalrusProof({ blobId, fileType, filename, txDigest }: Props) {
 
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [text, setText] = useState('');
+  const [imgAttempt, setImgAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setState('loading');
     setText('');
+    setImgAttempt(0);
 
     if (isImage) {
-      // <img> handles its own load/error events
+      // <img> handles its own load/error + retry (see onError below)
       return () => { cancelled = true; };
     }
 
     (async () => {
-      try {
-        const res = await fetch(blobUrl);
-        if (!res.ok) throw new Error(String(res.status));
-        if (isText) {
-          const t = await res.text();
-          if (!cancelled) { setText(t.slice(0, 4000)); setState('ok'); }
-        } else {
-          // Non-previewable binary — just confirm it's retrievable
-          if (!cancelled) setState('ok');
-        }
-      } catch {
-        if (!cancelled) setState('error');
+      // Per Walrus docs, a CDN-fronted aggregator can briefly cache a 404 from
+      // before the blob propagated — so retry with backoff before giving up.
+      const delays = [0, 1200, 2400, 4000];
+      for (let i = 0; i < delays.length; i++) {
+        if (cancelled) return;
+        if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
+        try {
+          const res = await fetch(blobUrl, { cache: 'no-store' });
+          if (!res.ok) throw new Error(String(res.status));
+          if (isText) {
+            const t = await res.text();
+            if (!cancelled) { setText(t.slice(0, 4000)); setState('ok'); }
+          } else if (!cancelled) {
+            setState('ok'); // non-previewable binary — just confirm it's retrievable
+          }
+          return;
+        } catch { /* transient miss — back off and retry */ }
       }
+      if (!cancelled) setState('error');
     })();
 
     return () => { cancelled = true; };
@@ -104,7 +112,7 @@ export function WalrusProof({ blobId, fileType, filename, txDigest }: Props) {
         >
           {state === 'loading' && <><Loader2 size={12} strokeWidth={2.5} className="lucide-spin" /> Retrieving from Walrus…</>}
           {state === 'ok' && <><Check size={12} strokeWidth={2.5} /> Live on Walrus — retrieved just now</>}
-          {state === 'error' && <><AlertTriangle size={12} strokeWidth={2.5} /> Could not retrieve (node busy, retry)</>}
+          {state === 'error' && <><AlertTriangle size={12} strokeWidth={2.5} /> Couldn’t retrieve — testnet blob may have expired</>}
         </span>
         <a
           href={blobUrl} target="_blank" rel="noopener noreferrer"
@@ -149,10 +157,14 @@ export function WalrusProof({ blobId, fileType, filename, txDigest }: Props) {
       {isImage && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={blobUrl}
+          src={imgAttempt ? `${blobUrl}?r=${imgAttempt}` : blobUrl}
           alt={filename}
           onLoad={() => setState('ok')}
-          onError={() => setState('error')}
+          onError={() => {
+            // Same CDN-stale-404 case — retry a few times with backoff before failing.
+            if (imgAttempt < 3) setTimeout(() => setImgAttempt(a => a + 1), 1200 * (imgAttempt + 1));
+            else setState('error');
+          }}
           style={{
             maxWidth: '100%', maxHeight: '280px', objectFit: 'contain',
             borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--off-white)',

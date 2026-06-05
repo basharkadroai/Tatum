@@ -1,6 +1,8 @@
 import { WALRUS_PUBLISHER as PUBLISHER, WALRUS_AGGREGATOR as AGGREGATOR } from '@/lib/network';
 
-export async function uploadToWalrus(buffer: Buffer, epochs = 5): Promise<string> {
+// 53 = the max storage period the Walrus testnet publisher accepts (verified
+// empirically; 100+ is rejected). ~53 days, so stored blobs don't expire mid-demo.
+export async function uploadToWalrus(buffer: Buffer, epochs = 53): Promise<string> {
   const url = `${PUBLISHER}/v1/blobs?epochs=${epochs}`;
   console.log(`[walrus] PUT ${url} (${buffer.length} bytes)`);
 
