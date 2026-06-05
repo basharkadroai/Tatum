@@ -32,7 +32,7 @@ type ToolLifecycleEvent =
 type ToolLifecycleSink = (event: ToolLifecycleEvent) => void;
 let toolRunSeq = 0;
 
-function cleanOwner(owner?: string) {
+function cleanOwner(owner?: string | null) {
   return typeof owner === 'string' && owner.startsWith('0x') ? owner : '';
 }
 
@@ -53,10 +53,8 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-const optionalOwnerSchema = z.preprocess(
-  value => (value == null ? undefined : value),
-  z.string().optional(),
-).describe('Sui wallet address. Omit to use the connected wallet.');
+const optionalOwnerSchema = z.union([z.string(), z.null()]).optional()
+  .describe('Sui wallet address. Omit or pass null to use the connected wallet.');
 
 function inspectDocs(docs: VaultDoc[]) {
   const visibleDocs = docs.filter(d => !d.filename.startsWith('.'));
@@ -199,7 +197,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'list_onchain_vault',
     () => 'Reading your on-chain vault through Tatum',
-    async ({ owner }: { owner?: string }) => {
+    async ({ owner }: { owner?: string | null }) => {
       const address = cleanOwner(owner) || defaultOwner;
       if (!address) return 'No wallet address is available. Connect a wallet or provide an owner address.';
       const entries = (await listVaultEntries(address))
@@ -242,7 +240,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'search_onchain_vault',
     ({ query }: { query: string }) => `Searching Sui + Walrus for "${query}"`,
-    async ({ query, owner }: { query: string; owner?: string }) => {
+    async ({ query, owner }: { query: string; owner?: string | null }) => {
       const address = cleanOwner(owner) || defaultOwner;
       if (!address) return 'No wallet address is available. Connect a wallet or provide an owner address.';
       const entries = (await listVaultEntries(address))
@@ -283,7 +281,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'audit_vault_health',
     () => 'Auditing vault health',
-    async ({ owner }: { owner?: string }) => {
+    async ({ owner }: { owner?: string | null }) => {
       const address = cleanOwner(owner) || defaultOwner;
       const visibleFiles = docs.filter(d => !d.filename.startsWith('.'));
       const localIssues = visibleFiles.flatMap(d => {
