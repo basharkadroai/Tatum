@@ -400,7 +400,7 @@ export default function Home() {
                 Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
               </div>
               <div style={{ fontSize: '11px', color: 'var(--mint-dark)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <Database size={12} strokeWidth={2} /> {formatBytes(totalBytes)} stored permanently on Walrus
+                <Database size={12} strokeWidth={2} /> {formatBytes(totalBytes)} on decentralized Walrus storage
               </div>
               {allTags.length > 0 && (
                 tagFilter ? (

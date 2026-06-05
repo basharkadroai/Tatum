@@ -30,11 +30,26 @@ All Sui reads and writes route through **Tatum's gateway** (`sui-testnet.gateway
 - `lib/network.ts` derives the RPC from the Tatum gateway; the browser never hits Sui directly — it goes through the `/api/rpc` **Tatum proxy** (`app/api/rpc/route.ts`), with a public fullnode only as a 429 fallback.
 - `app/api/register/route.ts` mints each `VaultEntry` on Sui via Tatum RPC (server-signed, so storing is **gasless for the user** on testnet) and transfers ownership to the connected wallet.
 - `app/api/vault-onchain/route.ts` reconstructs a wallet's entire vault from Sui via Tatum.
+- `app/api/verify-chain/route.ts` reads the `VaultEntry` **back** from Sui via Tatum to *prove* a blob is genuinely registered on-chain (not just that a tx was once sent).
 - The wallet's live **SUI balance** is fetched with `suix_getAllBalances` through the same Tatum proxy and shown in the UI.
 - The AI agent has a **`crypto_price` tool backed by Tatum's Data API** (`/v3/tatum/rate`) — ask it for the live price of SUI/BTC/ETH and it answers from Tatum.
 
 ### Sui
 - Move entry `vault::register` records `{ blobId, filename, fileType, fileSize, owner }` as an owned object — the on-chain proof behind every file.
+
+---
+
+## MCP server (AI features — encouraged by the hackathon)
+
+ChainMind ships its **own Model Context Protocol server** (`app/[transport]/route.ts`, built on `mcp-handler`) so *any* AI client can use your on-chain vault:
+
+| Tool | What it does |
+| --- | --- |
+| `list_vault(owner)` | List the files a wallet owns (reads `VaultEntry` objects from Sui via Tatum). |
+| `read_file(blobId)` | Read a file's contents from Walrus. |
+| `search_vault(owner, query)` | Keyword search across a wallet's filenames + contents. |
+
+Endpoint: `https://chainmind-seven.vercel.app/mcp` (Streamable HTTP). Connect it in Claude Desktop / Cursor — and pair it with **[Tatum's own MCP](https://tatum.io/mcp)** for full multi-chain coverage. Full guide at [`/mcp-guide`](https://chainmind-seven.vercel.app/mcp-guide).
 
 ---
 
@@ -46,6 +61,8 @@ All Sui reads and writes route through **Tatum's gateway** (`sui-testnet.gateway
 - 🗂️ **On-chain vault** — upload any file; stored on Walrus + owned on Sui, restorable anywhere from your wallet.
 - 💬 **Portable chat history** — per-file conversations persist locally and back up to Walrus + Sui.
 - 🎙️ **Voice input** — hold-to-talk or tap-to-toggle, live waveform (Web Speech API + Groq Whisper fallback).
+- 🔌 **MCP server** — your on-chain vault is exposed to any AI client (Claude Desktop, Cursor…) via a built-in Model Context Protocol server. See [`/mcp-guide`](https://chainmind-seven.vercel.app/mcp-guide).
+- 📄 **In-app docs** — clean [`/docs`](https://chainmind-seven.vercel.app/docs) and `/mcp-guide` pages, reachable from the account menu.
 - 🟢 Animated pixel agent mascot that works while the agent works.
 
 ---
@@ -95,7 +112,8 @@ Get a free Tatum Sui RPC key at [dashboard.tatum.io](https://dashboard.tatum.io)
 Next.js 16 · React 19 · TypeScript · LangChain 1.0 + Groq · Walrus · Sui (`@mysten/sui`, `@mysten/dapp-kit`) · **Tatum Sui RPC**.
 
 ## Judging-criteria map
-- **Walrus + Tatum integration (30%)** — files, AI output, and chat history all on Walrus; every Sui read/write through Tatum's gateway (proxy, register, restore, balances).
-- **Technical quality (30%)** — typed end-to-end, server-signed gasless writes, RPC fallback, streaming agent, restore-from-chain.
-- **Creativity (20%)** — the "AI + Walrus" track: an agent that creates and stores data you provably own.
-- **Presentation (20%)** — this README + a live deploy + demo video.
+- **Walrus + Tatum integration (30%)** — files, AI output, and chat history all on Walrus; every Sui read/write through Tatum's gateway (proxy, register, restore, verify, balances) **plus** Tatum's **Data API** (`crypto_price` tool).
+- **Technical quality (30%)** — typed end-to-end, server-signed gasless writes, RPC fallback, streaming agent, on-chain verification, restore-from-chain.
+- **Creativity (20%)** — the "AI + Walrus" track: an agent that creates and stores data you provably own, and exposes it to any AI via MCP.
+- **Presentation (20%)** — this README + in-app [`/docs`](https://chainmind-seven.vercel.app/docs) & [`/mcp-guide`](https://chainmind-seven.vercel.app/mcp-guide) + a live deploy + demo video.
+- **Best use of Tatum tools (bonus)** — RPC (heavy), Data API (price tool), and our own MCP server, connectable alongside Tatum's MCP.
