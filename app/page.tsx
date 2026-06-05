@@ -86,7 +86,9 @@ export default function Home() {
   function updateAiConfig(c: AiConfig | null) { setAiConfig(c); }
   // New chat: clear the main vault conversation (and its saved history) and go home.
   function newChat() {
-    try { localStorage.removeItem('chainmind_chat_home'); } catch { /* ignore */ }
+    // Leave an empty marker (not removeItem) so restore-from-chain treats this as
+    // an intentional clear and doesn't resurrect the old chat from its Walrus backup.
+    try { localStorage.setItem('chainmind_chat_home', '[]'); } catch { /* ignore */ }
     setSelected(null);
     setMobileNavOpen(false);
     setChatRestoreTick(t => t + 1); // remount the home chat so it loads empty
@@ -143,9 +145,10 @@ export default function Home() {
         for (const key of Object.keys(latest)) {
           try {
             const existing = localStorage.getItem(key);
-            const cur = existing ? JSON.parse(existing) : null;
-            // Only fill in when there's no local chat yet (don't clobber newer local history).
-            if (!Array.isArray(cur) || cur.length === 0) { localStorage.setItem(key, JSON.stringify(latest[key].messages)); wrote = true; }
+            // Only restore a chat that has NO local entry at all. A present entry —
+            // even an empty "[]" — means this device already has state, including an
+            // intentional "New chat" clear, so don't clobber/resurrect it.
+            if (existing === null) { localStorage.setItem(key, JSON.stringify(latest[key].messages)); wrote = true; }
           } catch { /* ignore */ }
         }
         if (wrote) setChatRestoreTick(t => t + 1);
@@ -529,11 +532,11 @@ export default function Home() {
                   greetingIcon="/logo.png"
                   endpoint="/api/ask-vault"
                   agent
-                  buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), question, history })}
+                  buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), owner: account?.address, question, history })}
                   suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
                   aiLabel="ChainMind"
-                  disabled={vault.length === 0}
+                  disabled={vault.length === 0 && !account?.address}
                   uploadRunner={(file, emit) => runUpload(file, emit, account?.address)}
                   onUploaded={addToVault}
                 />
@@ -653,7 +656,32 @@ export default function Home() {
                   mobile={isMobile}
                   aiConfig={aiConfig}
                   onAiConfigChange={updateAiConfig}
-                  buildBody={(question, history) => ({ content: selected.content, question, history })}
+                  agent
+                  buildBody={(question, history) => ({
+                    docs: [{
+                      filename: selected.filename,
+                      summary: selected.summary,
+                      content: selected.content,
+                      blobId: selected.blobId,
+                      fileType: selected.fileType,
+                      sizeBytes: selected.sizeBytes,
+                      owner: selected.owner,
+                      txDigest: selected.txDigest,
+                    }],
+                    currentFile: {
+                      filename: selected.filename,
+                      summary: selected.summary,
+                      content: selected.content,
+                      blobId: selected.blobId,
+                      fileType: selected.fileType,
+                      sizeBytes: selected.sizeBytes,
+                      owner: selected.owner,
+                      txDigest: selected.txDigest,
+                    },
+                    owner: account?.address,
+                    question,
+                    history,
+                  })}
                   suggestions={selected.questions && selected.questions.length > 0
                     ? selected.questions
                     : ['Summarize this in 3 bullet points', 'What are the key takeaways?', 'Any action items, dates, or deadlines?']}
