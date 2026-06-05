@@ -15,7 +15,7 @@ import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
-  PanelLeft, ChevronDown, Menu, Loader2,
+  PanelLeft, ChevronDown, Menu, Loader2, SquarePen,
 } from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
@@ -84,6 +84,13 @@ export default function Home() {
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); setAiConfig(loadAiConfig()); }, []);
   function updateAiConfig(c: AiConfig | null) { setAiConfig(c); }
+  // New chat: clear the main vault conversation (and its saved history) and go home.
+  function newChat() {
+    try { localStorage.removeItem('chainmind_chat_home'); } catch { /* ignore */ }
+    setSelected(null);
+    setMobileNavOpen(false);
+    setChatRestoreTick(t => t + 1); // remount the home chat so it loads empty
+  }
   // On phones the sidebar becomes a slide-in drawer; keep its content expanded
   // and let `mobileNavOpen` control visibility.
   useEffect(() => {
@@ -348,6 +355,18 @@ export default function Home() {
         </div>
 
         <div className="sidebar-middle" data-expanded={sidebarExpanded ? 'true' : 'false'}>
+          {/* New chat — clears the main conversation and returns home */}
+          <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
+            <div style={{ padding: '4px 14px 6px' }}>
+              <button onClick={newChat} title="Start a new chat"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '9px 12px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.borderColor = 'var(--border-2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--off-white)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+              >
+                <SquarePen size={15} strokeWidth={2} /> New chat
+              </button>
+            </div>
+          </div>
           {/* Search */}
           {hasVault && (
             <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
