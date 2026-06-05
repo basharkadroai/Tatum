@@ -12,6 +12,7 @@ import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
 import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
+import type { MarketTxEvent } from '@/types/market';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Search, Database, Link2, X, Check,
@@ -56,6 +57,13 @@ function formatBytes(b: number) {
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+function suiToMist(input: string): string | null {
+  const clean = input.trim();
+  if (!/^\d+(\.\d{0,9})?$/.test(clean)) return null;
+  const [whole, fraction = ''] = clean.split('.');
+  const mist = BigInt(whole) * BigInt(1_000_000_000) + BigInt((fraction + '000000000').slice(0, 9));
+  return mist > BigInt(0) ? mist.toString() : null;
+}
 
 export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
@@ -75,6 +83,9 @@ export default function Home() {
   const [restoreAddr, setRestoreAddr] = useState('');
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
+  const [marketPrice, setMarketPrice] = useState('0.1');
+  const [marketBusy, setMarketBusy] = useState(false);
+  const [marketMsg, setMarketMsg] = useState('');
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [aiConfig, setAiConfig] = useState<AiConfig | null>(null);
   const [chatRestoreTick, setChatRestoreTick] = useState(0); // bumped after chat history is restored from chain → remount the home chat
@@ -105,7 +116,7 @@ export default function Home() {
     window.addEventListener('resize', apply);
     return () => window.removeEventListener('resize', apply);
   }, []);
-  useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); }, [selected?.id]);
+  useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setMarketMsg(''); }, [selected?.id]);
   // Auto-read a file with AI when opened if it has no real summary yet (e.g. just
   // restored from chain) — so it's ready before the user reads or asks anything.
   useEffect(() => {
@@ -309,6 +320,83 @@ export default function Home() {
     }
   }
 
+  async function marketEvents(digest: string): Promise<MarketTxEvent[]> {
+    try {
+      const res = await fetch(`/api/market/tx?digest=${encodeURIComponent(digest)}`);
+      const data = await res.json();
+      return Array.isArray(data.events) ? data.events : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function listOnMarket(item: VaultItem) {
+    if (!account || !PACKAGE_ID || marketBusy) return;
+    if (!item.entryId) {
+      setMarketMsg('Claim or restore this file first so ChainMind knows its on-chain object.');
+      return;
+    }
+    const priceMist = suiToMist(marketPrice);
+    if (!priceMist) {
+      setMarketMsg('Enter a price greater than 0 SUI.');
+      return;
+    }
+    setMarketBusy(true);
+    setMarketMsg('');
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${PACKAGE_ID}::vault::list`,
+        arguments: [tx.object(item.entryId), tx.pure.u64(priceMist)],
+      });
+      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      const listed = (await marketEvents(res.digest)).find(e => e.kind === 'listed');
+      updateItem(item.id, {
+        listed: true,
+        listingId: listed?.listingId,
+        priceMist,
+        txDigest: res.digest,
+      });
+      setMarketMsg('Listed on the marketplace.');
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      setMarketMsg(`List failed: ${raw.slice(0, 120)}`);
+    } finally {
+      setMarketBusy(false);
+    }
+  }
+
+  async function delistFromMarket(item: VaultItem) {
+    if (!account || !PACKAGE_ID || marketBusy) return;
+    if (!item.listingId) {
+      setMarketMsg('No listing ID saved for this file yet.');
+      return;
+    }
+    setMarketBusy(true);
+    setMarketMsg('');
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${PACKAGE_ID}::vault::delist`,
+        arguments: [tx.object(item.listingId)],
+      });
+      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      const delisted = (await marketEvents(res.digest)).find(e => e.kind === 'delisted');
+      updateItem(item.id, {
+        listed: false,
+        listingId: undefined,
+        entryId: delisted?.entryId || item.entryId,
+        txDigest: res.digest,
+      });
+      setMarketMsg('Listing cancelled and returned to your vault.');
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      setMarketMsg(`Delist failed: ${raw.slice(0, 120)}`);
+    } finally {
+      setMarketBusy(false);
+    }
+  }
+
   const filtered = vault.filter(item => {
     const matchesSearch =
       !search ||
@@ -322,6 +410,7 @@ export default function Home() {
   const sidebarExpanded = isMobile || sidebarOpen;
   const hasVault = vault.length > 0;
   const sidebarEase = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  const selectedOwnedByWallet = !!(selected?.owner && account?.address && selected.owner.toLowerCase() === account.address.toLowerCase());
 
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--base)' }}>
@@ -577,9 +666,13 @@ export default function Home() {
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--mint-dark)', fontWeight: 600 }}>
                       <Check size={12} strokeWidth={2.5} /> Stored on Walrus
                     </span>
-                    {selected.owner ? (
+                    {selectedOwnedByWallet ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--mint-dark)', fontWeight: 600 }}>
                         <Check size={12} strokeWidth={2.5} /> Owned by you on Sui
+                      </span>
+                    ) : selected.owner ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--text-3)', fontWeight: 600 }}>
+                        <Check size={12} strokeWidth={2.5} /> Owned on Sui
                       </span>
                     ) : selected.txDigest ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--mint-dark)', fontWeight: 600 }}>
@@ -591,6 +684,41 @@ export default function Home() {
                   </div>
                   {claimMsg && (
                     <p style={{ fontSize: '11px', marginTop: '4px', color: claimMsg.startsWith('Claimed') ? 'var(--mint-dark)' : 'var(--error)' }}>{claimMsg}</p>
+                  )}
+                  {marketMsg && (
+                    <p style={{ fontSize: '11px', marginTop: '4px', color: marketMsg.startsWith('Listed') || marketMsg.startsWith('Listing cancelled') ? 'var(--mint-dark)' : 'var(--error)' }}>{marketMsg}</p>
+                  )}
+                  {selectedOwnedByWallet && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '9px' }}>
+                      {!selected.listed ? (
+                        <>
+                          <input
+                            value={marketPrice}
+                            onChange={e => setMarketPrice(e.target.value)}
+                            title="Sale price in SUI"
+                            inputMode="decimal"
+                            style={{ width: '76px', padding: '7px 8px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
+                          />
+                          <button
+                            onClick={() => listOnMarket(selected)}
+                            disabled={marketBusy || !selected.entryId}
+                            title={selected.entryId ? 'List this owned vault entry for sale' : 'Restore or claim first to get the on-chain entry ID'}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', cursor: marketBusy || !selected.entryId ? 'default' : 'pointer', opacity: marketBusy || !selected.entryId ? 0.55 : 1 }}
+                          >
+                            <ShoppingCart size={13} strokeWidth={2} /> {marketBusy ? 'Listing...' : 'List for sale'}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => delistFromMarket(selected)}
+                          disabled={marketBusy || !selected.listingId}
+                          title="Cancel this marketplace listing"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: marketBusy || !selected.listingId ? 'default' : 'pointer', opacity: marketBusy || !selected.listingId ? 0.55 : 1 }}
+                        >
+                          <X size={13} strokeWidth={2} /> {marketBusy ? 'Cancelling...' : 'Delist'}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 {/* Optional: claim under your own wallet */}

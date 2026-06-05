@@ -10,3 +10,12 @@ export type MarketListing = {
   priceSui: string;
   createdTx?: string;
 };
+
+export type MarketTxEvent = {
+  kind: 'listed' | 'sold' | 'delisted';
+  listingId?: string;
+  entryId?: string;
+  priceMist?: string;
+  seller?: string;
+  buyer?: string;
+};

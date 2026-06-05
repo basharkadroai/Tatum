@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { ArrowLeft, Database, LockKeyhole, RefreshCw, ShoppingCart } from 'lucide-react';
+import { SUI_CHAIN_ID } from '@/lib/network';
 import type { MarketListing } from '@/types/market';
+
+const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 
 function short(addr?: string) {
   return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : 'Unknown';
@@ -16,10 +21,32 @@ function formatBytes(bytes?: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
+function clearLocalListing(listing: MarketListing) {
+  try {
+    const raw = localStorage.getItem('chainmind_vault');
+    if (!raw) return;
+    const vault = JSON.parse(raw);
+    if (!Array.isArray(vault)) return;
+    const next = vault.map(item => {
+      if (item?.listingId !== listing.listingId && item?.entryId !== listing.entryId) return item;
+      const { listingId, priceMist, listed, ...rest } = item;
+      void listingId; void priceMist; void listed;
+      return rest;
+    });
+    localStorage.setItem('chainmind_vault', JSON.stringify(next));
+  } catch {
+    // local cache cleanup is best effort
+  }
+}
+
 export default function MarketplacePage() {
   const [listings, setListings] = useState<MarketListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionMsg, setActionMsg] = useState('');
+  const [busyId, setBusyId] = useState('');
+  const account = useCurrentAccount();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
   async function loadListings() {
     setLoading(true);
@@ -37,6 +64,54 @@ export default function MarketplacePage() {
   }
 
   useEffect(() => { loadListings(); }, []);
+
+  function isSeller(listing: MarketListing) {
+    return !!account?.address && listing.seller.toLowerCase() === account.address.toLowerCase();
+  }
+
+  async function buyListing(listing: MarketListing) {
+    if (!account?.address || !PACKAGE_ID || busyId) return;
+    setBusyId(listing.listingId);
+    setActionMsg('');
+    try {
+      const tx = new Transaction();
+      const [payment] = tx.splitCoins(tx.gas, [tx.pure.u64(listing.priceMist)]);
+      tx.moveCall({
+        target: `${PACKAGE_ID}::vault::buy`,
+        arguments: [tx.object(listing.listingId), payment],
+      });
+      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      setListings(prev => prev.filter(item => item.listingId !== listing.listingId));
+      setActionMsg('Purchase complete. Restore your vault from chain to pull the bought entry into ChainMind.');
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      setActionMsg(`Buy failed: ${raw.slice(0, 140)}`);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function delistListing(listing: MarketListing) {
+    if (!account?.address || !PACKAGE_ID || busyId) return;
+    setBusyId(listing.listingId);
+    setActionMsg('');
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${PACKAGE_ID}::vault::delist`,
+        arguments: [tx.object(listing.listingId)],
+      });
+      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      setListings(prev => prev.filter(item => item.listingId !== listing.listingId));
+      clearLocalListing(listing);
+      setActionMsg('Listing cancelled.');
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      setActionMsg(`Delist failed: ${raw.slice(0, 140)}`);
+    } finally {
+      setBusyId('');
+    }
+  }
 
   return (
     <main style={{ minHeight: '100dvh', background: 'var(--base)', color: 'var(--text-1)' }}>
@@ -68,6 +143,9 @@ export default function MarketplacePage() {
             <LockKeyhole size={16} color="#65ca9d" /> Seal-gated access next
           </div>
         </div>
+        {actionMsg && (
+          <p style={{ margin: '18px 0 0', color: actionMsg.includes('failed') ? 'var(--error)' : 'var(--mint-dark)', fontSize: '13px', lineHeight: 1.5 }}>{actionMsg}</p>
+        )}
 
         <div style={{ marginTop: '28px', borderTop: '1px solid var(--border)' }}>
           {loading ? (
@@ -96,9 +174,19 @@ export default function MarketplacePage() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: 'auto' }}>
                     <strong style={{ fontSize: '18px' }}>{listing.priceSui} SUI</strong>
-                    <button disabled style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12px', fontWeight: 800, opacity: 0.6 }}>
-                      <ShoppingCart size={14} /> Buy soon
-                    </button>
+                    {!account?.address ? (
+                      <button disabled style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12px', fontWeight: 800, opacity: 0.55 }}>
+                        Connect wallet
+                      </button>
+                    ) : isSeller(listing) ? (
+                      <button onClick={() => delistListing(listing)} disabled={busyId === listing.listingId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: '12px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId === listing.listingId ? 0.6 : 1 }}>
+                        {busyId === listing.listingId ? 'Cancelling...' : 'Delist'}
+                      </button>
+                    ) : (
+                      <button onClick={() => buyListing(listing)} disabled={!!busyId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId ? 0.6 : 1 }}>
+                        <ShoppingCart size={14} /> {busyId === listing.listingId ? 'Buying...' : 'Buy'}
+                      </button>
+                    )}
                   </div>
                 </article>
               ))}
