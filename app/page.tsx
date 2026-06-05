@@ -65,7 +65,6 @@ export default function Home() {
   const [proofExpanded, setProofExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState('');
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -96,7 +95,7 @@ export default function Home() {
     window.addEventListener('resize', apply);
     return () => window.removeEventListener('resize', apply);
   }, []);
-  useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setPendingDelete(null); }, [selected?.id]);
+  useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); }, [selected?.id]);
   // Auto-read a file with AI when opened if it has no real summary yet (e.g. just
   // restored from chain) — so it's ready before the user reads or asks anything.
   useEffect(() => {
@@ -165,7 +164,7 @@ export default function Home() {
   function handleDelete(id: string) {
     setVault(prev => { const next = prev.filter(i => i.id !== id); saveVault(next); return next; });
     if (selected?.id === id) setSelected(null);
-    setPendingDelete(null);
+    try { localStorage.removeItem(`chainmind_chat_${id}`); } catch { /* ignore */ }
   }
   // Open the file referenced by a [citation] pill. Labels are normally the exact
   // filename; we also handle a bare "FILE N" (index into the current vault order).
@@ -388,6 +387,7 @@ export default function Home() {
                 item={item}
                 active={selected?.id === item.id}
                 onSelect={() => { setSelected(item); setMobileNavOpen(false); }}
+                onDelete={() => handleDelete(item.id)}
               />
             ))}
           </div>
@@ -534,26 +534,6 @@ export default function Home() {
                   >
                     <Link2 size={13} strokeWidth={2} /> {claiming ? 'Claiming…' : 'Claim on-chain'}
                   </button>
-                )}
-                {pendingDelete === selected.id ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    <button onClick={() => handleDelete(selected.id)}
-                      style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--error-border)', background: 'var(--error-bg)', color: 'var(--error)', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
-                      Delete
-                    </button>
-                    <button onClick={() => setPendingDelete(null)}
-                      style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', color: 'var(--text-2)', cursor: 'pointer', fontSize: '12px' }}>
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setPendingDelete(selected.id)}
-                    title="Remove from vault"
-                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--text-3)', flexShrink: 0 }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--error-border)'; e.currentTarget.style.color = 'var(--error)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)'; }}
-                  ><X size={15} strokeWidth={2} /></button>
                 )}
               </div>
 
