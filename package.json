@@ -15,7 +15,7 @@
     "@langchain/core": "^1.1.48",
     "@langchain/groq": "^1.2.1",
     "@langchain/tavily": "^1.2.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "1.26.0",
     "@mysten/dapp-kit": "^1.0.6",
     "@mysten/sui": "^2.17.0",
     "@mysten/walrus": "^1.1.7",
