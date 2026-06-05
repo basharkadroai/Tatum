@@ -47,16 +47,34 @@ function scoreText(query: string, text: string) {
   return score;
 }
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+const optionalOwnerSchema = z.preprocess(
+  value => (value == null ? undefined : value),
+  z.string().optional(),
+).describe('Sui wallet address. Omit to use the connected wallet.');
+
 function inspectDocs(docs: VaultDoc[]) {
-  return docs.map((d, i) => ({
-    n: i + 1,
-    filename: d.filename,
-    blobId: d.blobId,
-    fileType: d.fileType,
-    sizeBytes: d.sizeBytes,
-    summary: d.summary,
-    contentPreview: (d.content ?? '').slice(0, 900),
-  }));
+  const visibleDocs = docs.filter(d => !d.filename.startsWith('.'));
+  const totalSizeBytes = visibleDocs.reduce((sum, d) => sum + (d.sizeBytes || 0), 0);
+  return {
+    totalFiles: visibleDocs.length,
+    totalSizeBytes,
+    totalSizeHuman: formatBytes(totalSizeBytes),
+    files: visibleDocs.map((d, i) => ({
+      n: i + 1,
+      filename: d.filename,
+      blobId: d.blobId,
+      fileType: d.fileType,
+      sizeBytes: d.sizeBytes,
+      summary: d.summary,
+      contentPreview: (d.content ?? '').slice(0, 900),
+    })),
+  };
 }
 
 function resultDetail(result: unknown) {
@@ -200,7 +218,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     {
       description:
         "Read a wallet's ChainMind VaultEntry objects from Sui through Tatum RPC. Use when the user asks what is truly on-chain, wants a restore/check, or local state may be stale.",
-      schema: z.object({ owner: z.string().optional().describe('Sui wallet address. Omit to use the connected wallet.') }),
+      schema: z.object({ owner: optionalOwnerSchema }),
     },
   );
 
@@ -256,7 +274,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
         "Search the connected wallet's real on-chain vault by listing Sui VaultEntry objects through Tatum and reading Walrus blobs. Use for high-confidence answers about owned files.",
       schema: z.object({
         query: z.string().describe('Keyword or phrase to search for'),
-        owner: z.string().optional().describe('Sui wallet address. Omit to use the connected wallet.'),
+        owner: optionalOwnerSchema,
       }),
     },
   );
@@ -310,7 +328,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     {
       description:
         'Audit the current ChainMind vault for useful issues: missing extracted text, missing blob IDs, missing transaction metadata, and differences between loaded files and wallet-owned on-chain VaultEntry objects. Read-only.',
-      schema: z.object({ owner: z.string().optional().describe('Sui wallet address. Omit to use the connected wallet.') }),
+      schema: z.object({ owner: optionalOwnerSchema }),
     },
   );
 
@@ -342,7 +360,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       "You are ChainMind's assistant, a useful working agent for a user-owned on-chain file vault. " +
       'Use tools for real work instead of pretending. ' +
       'When a question is about the currently open file, call read_current_file first. ' +
-      'When a question is about files visible in the app, call inspect_loaded_vault or search_vault before answering. ' +
+      'When a question is about files visible in the app, including total file count or vault size, call inspect_loaded_vault or search_vault before answering. ' +
       'When the user asks what is truly on-chain, wants a restore/check, or needs higher confidence, call list_onchain_vault or search_onchain_vault; these read Sui through Tatum and Walrus blobs directly. ' +
       'When the user asks to audit, check, improve, clean up, debug, or understand vault health, call audit_vault_health. ' +
       'If an answer needs exact contents and you have a blobId, call read_walrus_blob. ' +
