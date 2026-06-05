@@ -512,7 +512,7 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Restore vault from chain (read-only, by owner address) */}
+          {/* Legacy restore control kept hidden while restore lives in the wallet menu. */}
           <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'} style={{ display: 'none' }}>
           <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
               {!restoreOpen ? (
