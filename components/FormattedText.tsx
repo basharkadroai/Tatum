@@ -25,7 +25,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
       >
         {copied ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
       </button>
-      <pre style={{ margin: 0, padding: '34px 14px 14px', background: 'transparent', color: 'var(--text-1)', overflow: 'auto', fontSize: '12.5px', lineHeight: 1.5, fontFamily: MONO }}>
+      <pre className="code-scroll" style={{ margin: 0, padding: '34px 14px 14px', background: 'transparent', color: 'var(--text-1)', overflow: 'auto', fontSize: '12.5px', lineHeight: 1.5, fontFamily: MONO }}>
         <code>{code}</code>
       </pre>
     </div>

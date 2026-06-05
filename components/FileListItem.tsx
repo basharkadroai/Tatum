@@ -14,6 +14,8 @@ export function FileListItem({ item, active, onSelect, onDelete }: { item: Vault
   const rootRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [coarse, setCoarse] = useState(false); // touch devices: no hover, so always show ⋮
+  useEffect(() => { setCoarse(window.matchMedia('(hover: none)').matches); }, []);
   const ext = item.filename.split('.').pop()?.toLowerCase() ?? '';
   const Icon = CODE_EXTS.includes(ext) ? CodeXmlIcon : PaperclipIcon;
 
@@ -25,7 +27,7 @@ export function FileListItem({ item, active, onSelect, onDelete }: { item: Vault
     return () => document.removeEventListener('mousedown', onDoc);
   }, [menuOpen]);
 
-  const showDots = onDelete && (hovered || menuOpen || active);
+  const showDots = onDelete && (hovered || menuOpen || active || coarse);
 
   return (
     <div
@@ -34,7 +36,7 @@ export function FileListItem({ item, active, onSelect, onDelete }: { item: Vault
       onMouseEnter={() => { setHovered(true); iconRef.current?.startAnimation(); }}
       onMouseLeave={() => { setHovered(false); iconRef.current?.stopAnimation(); }}
       className={`file-item${active ? ' active' : ''}`}
-      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '9px', cursor: 'pointer' }}
+      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', marginRight: '8px', borderRadius: '9px', cursor: 'pointer' }}
     >
       <span style={{ flexShrink: 0, display: 'flex' }}>
         <Icon ref={iconRef} size={18} color="var(--text-2)" isAnimated={false} />
