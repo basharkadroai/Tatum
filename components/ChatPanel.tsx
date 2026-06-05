@@ -224,7 +224,11 @@ export function ChatPanel({
             if (ev.type === 'step') { markPrevDone(steps); steps.push({ label: ev.label ?? 'Working', status: 'running' }); }
             else if (ev.type === 'answer') { markPrevDone(steps); last.text = ev.text ?? ''; }
             else if (ev.type === 'error') { markPrevDone(steps); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
-            else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) { last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content }; }
+            else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) {
+              markPrevDone(steps);
+              steps.push({ label: `Created ${ev.filename ?? 'file'}`, status: 'done' });
+              last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content };
+            }
             last.steps = steps;
             c[c.length - 1] = last;
             return c;
@@ -586,17 +590,16 @@ export function ChatPanel({
                   )}
                 </div>
                 {m.role === 'ai' && m.offer && !m.offer.resolved && uploadRunner && !busy && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', padding: '12px 14px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--off-white)', maxWidth: '440px' }}>
-                    <span style={{ fontSize: '13px', color: 'var(--text-1)' }}>{m.offer.question}</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'ui-monospace, monospace' }}>{m.offer.filename}</span>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
-                      <button onClick={() => storeGenerated(i)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, padding: '7px 12px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer' }}>
-                        <Database size={13} strokeWidth={2.2} /> Store on-chain
-                      </button>
-                      <button onClick={() => resolveOffer(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 12px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer' }}>
-                        Not now
-                      </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '11px', marginTop: '8px', padding: '9px 10px 9px 12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--off-white)', maxWidth: '460px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
+                      <Database size={15} strokeWidth={2} />
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)' }}>Store on-chain</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.filename} · Walrus + Sui</div>
                     </div>
+                    <button onClick={() => storeGenerated(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer', flexShrink: 0 }}>Store</button>
+                    <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; }}><X size={14} strokeWidth={2} /></button>
                   </div>
                 )}
                 {m.role === 'ai' && !(m.steps && m.steps.length) && !(streaming && i === messages.length - 1) && (
