@@ -613,7 +613,7 @@ export function ChatPanel({
                     <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; }}><X size={14} strokeWidth={2} /></button>
                   </div>
                 )}
-                {m.role === 'ai' && !(m.steps && m.steps.length) && !(streaming && i === messages.length - 1) && (
+                {m.role === 'ai' && m.text && !(streaming && i === messages.length - 1) && (
                   <div style={{ display: 'flex', gap: '14px', marginTop: '4px' }}>
                     <button onClick={() => copyMsg(m.text, i)} style={copiedIdx === i ? { ...actionBtn, color: '#65ca9d' } : actionBtn}>
                       {copiedIdx === i ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
