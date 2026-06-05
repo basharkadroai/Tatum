@@ -108,7 +108,9 @@ export function ChatPanel({
     return () => clearTimeout(t);
   }, [messages, owner, persistKey, streaming, loading]);
   useEffect(() => { onEmptyChange?.(messages.length === 0 && !loading && !streaming); }, [messages.length, loading, streaming, onEmptyChange]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  // Keep the latest content in view. While streaming, scroll INSTANTLY (smooth
+  // can't keep up with fast tokens, so the view fell behind); otherwise smooth.
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: streaming || loading ? 'auto' : 'smooth', block: 'end' }); }, [messages, streaming, loading]);
   useEffect(() => {
     const ta = taRef.current;
     if (!ta) return;
