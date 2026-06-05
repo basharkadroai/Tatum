@@ -12,7 +12,13 @@ import type { UploadEvent, UploadStep } from '@/lib/upload';
 import { uploadToWalrus } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
 
-export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[]; offer?: { kind: 'store'; filename: string; question: string; content?: string; message?: string; resolved?: boolean } };
+export type ChatMessage = {
+  role: 'user' | 'ai';
+  text: string;
+  steps?: UploadStep[];
+  trace?: { runId?: string; startedAt?: string; durationMs?: number; eventCount?: number; tools?: string[]; ok?: boolean };
+  offer?: { kind: 'store'; filename: string; question: string; content?: string; message?: string; resolved?: boolean };
+};
 
 interface Props {
   resetKey: string;
@@ -185,10 +191,12 @@ export function ChatPanel({
     const ac = new AbortController();
     abortRef.current = ac;
     let holderAdded = false;
-    const markPrevDone = (steps: UploadStep[]) => {
-      for (let i = steps.length - 1; i >= 0; i--) {
-        if (steps[i].status === 'running') { steps[i] = { ...steps[i], status: 'done' }; break; }
-      }
+    const updateStep = (steps: UploadStep[], id: string | undefined, patch: Partial<UploadStep>) => {
+      if (!id) return false;
+      const idx = steps.findIndex(s => s.id === id);
+      if (idx < 0) return false;
+      steps[idx] = { ...steps[idx], ...patch };
+      return true;
     };
     try {
       const res = await fetch('/api/agent', {
@@ -213,7 +221,20 @@ export function ChatPanel({
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
-          let ev: { type: string; label?: string; text?: string; message?: string; kind?: 'store'; filename?: string; question?: string; content?: string };
+          let ev: {
+            type: string;
+            id?: string;
+            label?: string;
+            detail?: string;
+            durationMs?: number;
+            text?: string;
+            message?: string;
+            kind?: 'store';
+            filename?: string;
+            question?: string;
+            content?: string;
+            summary?: ChatMessage['trace'];
+          };
           try { ev = JSON.parse(trimmed); } catch { continue; }
           const isFirst = !holderAdded;
           holderAdded = true;
@@ -223,13 +244,24 @@ export function ChatPanel({
             if (isFirst) c.push({ role: 'ai', text: '', steps: [] });
             const last = { ...c[c.length - 1] };
             const steps = [...(last.steps ?? [])];
-            if (ev.type === 'step') { markPrevDone(steps); steps.push({ label: ev.label ?? 'Working', status: 'running' }); }
-            else if (ev.type === 'token') { markPrevDone(steps); last.text = (last.text ?? '') + (ev.text ?? ''); }  // live streaming
+            if (ev.type === 'step') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'done', detail: ev.detail }); }
+            else if (ev.type === 'tool_start') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'running' }); }
+            else if (ev.type === 'tool_done') {
+              updateStep(steps, ev.id, { status: 'done', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Completed in ${ev.durationMs}ms` : undefined) });
+            }
+            else if (ev.type === 'tool_error') {
+              updateStep(steps, ev.id, { status: 'error', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Failed after ${ev.durationMs}ms` : undefined) });
+            }
+            else if (ev.type === 'token') { last.text = (last.text ?? '') + (ev.text ?? ''); }  // live streaming
             else if (ev.type === 'reset') { last.text = ''; }                                                       // retry → clear partial
-            else if (ev.type === 'answer') { markPrevDone(steps); last.text = ev.text ?? ''; }                      // final cleaned (replaces)
-            else if (ev.type === 'error') { markPrevDone(steps); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
+            else if (ev.type === 'answer') { last.text = ev.text ?? ''; }                                           // final cleaned (replaces)
+            else if (ev.type === 'error') { last.text = `The agent hit an error: ${ev.message ?? ''}`; }
+            else if (ev.type === 'trace') {
+              const ms = typeof ev.summary?.durationMs === 'number' ? ` · ${ev.summary.durationMs}ms` : '';
+              steps.push({ label: `Trace logged ${ev.summary?.runId?.slice(0, 8) ?? ''}${ms}`, status: 'done' });
+              last.trace = ev.summary;
+            }
             else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) {
-              markPrevDone(steps);
               steps.push({ label: `Created ${ev.filename ?? 'file'}`, status: 'done' });
               last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content, message: ev.message };
             }
@@ -245,7 +277,6 @@ export function ChatPanel({
         const c = [...m];
         const last = { ...c[c.length - 1] };
         const steps = [...(last.steps ?? [])];
-        markPrevDone(steps);
         if (!last.text) last.text = 'Done.';
         last.steps = steps;
         c[c.length - 1] = last;
@@ -270,7 +301,7 @@ export function ChatPanel({
     const lastUser = msgs.length ? msgs[msgs.length - 1].text : '';
     if (!lastUser) return;
     setMessages(msgs);
-    runCompletion(lastUser, msgs.slice(0, -1).slice(-6));
+    (agent ? runAgent : runCompletion)(lastUser, msgs.slice(0, -1).slice(-6));
   }
   async function copyMsg(text: string, idx: number) {
     try {

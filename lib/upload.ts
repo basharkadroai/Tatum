@@ -110,7 +110,7 @@ export async function analyzeFile(file: File): Promise<Analysis> {
 
 // ── Structured step events for the animated chain in the chat ──
 export type UploadStepStatus = 'running' | 'done' | 'error';
-export type UploadStep = { label: string; status: UploadStepStatus; detail?: string };
+export type UploadStep = { id?: string; label: string; status: UploadStepStatus; detail?: string };
 export type UploadEvent =
   | { kind: 'start'; label: string }       // begin a new step (spinner)
   | { kind: 'done'; detail?: string }      // resolve current step (checkmark)
