@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic, Database, X } from 'lucide-react';
+import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic, Database, X, SquarePen } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
@@ -278,6 +278,19 @@ export function ChatPanel({
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx(c => (c === idx ? null : c)), 1600);
     } catch { /* ignore */ }
+  }
+
+  // Start a fresh conversation: clear messages, input, and the saved history.
+  function clearChat() {
+    abortRef.current?.abort();
+    setStreaming(false);
+    setLoading(false);
+    setInput('');
+    setMessages([]);
+    skipFirstSave.current = true; // don't let the empty state immediately overwrite before a reload
+    if (msgKeyRef.current && typeof window !== 'undefined') {
+      try { localStorage.removeItem(msgKeyRef.current); } catch { /* ignore */ }
+    }
   }
 
   // Mark a store-offer as answered (the buttons disappear).
@@ -569,6 +582,17 @@ export function ChatPanel({
             {chips}
           </div>
         ) : (
+          <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', maxWidth: '760px', margin: '0 auto 12px' }}>
+            <button onClick={clearChat} title="Start a new chat" disabled={busy} style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600,
+              padding: '6px 11px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--off-white)',
+              color: 'var(--text-2)', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1,
+            }}
+              onMouseEnter={e => { if (!busy) { e.currentTarget.style.color = 'var(--text-1)'; e.currentTarget.style.borderColor = 'var(--border-2)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-2)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+            ><SquarePen size={13} strokeWidth={2} /> New chat</button>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '760px', margin: '0 auto' }}>
             {messages.map((m, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: m.role === 'user' ? 'flex-end' : 'stretch', animation: 'fadeUp 0.2s ease' }}>
@@ -593,6 +617,13 @@ export function ChatPanel({
                     <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
                   )}
                 </div>
+                {m.role === 'user' && (
+                  <div style={{ display: 'flex', marginTop: '2px' }}>
+                    <button onClick={() => copyMsg(m.text, i)} style={copiedIdx === i ? { ...actionBtn, color: '#65ca9d' } : actionBtn}>
+                      {copiedIdx === i ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
+                    </button>
+                  </div>
+                )}
                 {m.role === 'ai' && m.offer && !m.offer.resolved && uploadRunner && !busy && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '11px', marginTop: '8px', padding: '9px 10px 9px 12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--off-white)', maxWidth: '460px' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
@@ -627,6 +658,7 @@ export function ChatPanel({
             )}
             <div ref={endRef} />
           </div>
+          </>
         )}
       </div>
       <div style={{ padding: '8px 24px 18px', flexShrink: 0 }}>
