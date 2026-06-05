@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ConnectModal, useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 import { LogOut, Wallet } from 'lucide-react';
 import { SUI_NETWORK as NETWORK } from '@/lib/network';
@@ -9,6 +9,27 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
   const { mutate: disconnect } = useDisconnectWallet();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [bal, setBal] = useState<string | null>(null);
+
+  // Live SUI balance via Tatum's Sui RPC (suix_getAllBalances through the
+  // /api/rpc Tatum gateway proxy) — real on-chain data, powered by Tatum.
+  useEffect(() => {
+    if (!account?.address) { setBal(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/rpc', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'suix_getAllBalances', params: [account.address] }),
+        });
+        const json = await res.json();
+        const sui = (json?.result ?? []).find((b: { coinType?: string; totalBalance?: string }) => b.coinType === '0x2::sui::SUI');
+        const mist = sui ? Number(sui.totalBalance) : 0;
+        if (!cancelled) setBal((mist / 1e9).toLocaleString(undefined, { maximumFractionDigits: 3 }));
+      } catch { if (!cancelled) setBal(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [account?.address]);
 
   const short = account ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}` : '';
   const initials = account ? account.address.slice(2, 4).toUpperCase() : '';
@@ -86,7 +107,7 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
         <>
           <div aria-hidden={collapsed} style={{ minWidth: 0, flex: collapsed ? '0 0 0px' : 1, ...revealStyle }}>
             <p style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{short}</p>
-            <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '1px' }}>Sui {NETWORK}</p>
+            <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '1px' }}>{bal !== null ? `${bal} SUI · via Tatum` : `Sui ${NETWORK}`}</p>
           </div>
           <button onClick={() => setConfirming(true)} title="Disconnect" aria-hidden={collapsed} tabIndex={collapsed ? -1 : 0}
             style={{
