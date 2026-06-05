@@ -9,6 +9,7 @@ import AgentMascot from './AgentMascot';
 import { useDictation, Waveform } from './dictation';
 import type { VaultItem } from '@/types/vault';
 import type { UploadEvent, UploadStep } from '@/lib/upload';
+import { uploadToWalrus } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
 
 export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[]; offer?: { kind: 'store'; filename: string; question: string; resolved?: boolean } };
@@ -34,12 +35,13 @@ interface Props {
   onAiConfigChange?: (c: AiConfig | null) => void;  // in-prompt model switcher
   agent?: boolean;                              // route through the LangChain agent (/api/agent) + show its activity chain
   persistKey?: string;                          // when set, this chat's messages are saved/restored (per-file history)
+  owner?: string;                               // wallet address — when set, chat history is also backed up on-chain (Walrus + Sui) for portability
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, mobile, disabled,
-  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange, agent, persistKey,
+  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange, agent, persistKey, owner,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -50,8 +52,11 @@ export function ChatPanel({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // Voice input (hold-to-talk): streams text into the box as you speak.
+  // Voice input. Two modes (like Claude/Discord): quick TAP = toggle (keeps
+  // listening until you tap again), press-and-HOLD = push-to-talk (stops on release).
   const baseRef = useRef('');
+  const micPressRef = useRef(0);
+  const micModeRef = useRef<'idle' | 'hold' | 'toggle'>('idle');
   const dict = useDictation({
     onTranscript: t => setInput((baseRef.current ? baseRef.current + ' ' : '') + t),
   });
@@ -81,6 +86,27 @@ export function ChatPanel({
     if (!k || typeof window === 'undefined') return;
     try { localStorage.setItem(k, JSON.stringify(messages)); } catch { /* ignore */ }
   }, [messages]);
+
+  // Portable history: also back up this chat on-chain (Walrus blob + a Sui
+  // VaultEntry owned by the wallet, server-signed). Debounced + best-effort, so
+  // it never blocks the chat. On another device, restoring the vault replays it.
+  useEffect(() => {
+    if (!owner || !persistKey || messages.length === 0 || streaming || loading) return;
+    const key = persistKey;
+    const snapshot = messages;
+    const t = setTimeout(async () => {
+      try {
+        const json = JSON.stringify({ v: 1, key, ts: Date.now(), messages: snapshot });
+        const file = new File([json], '.chat.json', { type: 'application/json' });
+        const blobId = await uploadToWalrus(file);
+        await fetch('/api/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ blobId, filename: '.chat.json', fileType: 'application/json', fileSize: file.size, owner }),
+        });
+      } catch { /* best-effort: local history still works */ }
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [messages, owner, persistKey, streaming, loading]);
   useEffect(() => { onEmptyChange?.(messages.length === 0 && !loading && !streaming); }, [messages.length, loading, streaming, onEmptyChange]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => {
@@ -142,6 +168,7 @@ export function ChatPanel({
   function send(text?: string) {
     const q = (text ?? input).trim();
     if (!q || loading || streaming || disabled) return;
+    if (dict.recording) { micModeRef.current = 'idle'; dict.stop(); }
     const history = messages.slice(-6);
     setMessages(m => [...m, { role: 'user', text: q }]);
     setInput('');
@@ -334,11 +361,24 @@ export function ChatPanel({
   // Hold-to-talk mic: press to start, release (anywhere) to stop.
   const micBtn = (sz: number, radius: string) => (
     <button
-      title={dict.recording ? 'Release to stop' : 'Hold to talk'}
+      title={dict.recording ? (micModeRef.current === 'toggle' ? 'Tap to stop' : 'Release to stop') : 'Hold to talk · tap to toggle'}
       disabled={disabled || busy}
-      onPointerDown={e => { e.preventDefault(); if (disabled || busy) return; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ } baseRef.current = input.trim(); dict.start(); }}
-      onPointerUp={() => { if (dict.recording) dict.stop(); }}
-      onPointerCancel={() => { if (dict.recording) dict.stop(); }}
+      onPointerDown={e => {
+        e.preventDefault();
+        if (disabled || busy) return;
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+        if (dict.recording) { micModeRef.current = 'idle'; dict.stop(); return; } // tap again → stop toggle
+        baseRef.current = input.trim();
+        micPressRef.current = Date.now();
+        micModeRef.current = 'hold';
+        dict.start();
+      }}
+      onPointerUp={() => {
+        if (micModeRef.current !== 'hold') return;
+        if (Date.now() - micPressRef.current < 350) micModeRef.current = 'toggle'; // quick tap → keep listening
+        else { micModeRef.current = 'idle'; dict.stop(); }                          // held → stop on release
+      }}
+      onPointerCancel={() => { if (micModeRef.current === 'hold') { micModeRef.current = 'idle'; dict.stop(); } }}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         width: `${sz}px`, height: `${sz}px`, borderRadius: radius, flexShrink: 0, touchAction: 'none',

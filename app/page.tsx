@@ -77,6 +77,7 @@ export default function Home() {
   const [restoreMsg, setRestoreMsg] = useState('');
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [aiConfig, setAiConfig] = useState<AiConfig | null>(null);
+  const [chatRestoreTick, setChatRestoreTick] = useState(0); // bumped after chat history is restored from chain → remount the home chat
 
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
@@ -113,10 +114,40 @@ export default function Home() {
       const res = await fetch(`/api/vault-onchain?owner=${owner.trim()}`);
       const { entries } = await res.json();
       if (!Array.isArray(entries) || entries.length === 0) return 0;
+
+      // Chat-history backups are hidden VaultEntries (filename starts with ".chat").
+      // Replay the latest snapshot per chat into localStorage so chats are portable.
+      const chatEntries = entries.filter((e: { filename?: string }) => typeof e.filename === 'string' && e.filename.startsWith('.chat'));
+      const fileEntries = entries.filter((e: { filename?: string }) => !(typeof e.filename === 'string' && e.filename.startsWith('.chat')));
+      if (chatEntries.length) {
+        const latest: Record<string, { ts: number; messages: unknown }> = {};
+        for (const e of chatEntries) {
+          try {
+            const r = await fetch(`${WALRUS_AGGREGATOR}/v1/blobs/${e.blobId}`);
+            if (!r.ok) continue;
+            const data = JSON.parse(await r.text());
+            if (data?.key && Array.isArray(data.messages)) {
+              const ts = Number(data.ts) || 0;
+              if (!latest[data.key] || ts > latest[data.key].ts) latest[data.key] = { ts, messages: data.messages };
+            }
+          } catch { /* skip a bad blob */ }
+        }
+        let wrote = false;
+        for (const key of Object.keys(latest)) {
+          try {
+            const existing = localStorage.getItem(key);
+            const cur = existing ? JSON.parse(existing) : null;
+            // Only fill in when there's no local chat yet (don't clobber newer local history).
+            if (!Array.isArray(cur) || cur.length === 0) { localStorage.setItem(key, JSON.stringify(latest[key].messages)); wrote = true; }
+          } catch { /* ignore */ }
+        }
+        if (wrote) setChatRestoreTick(t => t + 1);
+      }
+
       const fresh: VaultItem[] = [];
       setVault(prev => {
         const have = new Set(prev.map(i => i.blobId));
-        for (const e of entries) {
+        for (const e of fileEntries) {
           if (have.has(e.blobId)) continue;
           fresh.push({
             id: crypto.randomUUID(),
@@ -464,8 +495,10 @@ export default function Home() {
             /* Home: centered chat over the scene */
             <div style={{ flex: 1, minHeight: 0 }}>
                 <ChatPanel
+                  key={`home-${chatRestoreTick}`}
                   resetKey="vault"
                   persistKey="chainmind_chat_home"
+                  owner={account?.address}
                   centered
                   mobile={isMobile}
                   aiConfig={aiConfig}
@@ -594,7 +627,8 @@ export default function Home() {
               <div style={{ flex: 1, minHeight: 0 }}>
                 <ChatPanel
                   resetKey={selected.id}
-                  persistKey={`chainmind_chat_${selected.id}`}
+                  persistKey={`chainmind_chat_${selected.blobId || selected.id}`}
+                  owner={account?.address}
                   endpoint="/api/ask"
                   mobile={isMobile}
                   aiConfig={aiConfig}

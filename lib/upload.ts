@@ -22,7 +22,7 @@ function readAsDataURL(file: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(file); });
 }
 
-async function uploadToWalrus(file: File): Promise<string> {
+export async function uploadToWalrus(file: File): Promise<string> {
   // The public testnet publisher is occasionally flaky — retry a few times with
   // backoff so a transient 5xx/timeout doesn't fail an upload on camera.
   let lastErr: unknown;
