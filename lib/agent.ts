@@ -58,7 +58,9 @@ export function buildVaultAgent(docs: VaultDoc[], temperature = 0) {
       'When the user needs current or external information, use the web search (tavily) tool, ' +
       'then cite what you found. ' +
       'When the user asks you to create/write/generate something (a document, plan, code, etc.), ' +
-      'produce the finished content as your answer — the app will then offer to store it on-chain. ' +
+      'produce the finished content as your answer, then on the VERY LAST line add a marker exactly like ' +
+      '[[STORE:suggested-filename.ext]] — pick a short filename with the right extension (.md, .py, .json, .html, …). ' +
+      'Only add that marker when you actually created a file/document/code worth saving; never add it for plain answers or questions. ' +
       'Be concise. ' +
       'Whenever you mention a file from the vault, write its exact name in SQUARE BRACKETS, ' +
       'e.g. [Day 0-4 Lessons.txt], so it renders as a clickable link. ' +
@@ -80,8 +82,9 @@ export type AgentEvent =
   | { type: 'step'; tool: string; label: string }
   | { type: 'answer'; text: string }
   // After generating content, offer to store it on-chain (the client handles the
-  // choice — "Store" runs the existing Walrus+Sui upload pipeline).
-  | { type: 'offer'; kind: 'store'; filename: string; question: string };
+  // choice — "Store" runs the existing Walrus+Sui upload pipeline). `content` is
+  // the exact artifact to store (just the code block, or the whole answer).
+  | { type: 'offer'; kind: 'store'; filename: string; question: string; content: string };
 
 // Friendly, human-readable label for a tool call shown in the chain.
 function stepLabel(tool: string, args: Record<string, unknown>): string {
@@ -91,9 +94,12 @@ function stepLabel(tool: string, args: Record<string, unknown>): string {
   return `Running ${tool}`;
 }
 
-// Did the user ask the agent to CREATE something (worth offering to store)?
-function isGenerative(question: string): boolean {
-  return /\b(create|write|generate|make|build|draft|design|compose|code|script|prd|document|plan|spec|readme|guide|outline|essay|story|report)\b/i.test(question);
+// Clean the model's [[STORE:filename]] marker → suggested filename (or null)
+// and the answer with the marker removed.
+function parseStoreMarker(answer: string): { filename: string | null; text: string } {
+  const m = answer.match(/\[\[STORE:\s*([^\]]+?)\s*\]\]\s*$/i);
+  if (!m) return { filename: null, text: answer };
+  return { filename: m[1].trim(), text: answer.slice(0, m.index).trimEnd() };
 }
 // Pick a sensible extension for the generated content (any text/code type).
 function detectExt(question: string, answer: string): string {
@@ -110,9 +116,17 @@ function detectExt(question: string, answer: string): string {
   }
   return 'md';
 }
-function suggestFilename(question: string, answer: string): string {
-  const slug = question.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 6).join('-');
-  return `${slug || 'chainmind-note'}.${detectExt(question, answer)}`;
+function sanitizeFilename(name: string, answer: string): string {
+  let n = name.replace(/^.*[\\/]/, '').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^[-.]+|[-.]+$/g, '');
+  if (!/\.[a-z0-9]{1,6}$/i.test(n)) n += '.' + detectExt(n, answer);
+  return n || 'chainmind-note.md';
+}
+// Store the specific artifact: if the answer is mostly one fenced code block,
+// store just that code; otherwise store the whole answer.
+function extractArtifact(answer: string): string {
+  const blocks = [...answer.matchAll(/```[a-z0-9]*\n([\s\S]*?)```/gi)].map(b => b[1]);
+  if (blocks.length === 1 && blocks[0].length > answer.length * 0.5) return blocks[0].trim();
+  return answer.trim();
 }
 
 // Groq Llama occasionally emits a malformed tool call → 400 "tool_use_failed".
@@ -137,6 +151,7 @@ export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string
 
   const MAX_ATTEMPTS = 3;
   let lastAnswer = '';
+  let storeFilename: string | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let answered = false;
     try {
@@ -154,15 +169,19 @@ export async function* streamVaultAgentEvents(docs: VaultDoc[], question: string
             // results (also string content, no tool_calls) — never treat those as the answer.
             if (node !== 'tools' && (!m.tool_calls || m.tool_calls.length === 0) && typeof m.content === 'string' && m.content.trim()) {
               answered = true;
-              lastAnswer = m.content;
-              yield { type: 'answer', text: m.content };
+              // The model adds [[STORE:filename]] when it created something worth saving.
+              const parsed = parseStoreMarker(m.content);
+              storeFilename = parsed.filename;
+              lastAnswer = parsed.text;
+              yield { type: 'answer', text: parsed.text };
             }
           }
         }
       }
-      // After a substantial generated answer, offer to store it on-chain.
-      if (isGenerative(question) && lastAnswer.trim().length > 200) {
-        yield { type: 'offer', kind: 'store', filename: suggestFilename(question, lastAnswer), question: 'Want to store this on-chain (Walrus + Sui)?' };
+      // Model decided this is worth storing → offer the specific artifact on-chain.
+      if (storeFilename && lastAnswer.trim().length > 0) {
+        const content = extractArtifact(lastAnswer);
+        yield { type: 'offer', kind: 'store', filename: sanitizeFilename(storeFilename, lastAnswer), question: 'Want to store this on-chain (Walrus + Sui)?', content };
       }
       return; // run completed
     } catch (err) {

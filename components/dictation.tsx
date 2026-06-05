@@ -108,9 +108,17 @@ export function useDictation({ onTranscript, onError }: DictOpts) {
     setRecording(false);
   };
 
+  // Cancel: stop everything WITHOUT transcribing (discard the take).
+  const cancel = () => {
+    const r = ref.current;
+    if (r.recorder && r.recorder.state !== 'inactive') { try { r.recorder.ondataavailable = null; r.recorder.stop(); } catch { /* ignore */ } }
+    cleanup();
+    setRecording(false);
+  };
+
   useEffect(() => cleanup, []);
 
-  return { recording, streaming, analyser, start, stop };
+  return { recording, streaming, analyser, start, stop, cancel };
 }
 
 // Live waveform — white, minimal, linear. New samples enter on the RIGHT and the

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic, Database } from 'lucide-react';
+import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic, Database, X } from 'lucide-react';
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
@@ -12,7 +12,7 @@ import type { UploadEvent, UploadStep } from '@/lib/upload';
 import { uploadToWalrus } from '@/lib/upload';
 import type { AiConfig } from '@/lib/aiConfig';
 
-export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[]; offer?: { kind: 'store'; filename: string; question: string; resolved?: boolean } };
+export type ChatMessage = { role: 'user' | 'ai'; text: string; steps?: UploadStep[]; offer?: { kind: 'store'; filename: string; question: string; content?: string; resolved?: boolean } };
 
 interface Props {
   resetKey: string;
@@ -211,7 +211,7 @@ export function ChatPanel({
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
-          let ev: { type: string; label?: string; text?: string; message?: string; kind?: 'store'; filename?: string; question?: string };
+          let ev: { type: string; label?: string; text?: string; message?: string; kind?: 'store'; filename?: string; question?: string; content?: string };
           try { ev = JSON.parse(trimmed); } catch { continue; }
           const isFirst = !holderAdded;
           holderAdded = true;
@@ -224,7 +224,7 @@ export function ChatPanel({
             if (ev.type === 'step') { markPrevDone(steps); steps.push({ label: ev.label ?? 'Working', status: 'running' }); }
             else if (ev.type === 'answer') { markPrevDone(steps); last.text = ev.text ?? ''; }
             else if (ev.type === 'error') { markPrevDone(steps); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
-            else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) { last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?' }; }
+            else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) { last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content }; }
             last.steps = steps;
             c[c.length - 1] = last;
             return c;
@@ -281,7 +281,8 @@ export function ChatPanel({
     const m = messages[i];
     if (!m?.offer || !uploadRunner || busy) return;
     resolveOffer(i);
-    handleAttach(new File([m.text], m.offer.filename, { type: 'text/markdown' }));
+    const body = m.offer.content ?? m.text; // the specific artifact (code block) or the whole answer
+    handleAttach(new File([body], m.offer.filename, { type: 'text/markdown' }));
   }
 
   // Attach a file from the chat and narrate the upload pipeline as an animated
@@ -358,7 +359,22 @@ export function ChatPanel({
       opacity: input.trim() && !disabled ? 1 : 0.4, transition: 'opacity 0.15s',
     }}><MotionIcon icon={ArrowUp} mode="bob" size={Math.round(sz / 2.3)} strokeWidth={2.5} color="currentColor" /></button>
   );
-  // Hold-to-talk mic: press to start, release (anywhere) to stop.
+  // While dictating: ✓ confirm (keep what was said) · ✕ cancel (discard, restore prior text).
+  const confirmMic = () => { micModeRef.current = 'idle'; dict.stop(); };
+  const cancelMic = () => { micModeRef.current = 'idle'; dict.cancel(); setInput(baseRef.current); };
+  const dictControls = (sz: number, radius: string) => (
+    <>
+      <button onClick={cancelMic} title="Cancel" style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: `${sz}px`, height: `${sz}px`,
+        borderRadius: radius, flexShrink: 0, background: 'var(--off-white)', border: '1px solid var(--border)', color: 'var(--text-1)', cursor: 'pointer',
+      }}><X size={Math.round(sz / 2.3)} strokeWidth={2.5} /></button>
+      <button onClick={confirmMic} title="Done" style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: `${sz}px`, height: `${sz}px`,
+        borderRadius: radius, flexShrink: 0, background: 'var(--purple)', border: 'none', color: 'var(--base)', cursor: 'pointer',
+      }}><Check size={Math.round(sz / 2.3)} strokeWidth={2.5} /></button>
+    </>
+  );
+  // Hold-to-talk / tap-to-toggle mic.
   const micBtn = (sz: number, radius: string) => (
     <button
       title={dict.recording ? (micModeRef.current === 'toggle' ? 'Tap to stop' : 'Release to stop') : 'Hold to talk · tap to toggle'}
@@ -424,8 +440,7 @@ export function ChatPanel({
           {modelMenu}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {micBtn(44, '50%')}
-          {sendBtn(44, '50%')}
+          {dict.recording ? dictControls(44, '50%') : <>{micBtn(44, '50%')}{sendBtn(44, '50%')}</>}
         </div>
       </div>
     </div>
@@ -442,8 +457,7 @@ export function ChatPanel({
           {modelMenu}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {micBtn(36, '10px')}
-          {sendBtn(36, '10px')}
+          {dict.recording ? dictControls(36, '10px') : <>{micBtn(36, '10px')}{sendBtn(36, '10px')}</>}
         </div>
       </div>
     </div>
