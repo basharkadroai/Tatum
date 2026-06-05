@@ -31,6 +31,7 @@ All Sui reads and writes route through **Tatum's gateway** (`sui-testnet.gateway
 - `app/api/register/route.ts` mints each `VaultEntry` on Sui via Tatum RPC (server-signed, so storing is **gasless for the user** on testnet) and transfers ownership to the connected wallet.
 - `app/api/vault-onchain/route.ts` reconstructs a wallet's entire vault from Sui via Tatum.
 - The wallet's live **SUI balance** is fetched with `suix_getAllBalances` through the same Tatum proxy and shown in the UI.
+- The AI agent has a **`crypto_price` tool backed by Tatum's Data API** (`/v3/tatum/rate`) — ask it for the live price of SUI/BTC/ETH and it answers from Tatum.
 
 ### Sui
 - Move entry `vault::register` records `{ blobId, filename, fileType, fileSize, owner }` as an owned object — the on-chain proof behind every file.

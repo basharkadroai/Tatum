@@ -6,6 +6,7 @@
 import { createAgent, tool } from 'langchain';
 import { ChatGroq } from '@langchain/groq';
 import { TavilySearch } from '@langchain/tavily';
+import { getExchangeRate } from '@/lib/tatum';
 import * as z from 'zod';
 
 // Matches the doc shape the client already sends to /api/ask-vault.
@@ -40,13 +41,28 @@ export function buildVaultAgent(docs: VaultDoc[], temperature = 0) {
     },
   );
 
+  // Live crypto price via Tatum's Data API (powered by the same Tatum key as the
+  // Sui RPC gateway) — lets the agent answer price questions with real data.
+  const cryptoPrice = tool(
+    async ({ symbol }: { symbol: string }) => {
+      const r = await getExchangeRate(symbol, 'USD');
+      if (!r) return `Couldn't fetch a price for ${symbol.toUpperCase()} via Tatum.`;
+      const v = Number(r.value);
+      return `${symbol.toUpperCase()} ≈ $${v.toLocaleString(undefined, { maximumFractionDigits: 6 })} USD (via Tatum Data API${r.source ? `, source ${r.source}` : ''}).`;
+    },
+    {
+      name: 'crypto_price',
+      description: "Get the live USD price of a crypto asset (e.g. SUI, BTC, ETH) via Tatum's Data API.",
+      schema: z.object({ symbol: z.string().describe('Ticker symbol, e.g. SUI, BTC, ETH') }),
+    },
+  );
+
   const model = new ChatGroq({ model: GROQ_TOOL_MODEL, temperature });
 
-  // Web search via Tavily (real-time, LLM-optimized). Only enabled when a key is
-  // set (TAVILY_API_KEY) — free tier is plenty for prompts.
+  // Web search via Tavily (real-time, LLM-optimized). Only enabled when a key is set.
   const tools = process.env.TAVILY_API_KEY
-    ? [searchVault, new TavilySearch({ maxResults: 5 })]
-    : [searchVault];
+    ? [searchVault, cryptoPrice, new TavilySearch({ maxResults: 5 })]
+    : [searchVault, cryptoPrice];
 
   return createAgent({
     model,
@@ -57,6 +73,7 @@ export function buildVaultAgent(docs: VaultDoc[], temperature = 0) {
       'using only the tool results. Trust the tool output. ' +
       'When the user needs current or external information, use the web search (tavily) tool, ' +
       'then cite what you found. ' +
+      'For the live price of a crypto asset (SUI, BTC, ETH, …), use the crypto_price tool. ' +
       'When the user asks you to create/write/generate something (a document, plan, code, etc.), ' +
       'produce the finished content as your answer, then on the VERY LAST line add a marker exactly like ' +
       '[[STORE:suggested-filename.ext|a short, specific one-line invitation to save THIS thing]] — ' +
@@ -94,6 +111,7 @@ export type AgentEvent =
 function stepLabel(tool: string, args: Record<string, unknown>): string {
   const q = String(args.query ?? '');
   if (tool === 'search_vault') return `Searching your vault for “${q}”`;
+  if (tool === 'crypto_price') return `Checking ${String(args.symbol ?? '').toUpperCase()} price via Tatum`;
   if (tool.includes('tavily') || tool.includes('search')) return `Searching the web for “${q}”`;
   return `Running ${tool}`;
 }
