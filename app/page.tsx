@@ -523,7 +523,7 @@ export default function Home() {
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
                 >
-                  <Database size={14} strokeWidth={2} /> Restore vault from chain
+                  <Database size={14} strokeWidth={2} /> Restore
                 </button>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
