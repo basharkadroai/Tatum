@@ -307,11 +307,11 @@ export default function Home() {
           <button
             onClick={() => { if (isMobile) setMobileNavOpen(false); else setSidebarOpen(o => !o); }}
             title={isMobile ? 'Close menu' : sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0 }}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '7px', border: 'none', background: 'none', color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0 }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
           >
-            {isMobile ? <X size={18} strokeWidth={2} /> : <PanelLeft size={18} strokeWidth={2} />}
+            {isMobile ? <X size={16} strokeWidth={2} /> : <PanelLeft size={16} strokeWidth={2} />}
           </button>
         </div>
 
@@ -376,8 +376,9 @@ export default function Home() {
             </div>
           )}
 
-          {/* File list — only when expanded */}
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px 12px' }}>
+          {/* File list — only when expanded. No right padding so the scrollbar sits
+              flush against the sidebar's right edge (rows keep their own inner padding). */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 8px' }}>
             {sidebarExpanded && hasVault && filtered.length === 0 && search && (
               <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
             )}
