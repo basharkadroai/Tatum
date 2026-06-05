@@ -1,10 +1,10 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConnectModal, useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
-import { LogOut, Wallet, ChevronUp, FileText, Server } from 'lucide-react';
+import { LogOut, Wallet, ChevronUp, FileText, Server, Database } from 'lucide-react';
 import { SUI_NETWORK as NETWORK } from '@/lib/network';
 
-export function WalletProfile({ collapsed }: { collapsed: boolean }) {
+export function WalletProfile({ collapsed, restoreMenu }: { collapsed: boolean; restoreMenu?: ReactNode }) {
   const account = useCurrentAccount();
   const { mutate: disconnect } = useDisconnectWallet();
   const [open, setOpen] = useState(false);
@@ -129,6 +129,15 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
           padding: '5px', borderRadius: '11px', border: '1px solid var(--border)', background: 'var(--off-white)',
           boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
         }}>
+          {restoreMenu ? (
+            <div style={{ padding: '3px 5px 6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '5px 5px 8px', color: 'var(--text-2)', fontSize: '12px', fontWeight: 700 }}>
+                <Database size={14} strokeWidth={2} /> Restore vault
+              </div>
+              {restoreMenu}
+              <div style={{ height: '1px', background: 'var(--border)', margin: '8px 1px 5px' }} />
+            </div>
+          ) : null}
           <a href="/docs" target="_blank" rel="noreferrer" style={menuItem}
             onClick={() => setMenuOpen(false)}
             onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}

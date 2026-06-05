@@ -15,7 +15,7 @@ import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import type { MarketTxEvent } from '@/types/market';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
-  Search, Database, Link2, X, Check,
+  Database, Link2, X, Check,
   PanelLeft, ChevronDown, Menu, Loader2, SquarePen, ShoppingCart,
 } from 'lucide-react';
 
@@ -68,12 +68,10 @@ function suiToMist(input: string): string | null {
 export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
   const [selected, setSelected] = useState<VaultItem | null>(null);
-  const [search, setSearch] = useState('');
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [proofExpanded, setProofExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState('');
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -397,20 +395,29 @@ export default function Home() {
     }
   }
 
-  const filtered = vault.filter(item => {
-    const matchesSearch =
-      !search ||
-      item.filename.toLowerCase().includes(search.toLowerCase()) ||
-      item.summary.toLowerCase().includes(search.toLowerCase());
-    const matchesTag = !tagFilter || (item.tags || []).includes(tagFilter);
-    return matchesSearch && matchesTag;
-  });
+  const filtered = vault;
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
-  const allTags = Array.from(new Set(vault.flatMap(i => i.tags || []))).slice(0, 12);
   const sidebarExpanded = isMobile || sidebarOpen;
   const hasVault = vault.length > 0;
   const sidebarEase = 'cubic-bezier(0.32, 0.72, 0, 1)';
   const selectedOwnedByWallet = !!(selected?.owner && account?.address && selected.owner.toLowerCase() === account.address.toLowerCase());
+  const restoreMenu = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+      <input
+        value={restoreAddr}
+        onChange={e => setRestoreAddr(e.target.value)}
+        onFocus={() => { if (!restoreAddr && account?.address) setRestoreAddr(account.address); }}
+        onKeyDown={e => { if (e.key === 'Enter') doRestore(); }}
+        placeholder="Owner address 0x..."
+        style={{ width: '100%', padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--white)', color: 'var(--text-1)', fontSize: '12px', outline: 'none', fontFamily: 'ui-monospace, monospace' }}
+      />
+      <button onClick={doRestore} disabled={restoring || !restoreAddr.trim()}
+        style={{ width: '100%', padding: '8px 9px', borderRadius: '8px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: restoring ? 'default' : 'pointer', fontSize: '12px', fontWeight: 700, opacity: restoring || !restoreAddr.trim() ? 0.5 : 1 }}>
+        {restoring ? 'Restoring...' : 'Restore from chain'}
+      </button>
+      {restoreMsg && <p style={{ fontSize: '11px', color: 'var(--text-3)', margin: '0 2px' }}>{restoreMsg}</p>}
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--base)' }}>
@@ -461,42 +468,21 @@ export default function Home() {
           <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
             <div style={{ padding: '4px 14px 6px' }}>
               <button onClick={newChat} title="Start a new chat"
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '9px 12px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.borderColor = 'var(--border-2)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'var(--off-white)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-1)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <SquarePen size={15} strokeWidth={2} /> New chat
               </button>
               <a href="/marketplace" title="Open the ChainMind marketplace"
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '8px', padding: '9px 12px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '2px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
               >
                 <ShoppingCart size={15} strokeWidth={2} /> Marketplace
               </a>
             </div>
           </div>
-          {/* Search */}
-          {hasVault && (
-            <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
-            <div style={{ padding: '12px 14px 10px' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={13} strokeWidth={2} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
-                <input
-                  value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search files..."
-                  style={{
-                    width: '100%', padding: '7px 10px 7px 28px', borderRadius: '8px',
-                    fontSize: '12px', border: '1px solid var(--border)',
-                    background: 'var(--white)', color: 'var(--text-1)', outline: 'none',
-                  }}
-                  onFocus={e => (e.target.style.borderColor = 'var(--purple)')}
-                  onBlur={e => (e.target.style.borderColor = 'var(--border)')}
-                />
-              </div>
-            </div>
-            </div>
-          )}
 
           {/* File list label + storage stat */}
           {hasVault && (
@@ -508,30 +494,6 @@ export default function Home() {
               <div style={{ fontSize: '11px', color: 'var(--mint-dark)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <Database size={12} strokeWidth={2} /> {formatBytes(totalBytes)} on decentralized Walrus storage
               </div>
-              {allTags.length > 0 && (
-                tagFilter ? (
-                  <div style={{ marginTop: '8px' }}>
-                    <button onClick={() => setTagFilter(null)} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '4px',
-                      fontSize: '10px', fontWeight: 700, padding: '3px 9px', borderRadius: '20px',
-                      background: 'var(--purple)', color: 'var(--base)', border: 'none', cursor: 'pointer',
-                    }}><X size={10} strokeWidth={2.5} /> {tagFilter}</button>
-                  </div>
-                ) : (
-                  <div className="tag-strip" style={{ display: 'flex', gap: '5px', marginTop: '8px', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: '2px' }}>
-                    {allTags.map(tag => (
-                      <button key={tag} onClick={() => { setTagFilter(tag); setMobileNavOpen(false); }} style={{
-                        flexShrink: 0, whiteSpace: 'nowrap',
-                        fontSize: '10px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px',
-                        background: 'var(--off-white)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer',
-                      }}
-                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--purple)')}
-                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                      >{tag}</button>
-                    ))}
-                  </div>
-                )
-              )}
             </div>
             </div>
           )}
@@ -539,9 +501,6 @@ export default function Home() {
           {/* File list — only when expanded. No right padding so the scrollbar sits
               flush against the sidebar's right edge (rows keep their own inner padding). */}
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 8px' }}>
-            {sidebarExpanded && hasVault && filtered.length === 0 && search && (
-              <p style={{ fontSize: '12px', color: 'var(--text-3)', padding: '12px 8px' }}>No matches.</p>
-            )}
             {hasVault && filtered.map(item => (
               <FileListItem
                 key={item.id}
@@ -554,7 +513,7 @@ export default function Home() {
           </div>
 
           {/* Restore vault from chain (read-only, by owner address) */}
-          <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
+          <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'} style={{ display: 'none' }}>
           <div style={{ padding: '8px 10px 0', flexShrink: 0 }}>
               {!restoreOpen ? (
                 <button
@@ -595,7 +554,7 @@ export default function Home() {
 
           {/* Profile (wallet) */}
           <div style={{ padding: sidebarExpanded ? '8px 10px 10px' : '8px 8px 10px', borderTop: '1px solid var(--border)', flexShrink: 0, marginTop: '8px', transition: `padding 0.28s ${sidebarEase}` }}>
-            <WalletProfile collapsed={!sidebarExpanded} />
+            <WalletProfile collapsed={!sidebarExpanded} restoreMenu={restoreMenu} />
           </div>
         </aside>
 
@@ -757,16 +716,6 @@ export default function Home() {
                   <p style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'var(--text-3)' }}>
                     <Loader2 size={13} strokeWidth={2.5} className="lucide-spin" /> Reading this file from Walrus with AI…
                   </p>
-                )}
-                {summaryExpanded && selected.tags && selected.tags.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
-                    {selected.tags.map(tag => (
-                      <button key={tag} onClick={() => { setTagFilter(tag); setSelected(null); }} title={`Filter vault by "${tag}"`} style={{
-                        fontSize: '11px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px',
-                        background: 'var(--purple-bg)', color: 'var(--purple)', border: '1px solid var(--purple-border)', cursor: 'pointer',
-                      }}>#{tag}</button>
-                    ))}
-                  </div>
                 )}
               </div>
 
