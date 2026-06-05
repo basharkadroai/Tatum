@@ -140,10 +140,10 @@ export function WalletProfile({ collapsed }: { collapsed: boolean }) {
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           ><Server size={14} strokeWidth={2} /> MCP server</a>
           <div style={{ height: '1px', background: 'var(--border)', margin: '5px 6px' }} />
-          <button style={{ ...menuItem, color: 'var(--error)' }}
+          <button style={{ ...menuItem, color: '#e0796b', transition: 'background 0.12s, color 0.12s' }}
             onClick={() => { disconnect(); setMenuOpen(false); }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--error-bg)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            onMouseEnter={e => { e.currentTarget.style.background = '#c0392b'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#e0796b'; }}
           ><LogOut size={14} strokeWidth={2} /> Disconnect</button>
         </div>
       )}
