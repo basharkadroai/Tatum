@@ -815,6 +815,13 @@ export default function Home() {
                       )}
                     </div>
                   )}
+                  {selectedOwnedByWallet && !selected.listed && (
+                    <p style={{ fontSize: '11px', lineHeight: 1.45, margin: '7px 0 0', color: selected.encrypted ? 'var(--mint-dark)' : 'var(--text-3)' }}>
+                      {selected.encrypted
+                        ? 'Seal-gated: the buyer receives decrypt access when ownership transfers.'
+                        : 'Public Walrus file: buyers receive on-chain ownership, but the raw blob is already readable. For private paid knowledge, upload with Seal encryption first.'}
+                    </p>
+                  )}
                 </div>
                 {/* Optional: claim under your own wallet */}
                 {account && !selected.owner && (
