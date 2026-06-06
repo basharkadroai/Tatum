@@ -54,10 +54,8 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-const optionalOwnerSchema = z.preprocess(
-  value => (value == null ? undefined : value),
-  z.string().optional(),
-).describe('Sui wallet address. Omit this field to use the connected wallet.');
+const optionalOwnerSchema = z.string().optional()
+  .describe('Sui wallet address. Omit this field to use the connected wallet.');
 
 function inspectDocs(docs: VaultDoc[]) {
   const visibleDocs = docs.filter(d => !d.filename.startsWith('.'));
@@ -700,11 +698,19 @@ function restoreExactVaultCitations(answer: string, docs: VaultDoc[], currentFil
     if (doc?.filename) exactByNormalized.set(normalizeCitationLabel(doc.filename), doc.filename);
   }
   if (!exactByNormalized.size) return answer;
-  return answer.replace(/\[([^\]\n]{1,180})\]/g, (match, label: string) => {
+  let restored = answer.replace(/\[([^\]\n]{1,180})\]/g, (match, label: string) => {
     const normalized = normalizeCitationLabel(label);
     const exact = exactByNormalized.get(normalized);
     return exact ? `[${exact}]` : match;
   });
+  for (const [normalized, exact] of exactByNormalized) {
+    const pattern = [...normalized].map(ch => {
+      if (ch === '-') return '[\\-\\u2010-\\u2015\\u2212]';
+      return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }).join('');
+    restored = restored.replace(new RegExp(pattern, 'gi'), exact);
+  }
+  return restored;
 }
 
 function detectExt(question: string, answer: string): string {
