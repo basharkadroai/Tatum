@@ -91,6 +91,11 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
         )}
       </div>
 
+      {/* Sale type — NFT (unique) vs License (sells copies) */}
+      <span style={{ alignSelf: 'flex-start', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '6px', background: listing.saleType === 'license' ? 'var(--success-bg)' : 'var(--purple-bg)', color: listing.saleType === 'license' ? 'var(--mint-dark)' : 'var(--purple)' }}>
+        {listing.saleType === 'license' ? `License · ${listing.copiesSold ?? 0} sold` : 'NFT · one of a kind'}
+      </span>
+
       {/* What it's about — public preview from Walrus */}
       {isLocked ? (
         <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-3)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

@@ -13,6 +13,8 @@ export type MarketListing = {
   sealPolicyId?: string;
   category?: string;
   teaser?: string;
+  saleType?: 'nft' | 'license'; // 'nft' = unique object, transfers once; 'license' = sells copies repeatedly
+  copiesSold?: number;          // for 'license' offers
 };
 
 // Experimental creator-share offering. Keep this out of the main product flow

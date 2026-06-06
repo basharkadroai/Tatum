@@ -144,6 +144,7 @@ export async function GET(req: NextRequest) {
         priceMist,
         priceSui: mistToSui(priceMist),
         createdTx: event.id?.txDigest,
+        saleType: 'nft', // current contract: unique object, transfers once
         encrypted: isEncrypted,
         sealPolicyId: seal?.policyId,
         category: listingCategory(filename, fileType),
