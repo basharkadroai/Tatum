@@ -15,6 +15,7 @@ import { MarketplaceView } from '@/components/MarketplaceView';
 import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { cleanEnv, envFlag } from '@/lib/env';
+import { listingCategory, listingTeaser } from '@/lib/marketListing';
 import type { MarketTxEvent } from '@/types/market';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
@@ -137,6 +138,10 @@ export default function Home() {
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
   const [marketPrice, setMarketPrice] = useState('0.1');
+  const [marketTitle, setMarketTitle] = useState('');
+  const [marketCategory, setMarketCategory] = useState('Knowledge');
+  const [marketDescription, setMarketDescription] = useState('');
+  const [marketTeaser, setMarketTeaser] = useState('');
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketMsg, setMarketMsg] = useState('');
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
@@ -265,6 +270,14 @@ export default function Home() {
     if (account?.address) restoreFromChain(account.address);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.address]);
+  useEffect(() => {
+    if (!selected) return;
+    const category = listingCategory(selected.filename, selected.fileType);
+    setMarketTitle(selected.filename.replace(/\.[^.]+$/, ''));
+    setMarketCategory(category);
+    setMarketDescription((selected.summary || '').slice(0, 280));
+    setMarketTeaser(listingTeaser(selected.filename, selected.fileType, !!selected.encrypted));
+  }, [selected?.id]);
 
   async function doRestore() {
     const addr = restoreAddr.trim();
@@ -455,6 +468,10 @@ export default function Home() {
       setMarketMsg('Enter a price greater than 0 SUI.');
       return;
     }
+    const title = marketTitle.trim() || item.filename;
+    const category = marketCategory.trim() || listingCategory(item.filename, item.fileType);
+    const description = marketDescription.trim().slice(0, 500);
+    const teaser = marketTeaser.trim().slice(0, 220) || listingTeaser(item.filename, item.fileType, !!item.encrypted);
     setMarketBusy(true);
     setMarketMsg('');
     try {
@@ -466,8 +483,15 @@ export default function Home() {
       });
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_LATEST}::vault::list`,
-        arguments: [tx.object(item.entryId), tx.pure.u64(priceMist)],
+        target: `${PACKAGE_LATEST}::vault::list_with_metadata`,
+        arguments: [
+          tx.object(item.entryId),
+          tx.pure.u64(priceMist),
+          tx.pure.string(title.slice(0, 120)),
+          tx.pure.string(description),
+          tx.pure.string(category.slice(0, 40)),
+          tx.pure.string(teaser),
+        ],
       });
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       const listed = (await marketEvents(res.digest)).find(e => e.kind === 'listed');
@@ -529,6 +553,13 @@ export default function Home() {
   const hasVault = vault.length > 0;
   const sidebarEase = 'cubic-bezier(0.32, 0.72, 0, 1)';
   const selectedOwnedByWallet = !!(selected?.owner && account?.address && selected.owner.toLowerCase() === account.address.toLowerCase());
+  const selectedSealReady = !!(selected?.encrypted && selected.entryId && selected.sealId && selected.sealPolicyId);
+  const selectedSealVerified = !!(selected?.encrypted && selected.decryptedAt);
+  const selectedSealStatus = selectedSealVerified
+    ? 'Seal access verified'
+    : selectedSealReady
+      ? 'Seal access ready'
+      : 'Seal metadata incomplete';
   const restoreMenu = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
       <input
@@ -784,24 +815,64 @@ export default function Home() {
                     <p style={{ fontSize: '11px', marginTop: '4px', color: marketMsg.startsWith('Listed') || marketMsg.startsWith('Listing cancelled') ? 'var(--mint-dark)' : 'var(--error)' }}>{marketMsg}</p>
                   )}
                   {selectedOwnedByWallet && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '9px' }}>
+                    <div style={{ display: 'grid', gap: '8px', marginTop: '9px' }}>
                       {!selected.listed ? (
                         <>
-                          <input
-                            value={marketPrice}
-                            onChange={e => setMarketPrice(e.target.value)}
-                            title="Sale price in SUI"
-                            inputMode="decimal"
-                            style={{ width: '76px', padding: '7px 8px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 92px', gap: '8px' }}>
+                            <input
+                              value={marketTitle}
+                              onChange={e => setMarketTitle(e.target.value)}
+                              title="Marketplace title"
+                              placeholder="Listing title"
+                              maxLength={120}
+                              style={{ minWidth: 0, padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
+                            />
+                            <input
+                              value={marketPrice}
+                              onChange={e => setMarketPrice(e.target.value)}
+                              title="Sale price in SUI"
+                              inputMode="decimal"
+                              style={{ width: '92px', padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '126px minmax(0, 1fr)', gap: '8px' }}>
+                            <select
+                              value={marketCategory}
+                              onChange={e => setMarketCategory(e.target.value)}
+                              title="Marketplace category"
+                              style={{ minWidth: 0, padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
+                            >
+                              {['AI skill', 'Prompt', 'Dataset', 'Template', 'Knowledge', 'Code', 'Media', 'Image'].map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <input
+                              value={marketTeaser}
+                              onChange={e => setMarketTeaser(e.target.value)}
+                              title="Short buyer teaser"
+                              placeholder="Short buyer teaser"
+                              maxLength={220}
+                              style={{ minWidth: 0, padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', outline: 'none' }}
+                            />
+                          </div>
+                          <textarea
+                            value={marketDescription}
+                            onChange={e => setMarketDescription(e.target.value)}
+                            title="Marketplace description"
+                            placeholder="Describe what the buyer gets"
+                            maxLength={500}
+                            rows={3}
+                            style={{ resize: 'vertical', minHeight: '66px', padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', lineHeight: 1.45, outline: 'none' }}
                           />
-                          <button
-                            onClick={() => listOnMarket(selected)}
-                            disabled={marketBusy || !selected.entryId}
-                            title={selected.entryId ? 'List this owned vault entry for sale' : 'Restore or claim first to get the on-chain entry ID'}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', cursor: marketBusy || !selected.entryId ? 'default' : 'pointer', opacity: marketBusy || !selected.entryId ? 0.55 : 1 }}
-                          >
-                            <ShoppingCart size={13} strokeWidth={2} /> {marketBusy ? 'Listing...' : 'List for sale'}
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{selected.encrypted ? 'Seal-private sale' : 'Public ownership sale'}</span>
+                            <button
+                              onClick={() => listOnMarket(selected)}
+                              disabled={marketBusy || !selected.entryId}
+                              title={selected.entryId ? 'List this owned vault entry for sale' : 'Restore or claim first to get the on-chain entry ID'}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', cursor: marketBusy || !selected.entryId ? 'default' : 'pointer', opacity: marketBusy || !selected.entryId ? 0.55 : 1 }}
+                            >
+                              <ShoppingCart size={13} strokeWidth={2} /> {marketBusy ? 'Listing...' : 'List for sale'}
+                            </button>
+                          </div>
                         </>
                       ) : (
                         <button
@@ -874,10 +945,29 @@ export default function Home() {
                     fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
                     background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--mint-dark)',
                   }}><Check size={11} strokeWidth={2.5} /> on Walrus</span>
+                  {selected.encrypted && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                      background: selectedSealReady ? 'var(--success-bg)' : 'rgba(255, 184, 107, 0.12)',
+                      border: selectedSealReady ? '1px solid var(--success-border)' : '1px solid rgba(255, 184, 107, 0.35)',
+                      color: selectedSealReady ? 'var(--mint-dark)' : 'var(--text-2)',
+                    }}>{selectedSealReady ? <Check size={11} strokeWidth={2.5} /> : <X size={11} strokeWidth={2.5} />} {selectedSealStatus}</span>
+                  )}
                   <ChevronDown size={13} strokeWidth={2.5} color="var(--text-3)" style={{ marginLeft: 'auto', transform: proofExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
                 </button>
                 {proofExpanded && (
                   <div style={{ marginTop: '12px', animation: 'fadeUp 0.2s ease' }}>
+                    {selected.encrypted && (
+                      <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--success-border)', background: 'var(--success-bg)', color: 'var(--text-2)', fontSize: '12px', lineHeight: 1.55 }}>
+                        <strong style={{ color: 'var(--mint-dark)' }}>{selectedSealStatus}.</strong>{' '}
+                        {selectedSealVerified
+                          ? `This wallet has unlocked the Seal key and decrypted this vault file${selected.decryptedAt ? ` on ${formatDate(selected.decryptedAt)}` : ''}.`
+                          : selectedSealReady
+                            ? 'Buying transfers the on-chain vault entry; opening the file asks Seal to verify ownership before decrypting.'
+                            : 'This older vault item is missing Seal policy data. Restore it from chain again after the upgraded contract is live.'}
+                      </div>
+                    )}
                     <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} txDigest={selected.txDigest} />
                   </div>
                 )}

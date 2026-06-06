@@ -1,6 +1,8 @@
 export type MarketListing = {
   listingId: string;
   entryId: string;
+  title?: string;
+  description?: string;
   filename: string;
   fileType?: string;
   blobId?: string;

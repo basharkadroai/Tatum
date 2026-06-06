@@ -57,7 +57,7 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ minWidth: 0, display: 'grid', gap: '7px' }}>
-          <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{listing.filename}</h3>
+          <h3 title={listing.title || listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{listing.title || listing.filename}</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: '999px', padding: '3px 8px', background: 'var(--base)' }}>{listing.category || 'Knowledge'}</span>
             {isLocked && (
@@ -99,7 +99,7 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
       {/* What it's about — public preview from Walrus */}
       {isLocked ? (
         <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-3)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-          {listing.teaser || 'Seal-encrypted knowledge asset. Buy the vault entry to unlock access with the owner wallet.'}
+          {listing.teaser || listing.description || 'Seal-encrypted knowledge asset. Buy the vault entry to unlock access with the owner wallet.'}
         </p>
       ) : isImage && blobUrl ? (
         // eslint-disable-next-line @next/next/no-img-element

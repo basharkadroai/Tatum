@@ -12,6 +12,7 @@ const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) ||
 // Listed events carry the id of the package VERSION that emitted them, so query
 // the current + prior marketplace versions and merge (listings survive upgrades).
 const PRIOR_MARKET_PKGS = [
+  '0x0ce4fdc1d2c0d9b90301e65b8cb3651dd65b7935644a2aecc5a79138659c026d',
   '0x370bd880fdd2dcb8d07613087a41bb88caa393db33d5b48834dcf798cfb9ecdc',
   '0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9',
 ];
@@ -107,6 +108,32 @@ async function encryptedEntries() {
   return encrypted;
 }
 
+async function listingMetadata() {
+  const metadata = new Map<string, { title?: string; description?: string; category?: string; teaser?: string }>();
+  if (!PACKAGE_LATEST) return metadata;
+  try {
+    const events = await rpc<{ data?: Array<{ parsedJson?: Record<string, unknown> }> }>('suix_queryEvents', [
+      { MoveEventType: `${PACKAGE_LATEST}::vault::ListingMetadata` },
+      null,
+      200,
+      true,
+    ]);
+    for (const event of events.data ?? []) {
+      const listingId = event.parsedJson?.listing_id ? String(event.parsedJson.listing_id) : '';
+      if (!listingId) continue;
+      metadata.set(listingId, {
+        title: event.parsedJson?.title ? String(event.parsedJson.title) : undefined,
+        description: event.parsedJson?.description ? String(event.parsedJson.description) : undefined,
+        category: event.parsedJson?.category ? String(event.parsedJson.category) : undefined,
+        teaser: event.parsedJson?.teaser ? String(event.parsedJson.teaser) : undefined,
+      });
+    }
+  } catch {
+    return metadata;
+  }
+  return metadata;
+}
+
 export async function GET(req: NextRequest) {
   if (!PACKAGE_ID) return NextResponse.json({ listings: [] });
   try {
@@ -123,6 +150,7 @@ export async function GET(req: NextRequest) {
     }
 
     const encrypted = await encryptedEntries();
+    const metadata = await listingMetadata();
     const listings: MarketListing[] = [];
     const seen = new Set<string>();
     for (const event of rawEvents) {
@@ -141,10 +169,13 @@ export async function GET(req: NextRequest) {
       const filename = String(entry?.filename ?? parsed.filename ?? 'Untitled vault item');
       const fileType = entry?.file_type ? String(entry.file_type) : undefined;
       const seal = encrypted.get(entryId);
+      const meta = metadata.get(listingId);
       const isEncrypted = !!seal;
       listings.push({
         listingId,
         entryId,
+        title: meta?.title,
+        description: meta?.description,
         filename,
         fileType,
         blobId: entry?.blob_id ? String(entry.blob_id) : undefined,
@@ -157,8 +188,8 @@ export async function GET(req: NextRequest) {
         encrypted: isEncrypted,
         sealId: seal?.sealId,
         sealPolicyId: seal?.policyId,
-        category: listingCategory(filename, fileType),
-        teaser: listingTeaser(filename, fileType, isEncrypted),
+        category: meta?.category || listingCategory(filename, fileType),
+        teaser: meta?.teaser || meta?.description || listingTeaser(filename, fileType, isEncrypted),
       });
     }
 

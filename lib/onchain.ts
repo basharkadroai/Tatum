@@ -101,6 +101,8 @@ async function annotateEncryptedEntries(entries: VaultEntryOnchain[]): Promise<V
 export type MarketListingOnchain = {
   listingId: string;
   entryId: string;
+  title?: string;
+  description?: string;
   filename: string;
   fileType?: string;
   blobId?: string;
@@ -117,6 +119,7 @@ export type MarketListingOnchain = {
 
 const MIST_PER_SUI = BigInt(1_000_000_000);
 const PRIOR_MARKET_PKGS = [
+  '0x0ce4fdc1d2c0d9b90301e65b8cb3651dd65b7935644a2aecc5a79138659c026d',
   '0x370bd880fdd2dcb8d07613087a41bb88caa393db33d5b48834dcf798cfb9ecdc',
   '0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9',
 ];
@@ -161,6 +164,23 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
     }
   } catch { /* encrypted metadata is best effort */ }
 
+  const metadata = new Map<string, { title?: string; description?: string; category?: string; teaser?: string }>();
+  try {
+    const metadataEvents = (await rpc('suix_queryEvents', [
+      { MoveEventType: `${PACKAGE_LATEST}::vault::ListingMetadata` }, null, 200, true,
+    ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
+    for (const event of metadataEvents?.data ?? []) {
+      const listingId = event.parsedJson?.listing_id ? String(event.parsedJson.listing_id) : '';
+      if (!listingId) continue;
+      metadata.set(listingId, {
+        title: event.parsedJson?.title ? String(event.parsedJson.title) : undefined,
+        description: event.parsedJson?.description ? String(event.parsedJson.description) : undefined,
+        category: event.parsedJson?.category ? String(event.parsedJson.category) : undefined,
+        teaser: event.parsedJson?.teaser ? String(event.parsedJson.teaser) : undefined,
+      });
+    }
+  } catch { /* seller metadata is best effort */ }
+
   const out: MarketListingOnchain[] = [];
   const seen = new Set<string>();
   for (const ev of events) {
@@ -181,9 +201,12 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
     const filename = String(entry?.filename ?? p.filename ?? 'Untitled vault item');
     const fileType = entry?.file_type ? String(entry.file_type) : undefined;
     const seal = encrypted.get(entryId);
+    const meta = metadata.get(listingId);
     const isEncrypted = !!seal;
     out.push({
       listingId, entryId,
+      title: meta?.title,
+      description: meta?.description,
       filename,
       fileType,
       blobId: entry?.blob_id ? String(entry.blob_id) : undefined,
@@ -192,8 +215,8 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
       encrypted: isEncrypted,
       sealId: seal?.sealId,
       sealPolicyId: seal?.policyId,
-      category: listingCategory(filename, fileType),
-      teaser: listingTeaser(filename, fileType, isEncrypted),
+      category: meta?.category || listingCategory(filename, fileType),
+      teaser: meta?.teaser || meta?.description || listingTeaser(filename, fileType, isEncrypted),
     });
   }
   return out;

@@ -235,7 +235,7 @@ export default function MarketplacePage() {
               {listings.map(listing => (
                 <article key={listing.listingId} style={{ border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--off-white)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
-                    <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 800, overflowWrap: 'anywhere' }}>{listing.filename}</h2>
+                    <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 800, overflowWrap: 'anywhere' }}>{listing.title || listing.filename}</h2>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', marginTop: '9px' }}>
                       <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: '999px', padding: '3px 8px', background: 'var(--base)' }}>{listing.category || 'Knowledge'}</span>
                       {listing.encrypted && (
@@ -244,7 +244,7 @@ export default function MarketplacePage() {
                         </span>
                       )}
                     </div>
-                    {listing.teaser && <p style={{ margin: '10px 0 0', color: 'var(--text-2)', fontSize: '12.5px', lineHeight: 1.5 }}>{listing.teaser}</p>}
+                    {(listing.description || listing.teaser) && <p style={{ margin: '10px 0 0', color: 'var(--text-2)', fontSize: '12.5px', lineHeight: 1.5 }}>{listing.description || listing.teaser}</p>}
                     <p style={{ margin: '6px 0 0', color: 'var(--text-3)', fontSize: '12px' }}>{listing.fileType || 'application/octet-stream'} · {formatBytes(listing.sizeBytes)}</p>
                   </div>
                   <div style={{ display: 'grid', gap: '5px', color: 'var(--text-2)', fontSize: '12px' }}>

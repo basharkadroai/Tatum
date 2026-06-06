@@ -67,6 +67,15 @@ module chainmind::vault {
         filename: String,
     }
 
+    public struct ListingMetadata has copy, drop {
+        entry_id: ID,
+        listing_id: ID,
+        title: String,
+        description: String,
+        category: String,
+        teaser: String,
+    }
+
     // NOTE: Sold/Delisted field layout MUST match the deployed package (no
     // listing_id) — Sui forbids changing struct fields in an upgrade.
     public struct Sold has copy, drop {
@@ -179,6 +188,33 @@ module chainmind::vault {
         };
         let listing_id = object::id(&listing);
         event::emit(Listed { entry_id, listing_id, price, seller, filename });
+        transfer::share_object(listing);
+    }
+
+    /// List a wallet-owned VaultEntry for sale with seller-controlled marketplace metadata.
+    public entry fun list_with_metadata(
+        entry: VaultEntry,
+        price: u64,
+        title: String,
+        description: String,
+        category: String,
+        teaser: String,
+        ctx: &mut TxContext,
+    ) {
+        let entry_id = object::id(&entry);
+        let seller = ctx.sender();
+        assert!(price > 0, EBadPrice);
+        assert!(entry.owner == seller, ENoAccess);
+        let filename = entry.filename;
+        let listing = Listing {
+            id: object::new(ctx),
+            entry,
+            price,
+            seller,
+        };
+        let listing_id = object::id(&listing);
+        event::emit(Listed { entry_id, listing_id, price, seller, filename });
+        event::emit(ListingMetadata { entry_id, listing_id, title, description, category, teaser });
         transfer::share_object(listing);
     }
 
