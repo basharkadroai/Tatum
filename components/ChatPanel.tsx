@@ -263,7 +263,7 @@ export function ChatPanel({
               }
             }
             else if (ev.type === 'token') { last.text = (last.text ?? '') + (ev.text ?? ''); }  // live streaming
-            else if (ev.type === 'reset') { last.text = ''; }                                                       // retry → clear partial
+            else if (ev.type === 'reset') { finishRunningSteps(steps, 'error', 'Retrying'); last.text = ''; }
             else if (ev.type === 'answer') { receivedAnswer = true; last.text = ev.text ?? ''; }
             else if (ev.type === 'error') { receivedAnswer = true; finishRunningSteps(steps, 'error', 'Stopped'); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
             else if (ev.type === 'trace') {

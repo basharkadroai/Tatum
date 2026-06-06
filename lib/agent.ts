@@ -54,7 +54,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-const optionalOwnerSchema = z.string().optional()
+const optionalOwnerSchema = z.any().optional()
   .describe('Sui wallet address. Omit this field to use the connected wallet.');
 
 function inspectDocs(docs: VaultDoc[]) {
@@ -983,6 +983,7 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
       let streamAcc = '';
       let emitted = 0;
       let markerHit = false;
+      let memoryDraft: { filename: string; content: string; message?: string } | null = null;
       const thirdPartyCalls = new Map<string, { id: string; tool: string; label: string; started: number }>();
       if (attempt > 1) queue.push({ type: 'reset' });
       try {
@@ -1014,15 +1015,27 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                 const type = m._getType?.() ?? m.constructor?.name ?? '';
                 const isToolMessage = Boolean(m.tool_call_id) || type.toLowerCase().includes('tool');
                 if (m.tool_call_id) {
+                  const toolContent = messageContentToText(m.content) || JSON.stringify(m.content ?? '');
+                  try {
+                    const parsedTool = JSON.parse(toolContent) as { filename?: unknown; content?: unknown; instruction?: unknown };
+                    if (typeof parsedTool.filename === 'string' && typeof parsedTool.content === 'string' && String(parsedTool.filename).startsWith('memory-')) {
+                      memoryDraft = {
+                        filename: parsedTool.filename,
+                        content: parsedTool.content,
+                        message: 'Store this memory on-chain',
+                      };
+                    }
+                  } catch {
+                    // Most tool messages are not memory drafts.
+                  }
                   const pending = thirdPartyCalls.get(String(m.tool_call_id)) || thirdPartyCalls.get(String(m.name ?? '')) || thirdPartyCalls.get(type);
                   if (pending) {
-                    const content = messageContentToText(m.content) || JSON.stringify(m.content ?? '');
                     queue.push({
                       type: 'tool_done',
                       id: pending.id,
                       tool: pending.tool,
                       label: pending.label,
-                      detail: `${resultDetail(content)} in ${Date.now() - pending.started}ms`,
+                      detail: `${resultDetail(toolContent)} in ${Date.now() - pending.started}ms`,
                       durationMs: Date.now() - pending.started,
                     });
                     thirdPartyCalls.delete(String(m.tool_call_id));
@@ -1087,6 +1100,15 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
             message: parsed.message,
             content: extractArtifact(parsed.text),
             question: 'Want to store this on-chain (Walrus + Sui)?',
+          });
+        } else if (memoryDraft) {
+          queue.push({
+            type: 'offer',
+            kind: 'store',
+            filename: sanitizeFilename(memoryDraft.filename, memoryDraft.content),
+            message: memoryDraft.message,
+            content: memoryDraft.content,
+            question: 'Want to store this memory on-chain (Walrus + Sui)?',
           });
         }
         trace.finish();

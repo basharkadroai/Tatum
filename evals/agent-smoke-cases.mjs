@@ -145,4 +145,74 @@ export const agentSmokeCases = [
     },
     warnIfNoToolFrom: ['read_current_file'],
   },
+  {
+    name: 'memory-context-recall',
+    description: 'The agent should search durable memory for preferences instead of ignoring memory context.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [],
+      memory: 'User preference: Explain product plans in plain language first. Project fact: ChainMind should avoid manual mode selectors and infer intent from prompts.',
+      question: 'What do you remember about how I want modes handled?',
+    },
+    expect: {
+      answerIncludes: ['infer', 'prompt'],
+      answerExcludes: ['tool_calls'],
+      toolsIncludeOneOf: ['search_memory', 'inspect_memory_context'],
+    },
+    warnIfNoToolFrom: ['search_memory', 'inspect_memory_context'],
+  },
+  {
+    name: 'remember-offers-store',
+    description: 'When asked to remember a durable fact, the agent should draft a memory note and offer to store it.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [],
+      question: 'Remember that ChainMind should infer the user intent from the prompt instead of asking the user to pick a mode.',
+    },
+    expect: {
+      answerIncludes: ['infer', 'prompt'],
+      answerExcludes: ['tool_calls'],
+      toolsIncludeOneOf: ['draft_memory_note'],
+      offerKind: 'store',
+    },
+    warnIfNoToolFrom: ['draft_memory_note'],
+  },
+  {
+    name: 'policy-gates-market-action',
+    description: 'Marketplace or wallet-changing requests should trigger action policy before advice.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [{ filename: 'deck.md', summary: 'Investor deck.', content: 'Pitch deck', fileType: 'text/markdown', sizeBytes: 400, entryId: '0xentry' }],
+      owner: '0xabc',
+      question: 'List deck.md on the marketplace for 3 SUI.',
+    },
+    expect: {
+      answerIncludes: ['confirm'],
+      answerExcludes: ['tool_calls'],
+      toolsIncludeOneOf: ['assess_action_policy'],
+    },
+    warnIfNoToolFrom: ['assess_action_policy'],
+  },
+  {
+    name: 'plan-broad-vault-audit',
+    description: 'Broad improvement/audit requests should start with a planning tool.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [
+        { filename: 'large.pdf', summary: 'Large document.', content: '', fileType: 'application/pdf', sizeBytes: 8000000, blobId: 'blob-large' },
+        { filename: 'notes.md', summary: 'Project notes.', content: 'cleanup roadmap', fileType: 'text/markdown', sizeBytes: 1200, blobId: 'blob-notes' },
+      ],
+      question: 'Audit my vault and tell me what to improve first.',
+    },
+    expect: {
+      answerIncludesOneOf: [['improve'], ['audit'], ['re-analyze', 'missing']],
+      answerExcludes: ['tool_calls'],
+      toolsIncludeOneOf: ['plan_vault_work'],
+    },
+    warnIfNoToolFrom: ['plan_vault_work'],
+  },
 ];

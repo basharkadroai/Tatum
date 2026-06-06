@@ -189,6 +189,7 @@ async function startNextServer(preferredPort, timeoutMs) {
 function summarizeEvents(events) {
   const answer = [...events].reverse().find((event) => event.type === 'answer')?.text || '';
   const error = [...events].reverse().find((event) => event.type === 'error')?.message || '';
+  const offers = events.filter((event) => event.type === 'offer');
   const tools = [...new Set(events
     .filter((event) => (event.type === 'tool_start' || event.type === 'tool_done' || event.type === 'tool_error') && event.tool)
     .map((event) => event.tool))];
@@ -199,7 +200,7 @@ function summarizeEvents(events) {
     if ((event.type === 'tool_done' || event.type === 'tool_error') && event.id) running.delete(event.id);
   }
   for (const [id, tool] of running) lifecycleErrors.push(`${tool}:${id}`);
-  return { answer, error, tools, lifecycleErrors };
+  return { answer, error, tools, lifecycleErrors, offers };
 }
 
 async function postAgentJson(agentUrl, body, timeoutMs) {
@@ -258,7 +259,7 @@ async function runAgentNdjsonCase(testCase, agentUrl, timeoutMs) {
     }
   }
 
-  const { answer, error, tools, lifecycleErrors } = summarizeEvents(events);
+  const { answer, error, tools, lifecycleErrors, offers } = summarizeEvents(events);
   if (error) return { status: 'BLOCKED', detail: `Agent emitted error: ${error}` };
   if (!answer) return { status: 'FAIL', detail: 'No final answer event was emitted.' };
   if (lifecycleErrors.length) {
@@ -297,6 +298,12 @@ async function runAgentNdjsonCase(testCase, agentUrl, timeoutMs) {
     return {
       status: 'FAIL',
       detail: `Expected a real lifecycle event from one of [${testCase.expect.toolsIncludeOneOf.join(', ')}], saw [${tools.join(', ') || 'none'}]`,
+    };
+  }
+  if (testCase.expect.offerKind && !offers.some((offer) => offer.kind === testCase.expect.offerKind)) {
+    return {
+      status: 'FAIL',
+      detail: `Expected offer kind ${testCase.expect.offerKind}, saw [${offers.map((offer) => offer.kind).join(', ') || 'none'}]`,
     };
   }
 
