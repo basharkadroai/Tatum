@@ -1,5 +1,7 @@
 import type { VaultItem } from '@/types/vault';
 import { WALRUS_PUBLISHER as WALRUS_PUBLISHER_RAW } from '@/lib/network';
+import { generateSealId, makeSealClient, sealEncrypt } from '@/lib/seal';
+import type { SealCompatibleClient } from '@mysten/seal';
 
 const WALRUS_PUBLISHER = WALRUS_PUBLISHER_RAW.trim();
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -117,19 +119,80 @@ export type UploadEvent =
   | { kind: 'error'; detail?: string }     // fail current step
   | { kind: 'summary'; text: string };     // final AI answer below the chain
 
+export type SealUploadOptions = {
+  enabled?: boolean;
+  suiClient: SealCompatibleClient;
+  packageId: string;
+};
+
+async function registerVaultEntry({
+  blobId,
+  filename,
+  fileType,
+  fileSize,
+  owner,
+  sealId,
+}: {
+  blobId: string;
+  filename: string;
+  fileType: string;
+  fileSize: number;
+  owner?: string;
+  sealId?: string;
+}) {
+  const endpoint = sealId ? '/api/register-encrypted' : '/api/register';
+  const body = JSON.stringify({ blobId, filename, fileType, fileSize, owner, sealId });
+  let lastData: { digest?: string; entryId?: string; policyId?: string; error?: string } = {};
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      const data = await res.json();
+      lastData = data;
+      if (res.ok && data.digest) return data as { digest: string; entryId?: string; policyId?: string };
+    } catch { /* retry */ }
+  }
+  throw new Error(lastData.error || 'On-chain registration failed');
+}
+
 // Runs the full upload pipeline, narrating each step via emit() as structured
 // events. Returns the finished VaultItem (or null on a hard failure).
-export async function runUpload(file: File, emit: (e: UploadEvent) => void, owner?: string): Promise<VaultItem | null> {
+export async function runUpload(
+  file: File,
+  emit: (e: UploadEvent) => void,
+  owner?: string,
+  seal?: SealUploadOptions,
+): Promise<VaultItem | null> {
   if (file.size > MAX_UPLOAD_BYTES) {
     emit({ kind: 'summary', text: `**${file.name}** is ${fmtBytes(file.size)} — the max upload is 10 MB. Try a smaller file.` });
     return null;
   }
 
+  const shouldEncrypt = !!(owner && seal?.enabled && seal.packageId);
+  let fileForWalrus = file;
+  let sealId: string | undefined;
+  let ciphertextSizeBytes: number | undefined;
+
+  if (shouldEncrypt) {
+    emit({ kind: 'start', label: `Encrypting ${file.name} with Seal` });
+    try {
+      sealId = generateSealId();
+      const plaintext = new Uint8Array(await file.arrayBuffer());
+      const ciphertext = await sealEncrypt(makeSealClient(seal.suiClient), seal.packageId, sealId, plaintext);
+      ciphertextSizeBytes = ciphertext.byteLength;
+      fileForWalrus = new File([ciphertext.slice().buffer as ArrayBuffer], `${file.name}.seal`, { type: 'application/octet-stream' });
+      emit({ kind: 'done', detail: `Encrypted before storage · Seal ID ${sealId.slice(0, 14)}...` });
+    } catch (e) {
+      emit({ kind: 'error', detail: `Seal encryption failed — ${String(e).slice(0, 100)}` });
+      emit({ kind: 'summary', text: `I couldn't encrypt this file with Seal yet, so I did not upload it.` });
+      return null;
+    }
+  }
+
   // Step 1 — Walrus
-  emit({ kind: 'start', label: `Storing ${file.name} on Walrus decentralized storage` });
+  emit({ kind: 'start', label: `Storing ${shouldEncrypt ? 'encrypted ciphertext' : file.name} on Walrus decentralized storage` });
   let blobId: string;
   try {
-    blobId = await uploadToWalrus(file);
+    blobId = await uploadToWalrus(fileForWalrus);
   } catch (e) {
     emit({ kind: 'error', detail: `Walrus upload failed — ${String(e).slice(0, 100)}` });
     emit({ kind: 'summary', text: `I couldn't store this file on Walrus. Please try again in a moment.` });
@@ -141,19 +204,30 @@ export async function runUpload(file: File, emit: (e: UploadEvent) => void, owne
   emit({ kind: 'start', label: `Recording an on-chain proof on Sui via Tatum` });
   let txDigest: string | undefined;
   let entryId: string | undefined;
-  const body = JSON.stringify({ blobId, filename: file.name, fileType: file.type || 'application/octet-stream', fileSize: file.size, owner });
-  for (let attempt = 1; attempt <= 3 && !txDigest; attempt++) {
-    try {
-      const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      const data = await res.json();
-      if (res.ok && data.digest) {
-        txDigest = data.digest;
-        if (data.entryId) entryId = data.entryId;
-      }
-    } catch { /* retry */ }
+  let sealPolicyId: string | undefined;
+  try {
+    const data = await registerVaultEntry({
+      blobId,
+      filename: file.name,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+      owner,
+      sealId,
+    });
+    txDigest = data.digest;
+    entryId = data.entryId;
+    sealPolicyId = data.policyId;
+  } catch (e) {
+    emit({ kind: 'error', detail: `On-chain registration failed — ${String(e).slice(0, 100)}` });
+    emit({ kind: 'summary', text: shouldEncrypt
+      ? `The encrypted blob was stored, but I could not create its Seal access policy. Please try the upload again.`
+      : `I couldn't record the file on Sui. Please try again in a moment.` });
+    return null;
   }
   emit(txDigest
-    ? { kind: 'done', detail: `Registered as a VaultEntry · tx ${txDigest.slice(0, 14)}…` }
+    ? { kind: 'done', detail: shouldEncrypt
+      ? `Registered encrypted vault access · tx ${txDigest.slice(0, 14)}...`
+      : `Registered as a VaultEntry · tx ${txDigest.slice(0, 14)}...` }
     : { kind: 'done', detail: `Queued — the on-chain write will retry in the background` });
 
   // Step 3 — AI read
@@ -171,6 +245,11 @@ export async function runUpload(file: File, emit: (e: UploadEvent) => void, owne
     content: content.slice(0, 12000),
     txDigest,
     entryId,
+    encrypted: shouldEncrypt,
+    sealId,
+    sealPolicyId,
+    ciphertextSizeBytes,
+    decryptedAt: shouldEncrypt ? new Date().toISOString() : undefined,
     owner: txDigest && owner ? owner : undefined,
     tags,
     questions,

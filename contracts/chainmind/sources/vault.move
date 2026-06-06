@@ -26,6 +26,15 @@ module chainmind::vault {
         owner: address,
     }
 
+    /// Shared access policy for a Seal-encrypted VaultEntry.
+    /// The policy is public metadata, but the encrypted key is only released when
+    /// `seal_approve_encrypted` proves the caller owns the linked VaultEntry.
+    public struct SealPolicy has key {
+        id: UID,
+        entry_id: ID,
+        seal_id: vector<u8>,
+    }
+
     /// A VaultEntry listed for sale. Shared so any buyer can purchase it.
     public struct Listing has key {
         id: UID,
@@ -39,6 +48,15 @@ module chainmind::vault {
         filename: String,
         owner: address,
         entry_id: ID,
+    }
+
+    public struct EncryptedBlobRegistered has copy, drop {
+        blob_id: String,
+        filename: String,
+        owner: address,
+        entry_id: ID,
+        policy_id: ID,
+        seal_id: vector<u8>,
     }
 
     public struct Listed has copy, drop {
@@ -91,11 +109,59 @@ module chainmind::vault {
         transfer::public_transfer(entry, owner);
     }
 
+    /// Register a Seal-encrypted Walrus blob and publish the shared policy Seal
+    /// key servers will inspect during decrypt requests.
+    public entry fun register_encrypted(
+        blob_id: String,
+        filename: String,
+        file_type: String,
+        size_bytes: u64,
+        owner: address,
+        seal_id: vector<u8>,
+        ctx: &mut TxContext,
+    ) {
+        let entry = VaultEntry {
+            id: object::new(ctx),
+            blob_id,
+            filename,
+            file_type,
+            size_bytes,
+            owner,
+        };
+        let entry_id = object::id(&entry);
+        let policy = SealPolicy { id: object::new(ctx), entry_id, seal_id };
+        let policy_id = object::id(&policy);
+        event::emit(EncryptedBlobRegistered {
+            blob_id: entry.blob_id,
+            filename: entry.filename,
+            owner: entry.owner,
+            entry_id,
+            policy_id,
+            seal_id: policy.seal_id,
+        });
+        transfer::public_transfer(entry, owner);
+        transfer::share_object(policy);
+    }
+
     /// Seal key servers dry-run this function. It aborts unless the requester
     /// owns the VaultEntry and the Seal identity matches the entry object ID.
     entry fun seal_approve(id: vector<u8>, entry: &VaultEntry, ctx: &TxContext) {
         assert!(entry.owner == ctx.sender(), ENoAccess);
         assert!(id == object::id(entry).to_bytes(), ENoAccess);
+    }
+
+    /// Seal key servers dry-run this function for encrypted uploads. The shared
+    /// policy binds a pre-generated Seal identity to the VaultEntry, while the
+    /// entry ownership check makes marketplace transfers carry decrypt rights.
+    entry fun seal_approve_encrypted(
+        id: vector<u8>,
+        entry: &VaultEntry,
+        policy: &SealPolicy,
+        ctx: &TxContext,
+    ) {
+        assert!(entry.owner == ctx.sender(), ENoAccess);
+        assert!(policy.entry_id == object::id(entry), ENoAccess);
+        assert!(id == policy.seal_id, ENoAccess);
     }
 
     /// List a wallet-owned VaultEntry for sale at `price` MIST.

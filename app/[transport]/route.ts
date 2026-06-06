@@ -16,7 +16,7 @@ const handler = createMcpHandler(server => {
     async ({ owner }) => {
       const entries = (await listVaultEntries(owner)).filter(e => !e.filename.startsWith('.')); // hide internal .chat backups
       const text = entries.length
-        ? entries.map(e => `• ${e.filename}  (${e.fileType}, ${e.sizeBytes} bytes)  ·  blobId: ${e.blobId}`).join('\n')
+        ? entries.map(e => `• ${e.filename}  (${e.fileType}, ${e.sizeBytes} bytes)  ·  ${e.encrypted ? 'Seal encrypted · ' : ''}blobId: ${e.blobId}`).join('\n')
         : 'No ChainMind files found for that wallet.';
       return { content: [{ type: 'text', text }] };
     },
@@ -41,6 +41,10 @@ const handler = createMcpHandler(server => {
       const q = query.toLowerCase();
       const hits: string[] = [];
       for (const e of entries) {
+        if (e.encrypted) {
+          if (e.filename.toLowerCase().includes(q)) hits.push(`• ${e.filename} (Seal encrypted; decrypt in ChainMind with the owner wallet)`);
+          continue;
+        }
         const text = await fetchBlobText(e.blobId);
         if (e.filename.toLowerCase().includes(q) || text.toLowerCase().includes(q)) {
           hits.push(`• ${e.filename} (blobId ${e.blobId})\n  ${text.slice(0, 240).replace(/\s+/g, ' ').trim()}`);

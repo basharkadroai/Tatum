@@ -11,6 +11,8 @@ export type RetrievedDoc = {
   txDigest?: string;
   tags?: string[];
   uploadedAt?: string;
+  encrypted?: boolean;
+  sealPolicyId?: string;
 };
 
 type Chunk = { text: string; index: number; start: number; end: number; score: number };
@@ -124,5 +126,7 @@ export function selectVaultDocs(vault: VaultItem[], question: string, k = 5): Re
     txDigest: v.txDigest,
     tags: v.tags,
     uploadedAt: v.uploadedAt,
+    encrypted: v.encrypted,
+    sealPolicyId: v.sealPolicyId,
   }));
 }

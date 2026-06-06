@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSignPersonalMessage, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
 import { runUpload, analyzeFile } from '@/lib/upload';
 import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
+import { buildEncryptedSealApprovalTxBytes, makeSealClient, makeSessionKey, sealDecrypt } from '@/lib/seal';
 import { WalletProfile } from '@/components/WalletProfile';
 import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
@@ -25,6 +26,7 @@ const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 // package id; `register` + all TYPE filters stay on the original id (type identity
 // is preserved across upgrades). Falls back to the original id if unset.
 const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
+const SEAL_UPLOADS_ENABLED = process.env.NEXT_PUBLIC_SEAL_UPLOADS === '1';
 
 const STORAGE_KEY = 'chainmind_vault';
 const TOMBSTONE_KEY = 'chainmind_vault_tombstones';
@@ -141,7 +143,9 @@ export default function Home() {
   const [chatRestoreTick, setChatRestoreTick] = useState(0); // bumped after chat history is restored from chain → remount the home chat
 
   const account = useCurrentAccount();
+  const suiClient = useSuiClient();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); setAiConfig(loadAiConfig()); }, []);
   function updateAiConfig(c: AiConfig | null) { setAiConfig(c); }
@@ -226,8 +230,11 @@ export default function Home() {
           fresh.push({
             id: crypto.randomUUID(),
             filename: e.filename, fileType: e.fileType, blobId: e.blobId,
-            summary: 'Restored from the on-chain vault (Sui + Walrus).',
+            summary: e.encrypted
+              ? 'Encrypted with Seal. Open with the owner wallet to decrypt and analyze.'
+              : 'Restored from the on-chain vault (Sui + Walrus).',
             content: '', txDigest: e.txDigest, entryId: e.entryId, owner: e.owner,
+            encrypted: !!e.encrypted, sealId: e.sealId, sealPolicyId: e.sealPolicyId,
             tags: [], questions: [], uploadedAt: new Date().toISOString(), sizeBytes: e.sizeBytes,
           });
         }
@@ -237,6 +244,7 @@ export default function Home() {
         return next;
       });
       for (const item of fresh) {
+        if (item.encrypted) continue;
         const content = await fetchWalrusText(item.blobId, item.fileType, item.filename);
         if (content) updateItem(item.id, { content });
       }
@@ -302,8 +310,39 @@ export default function Home() {
 
   // A restored file has no real AI summary yet (placeholder) — offer to read it.
   function needsAnalysis(item: VaultItem) {
+    if (item.encrypted && !item.content) return true;
     const s = (item.summary || '').toLowerCase();
     return !s || s.startsWith('restored from') || s.startsWith('no readable');
+  }
+  async function decryptRestoredFile(item: VaultItem): Promise<File> {
+    if (!account?.address) throw new Error('Connect the owner wallet to decrypt this Seal-encrypted file.');
+    if (!PACKAGE_ID || !PACKAGE_LATEST) throw new Error('Seal package is not configured.');
+    if (!item.entryId || !item.sealPolicyId || !item.sealId) throw new Error('Encrypted vault metadata is incomplete. Restore this file again after the Seal upgrade is live.');
+    if (item.owner && item.owner.toLowerCase() !== account.address.toLowerCase()) throw new Error('This wallet does not own the encrypted vault entry.');
+
+    const res = await fetch(`${WALRUS_AGGREGATOR}/v1/blobs/${item.blobId}`);
+    if (!res.ok) throw new Error(`Walrus ${res.status}`);
+    const ciphertext = new Uint8Array(await (await res.blob()).arrayBuffer());
+    const sealClient = makeSealClient(suiClient);
+    const sessionKey = await makeSessionKey(
+      suiClient,
+      account.address,
+      PACKAGE_ID,
+      async (message) => {
+        const signed = await signPersonalMessage({ message, chain: SUI_CHAIN_ID });
+        return signed.signature;
+      },
+    );
+    const txBytes = await buildEncryptedSealApprovalTxBytes({
+      suiClient,
+      approvalPackageId: PACKAGE_LATEST,
+      sender: account.address,
+      entryId: item.entryId,
+      policyId: item.sealPolicyId,
+      sealId: item.sealId,
+    });
+    const plaintext = await sealDecrypt(sealClient, sessionKey, txBytes, ciphertext);
+    return new File([plaintext.slice().buffer as ArrayBuffer], item.filename, { type: item.fileType || 'application/octet-stream' });
   }
   // Fetch the blob back from Walrus and run the AI analysis to fill in the
   // summary/tags/content for a restored (or unanalyzed) file.
@@ -311,19 +350,27 @@ export default function Home() {
     if (analyzingId === item.id) return;
     setAnalyzingId(item.id);
     try {
-      const res = await fetch(`${WALRUS_AGGREGATOR}/v1/blobs/${item.blobId}`);
-      if (!res.ok) throw new Error(`Walrus ${res.status}`);
-      const blob = await res.blob();
-      const file = new File([blob], item.filename, { type: item.fileType || blob.type || 'application/octet-stream' });
+      let file: File;
+      if (item.encrypted) {
+        file = await decryptRestoredFile(item);
+      } else {
+        const res = await fetch(`${WALRUS_AGGREGATOR}/v1/blobs/${item.blobId}`);
+        if (!res.ok) throw new Error(`Walrus ${res.status}`);
+        const blob = await res.blob();
+        file = new File([blob], item.filename, { type: item.fileType || blob.type || 'application/octet-stream' });
+      }
       const a = await analyzeFile(file);
       updateItem(item.id, {
         summary: a.summary,
         tags: a.tags,
         questions: a.questions,
         content: (a.content || item.content || '').slice(0, 12000),
+        decryptedAt: item.encrypted ? new Date().toISOString() : item.decryptedAt,
       });
-    } catch {
-      updateItem(item.id, { summary: 'Could not read this file from Walrus — please try again.' });
+    } catch (err) {
+      updateItem(item.id, { summary: item.encrypted
+        ? String(err instanceof Error ? err.message : err)
+        : 'Could not read this file from Walrus — please try again.' });
     } finally {
       setAnalyzingId(null);
     }
@@ -683,7 +730,7 @@ export default function Home() {
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
                   aiLabel="ChainMind"
                   disabled={vault.length === 0 && !account?.address}
-                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address)}
+                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address, account?.address && PACKAGE_ID && SEAL_UPLOADS_ENABLED ? { enabled: true, suiClient, packageId: PACKAGE_ID } : undefined)}
                   onUploaded={addToVault}
                 />
             </div>
@@ -795,7 +842,7 @@ export default function Home() {
                 )}
                 {summaryExpanded && analyzingId === selected.id && (
                   <p style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'var(--text-3)' }}>
-                    <Loader2 size={13} strokeWidth={2.5} className="lucide-spin" /> Reading this file from Walrus with AI…
+                    <Loader2 size={13} strokeWidth={2.5} className="lucide-spin" /> {selected.encrypted ? 'Decrypting with Seal, then reading with AI...' : 'Reading this file from Walrus with AI...'}
                   </p>
                 )}
               </div>
@@ -842,6 +889,8 @@ export default function Home() {
                       sizeBytes: selected.sizeBytes,
                       owner: selected.owner,
                       txDigest: selected.txDigest,
+                      encrypted: selected.encrypted,
+                      sealPolicyId: selected.sealPolicyId,
                     }],
                     currentFile: {
                       filename: selected.filename,
@@ -852,6 +901,8 @@ export default function Home() {
                       sizeBytes: selected.sizeBytes,
                       owner: selected.owner,
                       txDigest: selected.txDigest,
+                      encrypted: selected.encrypted,
+                      sealPolicyId: selected.sealPolicyId,
                     },
                     owner: account?.address,
                     memory: memoryContext,
@@ -863,7 +914,7 @@ export default function Home() {
                     : ['Summarize this in 3 bullet points', 'What are the key takeaways?', 'Any action items, dates, or deadlines?']}
                   placeholder="Ask anything about this document…"
                   aiLabel="ChainMind AI"
-                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address)}
+                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address, account?.address && PACKAGE_ID && SEAL_UPLOADS_ENABLED ? { enabled: true, suiClient, packageId: PACKAGE_ID } : undefined)}
                   onUploaded={addToVault}
                 />
               </div>

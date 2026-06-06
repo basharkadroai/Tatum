@@ -15,6 +15,9 @@ export type VaultEntryOnchain = {
   sizeBytes: number;
   owner: string;
   txDigest?: string;
+  encrypted?: boolean;
+  sealId?: string;
+  sealPolicyId?: string;
 };
 
 async function rpc(method: string, params: unknown[]): Promise<unknown> {
@@ -41,7 +44,7 @@ export async function listVaultEntries(owner: string): Promise<VaultEntryOnchain
     50,
   ])) as { data?: Array<{ data?: { objectId?: string; previousTransaction?: string; content?: { fields?: Record<string, unknown> } } }> };
 
-  return (result?.data ?? [])
+  const entries = (result?.data ?? [])
     .map(o => {
       const f = o.data?.content?.fields;
       if (!f) return null;
@@ -56,6 +59,41 @@ export async function listVaultEntries(owner: string): Promise<VaultEntryOnchain
       } as VaultEntryOnchain;
     })
     .filter((e): e is VaultEntryOnchain => e !== null);
+
+  return annotateEncryptedEntries(entries);
+}
+
+function sealIdFromParsed(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.startsWith('0x') ? value : `0x${value}`;
+  if (Array.isArray(value) && value.every(v => Number.isInteger(v))) {
+    return `0x${value.map(v => Number(v).toString(16).padStart(2, '0')).join('')}`;
+  }
+  return undefined;
+}
+
+async function annotateEncryptedEntries(entries: VaultEntryOnchain[]): Promise<VaultEntryOnchain[]> {
+  if (!entries.length || !PACKAGE_LATEST) return entries;
+  const byId = new Map(entries.filter(e => e.entryId).map(e => [e.entryId, e]));
+  if (!byId.size) return entries;
+  try {
+    const events = (await rpc('suix_queryEvents', [
+      { MoveEventType: `${PACKAGE_LATEST}::vault::EncryptedBlobRegistered` },
+      null,
+      200,
+      true,
+    ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
+    for (const ev of events?.data ?? []) {
+      const entryId = ev.parsedJson?.entry_id ? String(ev.parsedJson.entry_id) : '';
+      const entry = byId.get(entryId);
+      if (!entry) continue;
+      entry.encrypted = true;
+      entry.sealPolicyId = ev.parsedJson?.policy_id ? String(ev.parsedJson.policy_id) : undefined;
+      entry.sealId = sealIdFromParsed(ev.parsedJson?.seal_id);
+    }
+  } catch {
+    return entries;
+  }
+  return entries;
 }
 
 export type MarketListingOnchain = {

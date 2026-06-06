@@ -15,6 +15,8 @@ export type VaultDoc = {
   sizeBytes?: number;
   owner?: string;
   txDigest?: string;
+  encrypted?: boolean;
+  sealPolicyId?: string;
 };
 
 export type AgentContext = {
@@ -70,8 +72,10 @@ function inspectDocs(docs: VaultDoc[]) {
       blobId: d.blobId,
       fileType: d.fileType,
       sizeBytes: d.sizeBytes,
+      encrypted: !!d.encrypted,
+      sealPolicyId: d.sealPolicyId,
       summary: d.summary,
-      contentPreview: (d.content ?? '').slice(0, 900),
+      contentPreview: d.encrypted && !d.content ? '(Seal encrypted; decrypt in ChainMind with the owner wallet)' : (d.content ?? '').slice(0, 900),
     })),
   };
 }
@@ -354,6 +358,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
           sizeHuman: formatBytes(d.sizeBytes || 0),
           fileType: d.fileType || 'unknown',
           blobId: d.blobId,
+          encrypted: !!d.encrypted,
         }));
       const missingContent = files.filter(d => !d.content?.trim());
       const duplicates = duplicateGroups(files);
@@ -447,8 +452,11 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
           sizeBytes: d.sizeBytes || 0,
           sizeHuman: formatBytes(d.sizeBytes || 0),
           blobId: d.blobId,
+          encrypted: !!d.encrypted,
           summaryAvailable: Boolean(d.summary?.trim()),
-          suggestedFix: d.blobId ? 'Open/re-analyze this file or fetch its Walrus blob if the type is readable.' : 'Re-upload or restore this file so it has a blobId.',
+          suggestedFix: d.encrypted
+            ? 'Open this file in ChainMind with the owner wallet to decrypt it before AI can read the contents.'
+            : d.blobId ? 'Open/re-analyze this file or fetch its Walrus blob if the type is readable.' : 'Re-upload or restore this file so it has a blobId.',
         }));
       if (!files.length) return 'Every visible loaded file has extracted text available.';
       return JSON.stringify({ missingContentCount: files.length, files }, null, 2);
@@ -590,8 +598,9 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
         `filename: ${file.filename}`,
         file.blobId ? `blobId: ${file.blobId}` : '',
         file.fileType ? `fileType: ${file.fileType}` : '',
+        file.encrypted ? `encryption: Seal encrypted${file.sealPolicyId ? ` (policy ${file.sealPolicyId})` : ''}` : '',
         file.summary ? `summary: ${file.summary}` : '',
-        `content:\n${(file.content ?? '').slice(0, 12000) || '(No extracted text is loaded for this file. Use read_walrus_blob if a blobId exists.)'}`,
+        `content:\n${(file.content ?? '').slice(0, 12000) || (file.encrypted ? '(Seal encrypted. Decrypt in ChainMind with the owner wallet before reading exact contents.)' : '(No extracted text is loaded for this file. Use read_walrus_blob if a blobId exists.)')}`,
       ].filter(Boolean).join('\n');
     },
     {
@@ -620,8 +629,9 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       return hits.map(({ d }) => [
         `# ${d.filename}`,
         d.blobId ? `blobId: ${d.blobId}` : '',
+        d.encrypted ? 'encryption: Seal encrypted' : '',
         d.summary ? `summary: ${d.summary}` : '',
-        `snippet:\n${(d.content ?? '').slice(0, 1800) || '(No extracted text loaded.)'}`,
+        `snippet:\n${(d.content ?? '').slice(0, 1800) || (d.encrypted ? '(Locked until decrypted with the owner wallet.)' : '(No extracted text loaded.)')}`,
       ].filter(Boolean).join('\n')).join('\n\n');
     },
     {
@@ -649,6 +659,8 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
         sizeBytes: e.sizeBytes,
         txDigest: e.txDigest,
         entryId: e.entryId,
+        encrypted: !!e.encrypted,
+        sealPolicyId: e.sealPolicyId,
       })), null, 2);
     },
     {
@@ -664,6 +676,8 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     ({ blobId }: { blobId: string }) => `Fetching Walrus blob ${blobId.slice(0, 14)}...`,
     async ({ blobId }: { blobId: string }) => {
       if (!blobId) return 'blobId is required.';
+      const known = visibleDocs(docs).find(d => d.blobId === blobId && d.encrypted);
+      if (known) return `This blob is Seal encrypted for ${known.filename}. Decrypt it in ChainMind with the owner wallet before reading exact contents.`;
       const text = await fetchBlobText(blobId);
       return text ? text.slice(0, 12000) : 'No readable text was available, or the Walrus aggregator was unavailable.';
     },
@@ -687,6 +701,10 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       if (!entries.length) return `No ChainMind VaultEntry objects found for ${address}.`;
 
       const hydrated = await Promise.all(entries.map(async e => {
+        if (e.encrypted) {
+          const hay = `${e.filename}\n${e.fileType}\nSeal encrypted`;
+          return { entry: e, text: '(Seal encrypted; decrypt in ChainMind with the owner wallet.)', score: scoreText(query, hay) + scoreText(query, e.filename) * 3 };
+        }
         const text = await fetchBlobText(e.blobId);
         const hay = `${e.filename}\n${e.fileType}\n${text.slice(0, 12000)}`;
         return { entry: e, text, score: scoreText(query, hay) + scoreText(query, e.filename) * 3 };
