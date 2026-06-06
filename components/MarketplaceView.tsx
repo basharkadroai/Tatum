@@ -167,7 +167,20 @@ function recordPurchase(listing: MarketListing, buyer: string) {
     const raw = localStorage.getItem('chainmind_vault');
     const list: Array<Record<string, unknown>> = raw && Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
     if (list.some(v => v.blobId && v.blobId === listing.blobId)) {
-      const next = list.map(v => (v.blobId === listing.blobId ? { ...v, purchased: true, owner: buyer } : v));
+      // Buying makes you the owner of a NOT-listed item — clear any listing state
+      // so the file view shows "List for sale" (keep or resell), never "Delist".
+      const next = list.map(v => (v.blobId === listing.blobId ? {
+        ...v,
+        purchased: true,
+        owner: buyer,
+        listed: false,
+        listingId: undefined,
+        priceMist: undefined,
+        entryId: listing.entryId,
+        encrypted: listing.encrypted,
+        sealId: listing.sealId,
+        sealPolicyId: listing.sealPolicyId,
+      } : v));
       localStorage.setItem('chainmind_vault', JSON.stringify(next));
     } else {
       const item = {
@@ -182,6 +195,10 @@ function recordPurchase(listing: MarketListing, buyer: string) {
         entryId: listing.entryId,
         owner: buyer,
         purchased: true,
+        listed: false, // bought, not listed — file view shows "List for sale", not "Delist"
+        encrypted: listing.encrypted,
+        sealId: listing.sealId,
+        sealPolicyId: listing.sealPolicyId,
         tags: [],
         questions: [],
       };

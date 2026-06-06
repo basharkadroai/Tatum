@@ -75,8 +75,16 @@ async function readListingObject(listingId: string) {
   }
 }
 
+function sealIdFromParsed(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.startsWith('0x') ? value : `0x${value}`;
+  if (Array.isArray(value) && value.every(v => Number.isInteger(v))) {
+    return `0x${value.map(v => Number(v).toString(16).padStart(2, '0')).join('')}`;
+  }
+  return undefined;
+}
+
 async function encryptedEntries() {
-  const encrypted = new Map<string, { policyId?: string }>();
+  const encrypted = new Map<string, { policyId?: string; sealId?: string }>();
   if (!PACKAGE_LATEST) return encrypted;
   try {
     const events = await rpc<{ data?: Array<{ parsedJson?: Record<string, unknown> }> }>('suix_queryEvents', [
@@ -90,6 +98,7 @@ async function encryptedEntries() {
       if (!entryId) continue;
       encrypted.set(entryId, {
         policyId: event.parsedJson?.policy_id ? String(event.parsedJson.policy_id) : undefined,
+        sealId: sealIdFromParsed(event.parsedJson?.seal_id),
       });
     }
   } catch {
@@ -146,6 +155,7 @@ export async function GET(req: NextRequest) {
         createdTx: event.id?.txDigest,
         saleType: 'nft', // current contract: unique object, transfers once
         encrypted: isEncrypted,
+        sealId: seal?.sealId,
         sealPolicyId: seal?.policyId,
         category: listingCategory(filename, fileType),
         teaser: listingTeaser(filename, fileType, isEncrypted),

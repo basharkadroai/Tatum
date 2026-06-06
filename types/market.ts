@@ -10,6 +10,7 @@ export type MarketListing = {
   priceSui: string;
   createdTx?: string;
   encrypted?: boolean;
+  sealId?: string;
   sealPolicyId?: string;
   category?: string;
   teaser?: string;

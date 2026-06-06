@@ -43,6 +43,51 @@ function clearLocalListing(listing: MarketListing) {
   }
 }
 
+function recordPurchase(listing: MarketListing, buyer: string) {
+  try {
+    const raw = localStorage.getItem('chainmind_vault');
+    const list: Array<Record<string, unknown>> = raw && Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+    if (list.some(v => v.blobId && v.blobId === listing.blobId)) {
+      const next = list.map(v => (v.blobId === listing.blobId ? {
+        ...v,
+        purchased: true,
+        owner: buyer,
+        listed: false,
+        listingId: undefined,
+        priceMist: undefined,
+        entryId: listing.entryId,
+        encrypted: listing.encrypted,
+        sealId: listing.sealId,
+        sealPolicyId: listing.sealPolicyId,
+      } : v));
+      localStorage.setItem('chainmind_vault', JSON.stringify(next));
+    } else {
+      localStorage.setItem('chainmind_vault', JSON.stringify([{
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+        filename: listing.filename,
+        fileType: listing.fileType || 'application/octet-stream',
+        blobId: listing.blobId || '',
+        summary: 'Purchased on the marketplace - owned by you on Sui.',
+        content: '',
+        uploadedAt: new Date().toISOString(),
+        sizeBytes: listing.sizeBytes || 0,
+        entryId: listing.entryId,
+        owner: buyer,
+        purchased: true,
+        listed: false,
+        encrypted: listing.encrypted,
+        sealId: listing.sealId,
+        sealPolicyId: listing.sealPolicyId,
+        tags: [],
+        questions: [],
+      }, ...list]));
+    }
+    window.dispatchEvent(new Event('chainmind:vault-updated'));
+  } catch {
+    // local cache update is best effort
+  }
+}
+
 async function preflightMarket(body: Record<string, unknown>) {
   const res = await fetch('/api/market/preflight', {
     method: 'POST',
@@ -102,7 +147,8 @@ export default function MarketplacePage() {
       });
       await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       setListings(prev => prev.filter(item => item.listingId !== listing.listingId));
-      setActionMsg('Purchase complete. Restore your vault from chain to pull the bought entry into ChainMind.');
+      recordPurchase(listing, account.address);
+      setActionMsg('Purchase complete. The item is now saved in your ChainMind vault.');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       setActionMsg(`Buy failed: ${raw.slice(0, 140)}`);

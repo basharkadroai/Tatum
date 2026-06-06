@@ -109,6 +109,7 @@ export type MarketListingOnchain = {
   priceMist: string;
   priceSui: string;
   encrypted?: boolean;
+  sealId?: string;
   sealPolicyId?: string;
   category?: string;
   teaser?: string;
@@ -145,7 +146,7 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
       for (const event of page?.data ?? []) events.push(event);
     } catch { /* skip unavailable package version */ }
   }
-  const encrypted = new Map<string, { policyId?: string }>();
+  const encrypted = new Map<string, { policyId?: string; sealId?: string }>();
   try {
     const encryptedEvents = (await rpc('suix_queryEvents', [
       { MoveEventType: `${PACKAGE_LATEST}::vault::EncryptedBlobRegistered` }, null, 200, true,
@@ -155,6 +156,7 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
       if (!entryId) continue;
       encrypted.set(entryId, {
         policyId: event.parsedJson?.policy_id ? String(event.parsedJson.policy_id) : undefined,
+        sealId: sealIdFromParsed(event.parsedJson?.seal_id),
       });
     }
   } catch { /* encrypted metadata is best effort */ }
@@ -188,6 +190,7 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
       sizeBytes: entry?.size_bytes != null ? Number(entry.size_bytes) : undefined,
       seller: s, priceMist, priceSui: mistToSui(priceMist),
       encrypted: isEncrypted,
+      sealId: seal?.sealId,
       sealPolicyId: seal?.policyId,
       category: listingCategory(filename, fileType),
       teaser: listingTeaser(filename, fileType, isEncrypted),
