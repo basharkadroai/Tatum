@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
@@ -11,6 +10,7 @@ import { WalrusProof } from '@/components/WalrusProof';
 import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
+import { MarketplaceView } from '@/components/MarketplaceView';
 import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import type { MarketTxEvent } from '@/types/market';
@@ -118,6 +118,7 @@ function suiToMist(input: string): string | null {
 export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
   const [selected, setSelected] = useState<VaultItem | null>(null);
+  const [showMarket, setShowMarket] = useState(false); // marketplace view (in-app, no chat)
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [proofExpanded, setProofExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -150,6 +151,7 @@ export default function Home() {
     // an intentional clear and doesn't resurrect the old chat from its Walrus backup.
     try { localStorage.setItem('chainmind_chat_home', '[]'); } catch { /* ignore */ }
     setSelected(null);
+    setShowMarket(false);
     setMobileNavOpen(false);
     setChatRestoreTick(t => t + 1); // remount the home chat so it loads empty
   }
@@ -508,7 +510,7 @@ export default function Home() {
         {/* Brand + collapse/close toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: sidebarExpanded ? '8px' : 0, padding: sidebarExpanded ? '16px 14px 12px' : '16px 13px 12px', flexShrink: 0, transition: `gap 0.28s ${sidebarEase}, padding 0.28s ${sidebarEase}` }}>
           <button
-            onClick={() => { setSelected(null); setMobileNavOpen(false); }}
+            onClick={() => { setSelected(null); setShowMarket(false); setMobileNavOpen(false); }}
             title="Home"
             aria-hidden={!sidebarExpanded}
             tabIndex={sidebarExpanded ? 0 : -1}
@@ -545,14 +547,13 @@ export default function Home() {
               >
                 <SquarePen size={15} strokeWidth={2} /> New chat
               </button>
-              <Link href="/marketplace" title="Open the ChainMind marketplace"
-                onClick={() => setMobileNavOpen(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '2px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}
+              <button onClick={() => { setShowMarket(true); setSelected(null); setMobileNavOpen(false); }} title="Open the ChainMind marketplace"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '2px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: showMarket ? 'var(--hover)' : 'transparent', color: showMarket ? 'var(--text-1)' : 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textAlign: 'left' }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
+                onMouseLeave={e => { if (!showMarket) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; } }}
               >
                 <ShoppingCart size={15} strokeWidth={2} /> Marketplace
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -581,7 +582,7 @@ export default function Home() {
                 key={item.id}
                 item={item}
                 active={selected?.id === item.id}
-                onSelect={() => { setSelected(item); setMobileNavOpen(false); }}
+                onSelect={() => { setSelected(item); setShowMarket(false); setMobileNavOpen(false); }}
                 onDelete={() => handleDelete(item.id)}
               />
             ))}
@@ -654,6 +655,11 @@ export default function Home() {
           {!loaded ? (
             /* Avoid flashing the upload home before localStorage loads */
             <div style={{ flex: 1 }} />
+          ) : showMarket ? (
+            /* Marketplace — in-app view (sidebar stays, no chat) */
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <MarketplaceView />
+            </div>
           ) : !selected ? (
             /* Home: centered chat over the scene */
             <div style={{ flex: 1, minHeight: 0 }}>

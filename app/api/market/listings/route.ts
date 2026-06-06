@@ -4,6 +4,9 @@ import type { MarketListing } from '@/types/market';
 
 const RPC = tatumRpcUrl();
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+// `list` runs in the UPGRADED module, so the Listed event type carries the
+// upgraded package id (verified on-chain) — query events at the latest id.
+const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
 const MIST_PER_SUI = BigInt(1_000_000_000);
 
 type RpcResult<T = unknown> = { result?: T; error?: { message?: string } };
@@ -75,7 +78,7 @@ export async function GET(req: NextRequest) {
         parsedJson?: Record<string, unknown>;
       }>;
     }>('suix_queryEvents', [
-      { MoveEventType: `${PACKAGE_ID}::vault::Listed` },
+      { MoveEventType: `${PACKAGE_LATEST}::vault::Listed` },
       null,
       limit,
       true,

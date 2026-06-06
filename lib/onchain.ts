@@ -4,6 +4,8 @@ import { tatumRpcUrl, PUBLIC_FULLNODE, WALRUS_AGGREGATOR } from '@/lib/network';
 
 const RPC = tatumRpcUrl();
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+// `list` runs in the upgraded module → Listed events carry the upgraded id.
+const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
 
 export type VaultEntryOnchain = {
   entryId?: string;
@@ -85,7 +87,7 @@ function mistToSui(mist: string | number): string {
 export async function listMarketplace(seller?: string, limit = 50): Promise<MarketListingOnchain[]> {
   if (!PACKAGE_ID) return [];
   const events = (await rpc('suix_queryEvents', [
-    { MoveEventType: `${PACKAGE_ID}::vault::Listed` }, null, Math.min(Math.max(limit, 1), 100), true,
+    { MoveEventType: `${PACKAGE_LATEST}::vault::Listed` }, null, Math.min(Math.max(limit, 1), 100), true,
   ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
 
   const out: MarketListingOnchain[] = [];
