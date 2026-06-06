@@ -977,11 +977,19 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let answered = false;
       let finalText = '';
+      // Token-streaming buffer: emit answer tokens live, holding back the tail so a
+      // partial "[[STORE…]]" marker is never shown, and stopping once it appears.
+      let streamAcc = '';
+      let emitted = 0;
+      let markerHit = false;
       const thirdPartyCalls = new Map<string, { id: string; tool: string; label: string; started: number }>();
       if (attempt > 1) queue.push({ type: 'reset' });
       try {
         const agent = buildVaultAgent(ctx, attempt === 1 ? 0 : 0.4, lifecycle);
-        const stream = await agent.stream({ messages: inputMessages }, { streamMode: ['updates'], signal: options.signal });
+        // 'messages' streams the LLM answer token-by-token (live typing); 'updates'
+        // gives tool lifecycle + the clean final message. We filter tool messages
+        // out of the token stream below so their JSON never leaks into the reply.
+        const stream = await agent.stream({ messages: inputMessages }, { streamMode: ['updates', 'messages'], signal: options.signal });
         for await (const item of stream as AsyncIterable<[string, unknown]>) {
           if (options.signal?.aborted) throw new Error('Agent request was cancelled.');
           const [mode, data] = item;
@@ -1027,6 +1035,24 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                   finalText = contentText;
                   answered = true;
                 }
+              }
+            }
+          } else if (mode === 'messages') {
+            // Stream ONLY the LLM's answer tokens. Skip tool-result messages —
+            // their JSON content leaking in is exactly why this was removed before.
+            const md = data as [{ content?: unknown; tool_call_id?: string; _getType?: () => string }, { langgraph_node?: string }];
+            const chunk = md?.[0];
+            const meta = md?.[1];
+            const isTool = Boolean(chunk?.tool_call_id) || meta?.langgraph_node === 'tools' || String(chunk?._getType?.() ?? '').toLowerCase().includes('tool');
+            const piece = typeof chunk?.content === 'string' ? chunk.content : '';
+            if (!isTool && piece && !markerHit) {
+              streamAcc += piece;
+              const markerIndex = streamAcc.indexOf('[[STORE');
+              const safeEnd = markerIndex >= 0 ? markerIndex : Math.max(emitted, streamAcc.length - 24);
+              if (markerIndex >= 0) markerHit = true;
+              if (safeEnd > emitted) {
+                queue.push({ type: 'token', text: streamAcc.slice(emitted, safeEnd) });
+                emitted = safeEnd;
               }
             }
           }
