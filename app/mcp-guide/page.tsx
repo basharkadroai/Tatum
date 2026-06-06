@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import { DocsShell, type TocItem } from '@/components/DocsShell';
+import { CopyBlock, Callout } from '@/components/DocsBits';
 
 export const metadata = { title: 'ChainMind — MCP Server' };
 
@@ -14,7 +15,6 @@ const section: CSSProperties = { margin: '44px 0 0', paddingTop: '30px', borderT
 const p: CSSProperties = { fontSize: '15.5px', lineHeight: 1.75, color: 'var(--text-2)', margin: '12px 0' };
 const link: CSSProperties = { color: '#65ca9d', textDecoration: 'none', fontWeight: 600 };
 const codeInline: CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.86em', background: 'var(--off-white)', border: '1px solid var(--border)', borderRadius: '5px', padding: '1px 6px' };
-const pre: CSSProperties = { margin: '16px 0', padding: '16px 18px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--sidebar-bg)', color: 'var(--text-1)', overflowX: 'auto', fontSize: '12.5px', lineHeight: 1.65, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' };
 const toolCard: CSSProperties = { border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px', margin: '12px 0', background: 'var(--off-white)' };
 const toolName: CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '14px', fontWeight: 700, color: 'var(--text-1)' };
 const strong: CSSProperties = { color: 'var(--text-1)' };
@@ -54,7 +54,7 @@ export default function McpGuidePage() {
 
       <section id="endpoint" style={section}>
         <h2 style={h2}>Endpoint</h2>
-        <pre style={pre}>{MCP_URL}</pre>
+        <CopyBlock>{MCP_URL}</CopyBlock>
         <p style={p}><strong style={strong}>Transport:</strong> Streamable HTTP. <strong style={strong}>Auth:</strong> none — the server only reads public on-chain data, scoped to the wallet address you pass in.</p>
       </section>
 
@@ -89,14 +89,15 @@ export default function McpGuidePage() {
       <section id="connect" style={section}>
         <h2 style={h2}>Connect</h2>
         <p style={p}>Add ChainMind as a remote MCP server in your client (Claude Desktop &rarr; Settings &rarr; Connectors, or a Cursor / client <code style={codeInline}>mcp.json</code>):</p>
-        <pre style={pre}>{httpConfig}</pre>
+        <CopyBlock>{httpConfig}</CopyBlock>
+        <Callout title="Tip">Restart your MCP client after editing the config so it picks up the new server. No API key is needed — ChainMind only reads public on-chain data.</Callout>
         <p style={p}>Then ask, for example: <em>&ldquo;Use ChainMind to list the vault for 0x… and summarize the files.&rdquo;</em> The client calls this server, which reads Sui through Tatum and the bytes from Walrus, and returns your files.</p>
       </section>
 
       <section id="tatum" style={section}>
         <h2 style={h2}>Pair with Tatum&rsquo;s MCP</h2>
         <p style={p}>For full blockchain coverage, run <a style={link} href="https://tatum.io/mcp" target="_blank" rel="noreferrer">Tatum&rsquo;s MCP server</a> alongside ChainMind&rsquo;s. Your AI can then browse your owned vault and query balances, NFTs, transactions, and raw RPC across 130+ chains:</p>
-        <pre style={pre}>{tatumConfig}</pre>
+        <CopyBlock>{tatumConfig}</CopyBlock>
       </section>
 
       <section id="notes" style={section}>

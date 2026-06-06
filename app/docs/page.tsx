@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import { DocsShell, type TocItem } from '@/components/DocsShell';
+import { CopyBlock, Callout } from '@/components/DocsBits';
 
 export const metadata = { title: 'ChainMind — Documentation' };
 
@@ -13,7 +14,6 @@ const p: CSSProperties = { fontSize: '15.5px', lineHeight: 1.75, color: 'var(--t
 const li: CSSProperties = { fontSize: '15.5px', lineHeight: 1.75, color: 'var(--text-2)', margin: '7px 0' };
 const code: CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.86em', background: 'var(--off-white)', border: '1px solid var(--border)', borderRadius: '5px', padding: '1px 6px' };
 const link: CSSProperties = { color: '#65ca9d', textDecoration: 'none', fontWeight: 600 };
-const pre: CSSProperties = { margin: '16px 0', padding: '16px 18px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--sidebar-bg)', color: 'var(--text-1)', overflowX: 'auto', fontSize: '12.5px', lineHeight: 1.65, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' };
 const th: CSSProperties = { textAlign: 'left', padding: '9px 12px', borderBottom: '1px solid var(--border-2)', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-3)' };
 const td: CSSProperties = { padding: '9px 12px', borderBottom: '1px solid var(--border)', fontSize: '14px', color: 'var(--text-2)', verticalAlign: 'top' };
 const strong: CSSProperties = { color: 'var(--text-1)' };
@@ -39,6 +39,7 @@ export default function DocsPage() {
       <section id="overview" style={section}>
         <h2 style={h2}>Overview</h2>
         <p style={p}>Most &ldquo;AI over your files&rdquo; products keep your data in a centralized database. ChainMind keeps it on decentralized storage you actually own. Every upload becomes a <code style={code}>VaultEntry</code> object, owned by your wallet on Sui, pointing at a Walrus blob. Because ownership and storage are both on-chain, you can wipe your browser, open ChainMind on a different machine, connect the same wallet, and restore the entire vault — files and conversations — straight from the chain.</p>
+        <Callout title="No database, no lock-in">Your data lives on Walrus, owned by your wallet on Sui. Connect the same wallet on any device and <strong style={strong}>Restore vault from chain</strong> rebuilds everything — files and chat history alike.</Callout>
       </section>
 
       <section id="architecture" style={section}>
@@ -54,13 +55,13 @@ export default function DocsPage() {
             </tbody>
           </table>
         </div>
-        <pre style={pre}>{`Browser (Next.js / React)
+        <CopyBlock>{`Browser (Next.js / React)
    |                         |
    |  /api/agent (LangChain) |  /api/rpc ---------> Tatum Sui RPC gateway
    |  /api/ask-vault         |  /api/register ----> Sui  (VaultEntry, server-signed via Tatum)
    |                         |  /api/vault-onchain > restore vault from Sui via Tatum
    v                         v
-   Walrus publisher / aggregator   <-- files, generated content, chat history (blobs)`}</pre>
+   Walrus publisher / aggregator   <-- files, generated content, chat history (blobs)`}</CopyBlock>
       </section>
 
       <section id="how-it-works" style={section}>
