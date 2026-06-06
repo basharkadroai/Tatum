@@ -1,44 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
-import { Database, ShoppingCart, FileText } from 'lucide-react';
-
-// Human-readable "what is it" for a listing, from filename/MIME.
-function kindLabel(filename: string, fileType?: string): string {
-  if (fileType?.startsWith('image/')) return 'Image';
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const map: Record<string, string> = {
-    html: 'Web page', htm: 'Web page', md: 'Markdown doc', markdown: 'Markdown doc',
-    pdf: 'PDF document', txt: 'Text file', json: 'JSON data', csv: 'CSV dataset',
-    docx: 'Word document', xlsx: 'Spreadsheet', js: 'JavaScript', ts: 'TypeScript',
-    tsx: 'TypeScript', py: 'Python script', sol: 'Solidity', move: 'Move module',
-    zip: 'Archive', mp3: 'Audio', mp4: 'Video',
-  };
-  return map[ext] || (fileType || 'File');
-}
+import { Database, ShoppingCart, MoreHorizontal } from 'lucide-react';
 import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import type { MarketListing } from '@/types/market';
 
 const TEXTUAL_EXT = ['txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'html', 'htm', 'xml', 'yaml', 'yml', 'js', 'ts', 'tsx', 'jsx', 'py', 'sol', 'move', 'css', 'log'];
 
-// A listing card that fetches a public preview of the file from Walrus — an
-// image thumbnail, or a cleaned text blurb — so buyers see what they're buying.
-function ListingCard({ listing, mine, busyId, hasWallet, chip, onBuy, onDelist }: {
-  listing: MarketListing; mine: boolean; busyId: string; hasWallet: boolean; chip: React.CSSProperties;
+// A clean listing card (Claude-style, no icon). Shows what the file is ABOUT —
+// a public preview fetched from the Walrus blob, or an image thumbnail.
+function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
+  listing: MarketListing; mine: boolean; busyId: string; hasWallet: boolean;
   onBuy: (l: MarketListing) => void; onDelist: (l: MarketListing) => void;
 }) {
   const [preview, setPreview] = useState('');
+  const [hover, setHover] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const isImage = (listing.fileType || '').startsWith('image/');
   const blobUrl = listing.blobId ? `${WALRUS_AGGREGATOR}/v1/blobs/${listing.blobId}` : '';
+  const ext = (listing.filename.split('.').pop() || '').toLowerCase();
+  const isTextual = (listing.fileType || '').startsWith('text/') || TEXTUAL_EXT.includes(ext);
   const busy = busyId === listing.listingId;
 
   useEffect(() => {
-    if (isImage || !blobUrl) return;
-    const ext = listing.filename.split('.').pop()?.toLowerCase() || '';
-    const textual = (listing.fileType || '').startsWith('text/') || TEXTUAL_EXT.includes(ext);
-    if (!textual) return;
+    if (isImage || !blobUrl || !isTextual) return;
     let cancelled = false;
     (async () => {
       try {
@@ -46,53 +34,74 @@ function ListingCard({ listing, mine, busyId, hasWallet, chip, onBuy, onDelist }
         if (!res.ok) return;
         let t = await res.text();
         t = t.replace(/```[\s\S]*?```/g, ' ').replace(/<[^>]+>/g, ' ').replace(/[#*_>`~|=-]{2,}/g, ' ').replace(/[#*_>`~|]/g, '').replace(/\s+/g, ' ').trim();
-        if (!cancelled && t) setPreview(t.slice(0, 180));
+        if (!cancelled && t) setPreview(t.slice(0, 200));
       } catch { /* preview is best-effort */ }
     })();
     return () => { cancelled = true; };
-  }, [blobUrl, isImage, listing.fileType, listing.filename]);
+  }, [blobUrl, isImage, isTextual]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [menuOpen]);
 
   return (
-    <article style={{ border: '1px solid var(--border)', borderRadius: '14px', background: 'var(--off-white)', padding: '18px', display: 'flex', flexDirection: 'column', gap: '13px', minHeight: '210px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
-          <FileText size={18} strokeWidth={2} />
-        </span>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listing.filename}</h3>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: '12px' }}>{kindLabel(listing.filename, listing.fileType)} · {formatBytes(listing.sizeBytes)}</p>
-        </div>
-        {mine && <span style={{ ...chip, padding: '3px 9px', fontSize: '10.5px', color: 'var(--mint-dark)' }}>Yours</span>}
+    <article
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ border: `1px solid ${hover ? 'var(--border-2)' : 'var(--border)'}`, borderRadius: '16px', background: 'var(--off-white)', padding: '18px', display: 'flex', flexDirection: 'column', gap: '11px', minHeight: '196px', transition: 'border-color 0.15s ease' }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+        <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{listing.filename}</h3>
+        {mine && (
+          <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
+            <button onClick={() => setMenuOpen(o => !o)} aria-label="Options"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '7px', border: 'none', background: menuOpen ? 'var(--hover)' : 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
+              onMouseLeave={e => { if (!menuOpen) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <MoreHorizontal size={16} strokeWidth={2} />
+            </button>
+            {menuOpen && (
+              <div style={{ position: 'absolute', top: 'calc(100% + 5px)', right: 0, zIndex: 30, minWidth: '140px', padding: '5px', borderRadius: '11px', border: '1px solid var(--border)', background: 'var(--off-white)', boxShadow: '0 12px 30px rgba(0,0,0,0.5)' }}>
+                <button onClick={() => { setMenuOpen(false); onDelist(listing); }} disabled={busy}
+                  style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '8px 10px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#e0796b', cursor: busy ? 'default' : 'pointer', fontSize: '12.5px', fontWeight: 600, textAlign: 'left' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#c0392b'; e.currentTarget.style.color = '#fff'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#e0796b'; }}
+                >
+                  {busy ? 'Cancelling…' : 'Delist'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* What it is — public preview from Walrus */}
+      {/* What it's about — public preview from Walrus */}
       {isImage && blobUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={blobUrl} alt={listing.filename} style={{ width: '100%', height: '96px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border)' }} />
+        <img src={blobUrl} alt={listing.filename} style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: '10px', border: '1px solid var(--border)' }} />
       ) : (
-        <p style={{ margin: 0, fontSize: '12.5px', lineHeight: 1.5, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-          {preview ? `${preview}…` : `${kindLabel(listing.filename, listing.fileType)} stored on Walrus — preview loads from the public blob.`}
+        <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-3)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {preview ? `${preview}…` : isTextual ? 'Loading preview…' : 'No text preview — open after purchase.'}
         </p>
       )}
 
-      <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-3)' }}>Seller {listing.seller.slice(0, 6)}…{listing.seller.slice(-4)}</p>
+      <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-3)' }}>by {listing.seller.slice(0, 6)}…{listing.seller.slice(-4)}</p>
 
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', marginTop: 'auto' }}>
-        <div>
-          <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)' }}>Price</div>
-          <strong style={{ fontSize: '20px', color: 'var(--text-1)' }}>{listing.priceSui} <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>SUI</span></strong>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: 'auto' }}>
+        <strong style={{ fontSize: '17px', color: 'var(--text-1)' }}>{listing.priceSui} <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-3)' }}>SUI</span></strong>
         {!hasWallet ? (
-          <button disabled style={{ padding: '9px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12.5px', fontWeight: 800, opacity: 0.55 }}>Connect wallet</button>
-        ) : mine ? (
-          <button onClick={() => onDelist(listing)} disabled={busy} style={{ padding: '9px 14px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: '12.5px', fontWeight: 800, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
-            {busy ? 'Cancelling…' : 'Delist'}
-          </button>
-        ) : (
-          <button onClick={() => onBuy(listing)} disabled={!!busyId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', fontSize: '12.5px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId ? 0.6 : 1 }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-3)' }}>Connect wallet to buy</span>
+        ) : !mine ? (
+          <button onClick={() => onBuy(listing)} disabled={!!busyId}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', fontSize: '12.5px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId ? 0.6 : 1 }}
+          >
             <ShoppingCart size={14} /> {busy ? 'Buying…' : 'Buy'}
           </button>
-        )}
+        ) : null}
       </div>
     </article>
   );
@@ -103,12 +112,6 @@ const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 // + events keep the original id.
 const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
 
-function formatBytes(bytes?: number) {
-  if (!bytes) return 'Unknown size';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1048576).toFixed(1)} MB`;
-}
 function clearLocalListing(listing: MarketListing) {
   try {
     const raw = localStorage.getItem('chainmind_vault');
@@ -206,8 +209,6 @@ export function MarketplaceView() {
     }
   }
 
-  const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 11px', borderRadius: '20px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-2)', fontSize: '11.5px', fontWeight: 700 };
-
   return (
     // Solid sidebar-colored background (covers the home scene), own scroll.
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--sidebar-bg)' }}>
@@ -243,7 +244,6 @@ export function MarketplaceView() {
                 mine={isSeller(listing)}
                 busyId={busyId}
                 hasWallet={!!account?.address}
-                chip={chip}
                 onBuy={buyListing}
                 onDelist={delistListing}
               />
