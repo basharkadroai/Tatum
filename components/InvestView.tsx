@@ -10,7 +10,8 @@ import type { ShareOffering } from '@/types/market';
 
 const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
-const MIST = 1_000_000_000n;
+const MIST = BigInt(1_000_000_000);
+const ZERO = BigInt(0);
 
 function short(a?: string) { return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—'; }
 function suiToMist(input: string): bigint | null {
@@ -18,13 +19,13 @@ function suiToMist(input: string): bigint | null {
   if (!/^\d+(\.\d{0,9})?$/.test(c)) return null;
   const [w, f = ''] = c.split('.');
   const m = BigInt(w) * MIST + BigInt((f + '000000000').slice(0, 9));
-  return m > 0n ? m : null;
+  return m > ZERO ? m : null;
 }
 function mistToSui(m: string | number | bigint): string {
   try {
     const raw = BigInt(m);
     const whole = raw / MIST, frac = raw % MIST;
-    if (frac === 0n) return whole.toString();
+    if (frac === ZERO) return whole.toString();
     return `${whole}.${frac.toString().padStart(9, '0').replace(/0+$/, '').slice(0, 4)}`;
   } catch { return '0'; }
 }
