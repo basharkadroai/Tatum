@@ -225,6 +225,13 @@ function inferWorkPlan(goal: string, ctx: AgentContext, docs: VaultDoc[]) {
   };
 }
 
+function shouldAutoPlan(question: string) {
+  const q = question.toLowerCase();
+  return q.length > 160
+    || /\b(audit|improve|debug|clean up|cleanup|what should i do first|what to improve|optimi[sz]e|review my vault|fix my vault)\b/.test(q)
+    || /\b(delete|remove|wipe|clear|buy|purchase|sell|list|delist|transfer|send|swap|claim|register|restore|decrypt|share|publish)\b/.test(q);
+}
+
 function resultDetail(result: unknown) {
   const text = typeof result === 'string' ? result : JSON.stringify(result);
   if (!text) return 'Completed';
@@ -971,7 +978,26 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     .filter(m => m && (m.role === 'user' || m.role === 'ai') && m.text)
     .slice(-8)
     .map(m => ({ role: m.role === 'ai' ? ('assistant' as const) : ('user' as const), content: String(m.text) }));
-  const inputMessages = [...priorMsgs, { role: 'user' as const, content: question }];
+  let inputMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [...priorMsgs, { role: 'user' as const, content: question }];
+  if (shouldAutoPlan(question)) {
+    const started = Date.now();
+    const id = `plan_vault_work-${Date.now()}-${++toolRunSeq}`;
+    const plan = JSON.stringify(inferWorkPlan(question, ctx, ctx.docs ?? []), null, 2);
+    trace.toolCall('plan_vault_work', { label: 'Planning the vault work', automatic: true });
+    queue.push({ type: 'tool_start', id, tool: 'plan_vault_work', label: 'Planning the vault work' });
+    queue.push({
+      type: 'tool_done',
+      id,
+      tool: 'plan_vault_work',
+      label: 'Planning the vault work',
+      detail: `${resultDetail(plan)} in ${Date.now() - started}ms`,
+      durationMs: Date.now() - started,
+    });
+    inputMessages = [
+      { role: 'system' as const, content: `Internal ChainMind work plan for this request:\n${plan}\nUse this plan silently; do not mention that an internal plan exists unless it helps the user.` },
+      ...inputMessages,
+    ];
+  }
 
   const MAX_ATTEMPTS = 3;
   const produce = async () => {
