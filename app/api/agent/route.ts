@@ -33,8 +33,16 @@ function cleanDoc(value: unknown): VaultDoc | null {
     sizeBytes: cleanNumber(record.sizeBytes),
     owner: cleanString(record.owner),
     txDigest: cleanString(record.txDigest),
+    entryId: cleanString(record.entryId),
+    listingId: cleanString(record.listingId),
+    priceMist: cleanString(record.priceMist),
+    listed: record.listed === true,
+    purchased: record.purchased === true,
     encrypted: record.encrypted === true,
+    sealId: cleanString(record.sealId),
     sealPolicyId: cleanString(record.sealPolicyId),
+    ciphertextSizeBytes: cleanNumber(record.ciphertextSizeBytes),
+    decryptedAt: cleanString(record.decryptedAt, 80),
   };
 }
 

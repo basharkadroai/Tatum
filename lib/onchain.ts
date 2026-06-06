@@ -36,17 +36,43 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
   throw new Error('Sui RPC unavailable');
 }
 
+type SuiPage<T> = { data?: T[]; nextCursor?: unknown; hasNextPage?: boolean };
+
+async function queryEvents(moveEventType: string, totalLimit = 500): Promise<Array<{ parsedJson?: Record<string, unknown> }>> {
+  const out: Array<{ parsedJson?: Record<string, unknown> }> = [];
+  let cursor: unknown = null;
+  while (out.length < totalLimit) {
+    const page = (await rpc('suix_queryEvents', [
+      { MoveEventType: moveEventType },
+      cursor,
+      Math.min(100, totalLimit - out.length),
+      true,
+    ])) as SuiPage<{ parsedJson?: Record<string, unknown> }>;
+    out.push(...(page.data ?? []));
+    if (!page.hasNextPage || !page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return out;
+}
+
 // All VaultEntry objects owned by a wallet (read from Sui via Tatum).
 export async function listVaultEntries(owner: string): Promise<VaultEntryOnchain[]> {
   if (!owner || !PACKAGE_ID) return [];
-  const result = (await rpc('suix_getOwnedObjects', [
-    owner,
-    { filter: { StructType: `${PACKAGE_ID}::vault::VaultEntry` }, options: { showContent: true, showPreviousTransaction: true } },
-    null,
-    50,
-  ])) as { data?: Array<{ data?: { objectId?: string; previousTransaction?: string; content?: { fields?: Record<string, unknown> } } }> };
+  const data: Array<{ data?: { objectId?: string; previousTransaction?: string; content?: { fields?: Record<string, unknown> } } }> = [];
+  let cursor: unknown = null;
+  while (data.length < 500) {
+    const page = (await rpc('suix_getOwnedObjects', [
+      owner,
+      { filter: { StructType: `${PACKAGE_ID}::vault::VaultEntry` }, options: { showContent: true, showPreviousTransaction: true } },
+      cursor,
+      Math.min(100, 500 - data.length),
+    ])) as SuiPage<{ data?: { objectId?: string; previousTransaction?: string; content?: { fields?: Record<string, unknown> } } }>;
+    data.push(...(page.data ?? []));
+    if (!page.hasNextPage || !page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
 
-  const entries = (result?.data ?? [])
+  const entries = data
     .map(o => {
       const f = o.data?.content?.fields;
       if (!f) return null;
@@ -78,13 +104,8 @@ async function annotateEncryptedEntries(entries: VaultEntryOnchain[]): Promise<V
   const byId = new Map(entries.filter(e => e.entryId).map(e => [e.entryId, e]));
   if (!byId.size) return entries;
   try {
-    const events = (await rpc('suix_queryEvents', [
-      { MoveEventType: `${PACKAGE_LATEST}::vault::EncryptedBlobRegistered` },
-      null,
-      200,
-      true,
-    ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
-    for (const ev of events?.data ?? []) {
+    const events = await queryEvents(`${PACKAGE_LATEST}::vault::EncryptedBlobRegistered`, 1000);
+    for (const ev of events) {
       const entryId = ev.parsedJson?.entry_id ? String(ev.parsedJson.entry_id) : '';
       const entry = byId.get(entryId);
       if (!entry) continue;
@@ -143,18 +164,13 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
   const events: Array<{ parsedJson?: Record<string, unknown> }> = [];
   for (const pkg of MARKET_PKGS) {
     try {
-      const page = (await rpc('suix_queryEvents', [
-        { MoveEventType: `${pkg}::vault::Listed` }, null, Math.min(Math.max(limit, 1), 100), true,
-      ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
-      for (const event of page?.data ?? []) events.push(event);
+      events.push(...await queryEvents(`${pkg}::vault::Listed`, Math.min(Math.max(limit * 3, 100), 500)));
     } catch { /* skip unavailable package version */ }
   }
   const encrypted = new Map<string, { policyId?: string; sealId?: string }>();
   try {
-    const encryptedEvents = (await rpc('suix_queryEvents', [
-      { MoveEventType: `${PACKAGE_LATEST}::vault::EncryptedBlobRegistered` }, null, 200, true,
-    ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
-    for (const event of encryptedEvents?.data ?? []) {
+    const encryptedEvents = await queryEvents(`${PACKAGE_LATEST}::vault::EncryptedBlobRegistered`, 1000);
+    for (const event of encryptedEvents) {
       const entryId = event.parsedJson?.entry_id ? String(event.parsedJson.entry_id) : '';
       if (!entryId) continue;
       encrypted.set(entryId, {
@@ -166,10 +182,8 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
 
   const metadata = new Map<string, { title?: string; description?: string; category?: string; teaser?: string }>();
   try {
-    const metadataEvents = (await rpc('suix_queryEvents', [
-      { MoveEventType: `${PACKAGE_LATEST}::vault::ListingMetadata` }, null, 200, true,
-    ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
-    for (const event of metadataEvents?.data ?? []) {
+    const metadataEvents = await queryEvents(`${PACKAGE_LATEST}::vault::ListingMetadata`, 1000);
+    for (const event of metadataEvents) {
       const listingId = event.parsedJson?.listing_id ? String(event.parsedJson.listing_id) : '';
       if (!listingId) continue;
       metadata.set(listingId, {

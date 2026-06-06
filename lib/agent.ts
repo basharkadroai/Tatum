@@ -2,7 +2,7 @@ import { createAgent, tool } from 'langchain';
 import { ChatGroq } from '@langchain/groq';
 import { makeWebSearchTool } from '@/lib/webSearch';
 import { getExchangeRate } from '@/lib/tatum';
-import { fetchBlobText, listVaultEntries } from '@/lib/onchain';
+import { fetchBlobText, listMarketplace, listVaultEntries } from '@/lib/onchain';
 import { AgentTraceRecorder, type AgentTraceSummary } from '@/lib/agentTrace';
 import * as z from 'zod';
 
@@ -15,8 +15,16 @@ export type VaultDoc = {
   sizeBytes?: number;
   owner?: string;
   txDigest?: string;
+  entryId?: string;
+  listingId?: string;
+  priceMist?: string;
+  listed?: boolean;
+  purchased?: boolean;
   encrypted?: boolean;
+  sealId?: string;
   sealPolicyId?: string;
+  ciphertextSizeBytes?: number;
+  decryptedAt?: string;
 };
 
 export type AgentContext = {
@@ -72,8 +80,18 @@ function inspectDocs(docs: VaultDoc[]) {
       blobId: d.blobId,
       fileType: d.fileType,
       sizeBytes: d.sizeBytes,
+      owner: d.owner,
+      txDigest: d.txDigest,
+      entryId: d.entryId,
+      listingId: d.listingId,
+      priceMist: d.priceMist,
+      listed: !!d.listed,
+      purchased: !!d.purchased,
       encrypted: !!d.encrypted,
+      sealId: d.sealId,
       sealPolicyId: d.sealPolicyId,
+      ciphertextSizeBytes: d.ciphertextSizeBytes,
+      decryptedAt: d.decryptedAt,
       summary: d.summary,
       contentPreview: d.encrypted && !d.content ? '(Seal encrypted; decrypt in ChainMind with the owner wallet)' : (d.content ?? '').slice(0, 900),
     })),
@@ -217,7 +235,9 @@ function inferWorkPlan(goal: string, ctx: AgentContext, docs: VaultDoc[]) {
   if (/\b(duplicate|same|copy|cleanup)\b/.test(q)) tools.push('find_duplicate_files');
   if (/\b(compare|difference|different|versus| vs )\b/.test(q)) tools.push('compare_files');
   if (/\b(search|find|where|which file|keyword|mentions)\b/.test(q)) tools.push('search_vault');
+  if (/\b(entry\s?id|listing\s?id|listed|marketplace status|seal\s?id|seal policy|encrypted|purchased|bought)\b/.test(q)) tools.push('inspect_loaded_vault');
   if (/\b(on-chain|chain|restore|wallet|true|sui|walrus)\b/.test(q)) tools.push('list_onchain_vault');
+  if (/\b(marketplace|for sale|listings|listed items|buyable)\b/.test(q)) tools.push('list_marketplace');
   if (/\b(remember|preference|project direction|strategy|context|what do you know)\b/.test(q)) tools.push('search_memory');
   if (/\b(price|sui|btc|eth|market)\b/.test(q)) tools.push('crypto_price');
   const policy = inferActionPolicy(goal);
@@ -249,6 +269,325 @@ function shouldAutoPolicy(question: string) {
 function shouldAutoMemory(question: string, ctx: AgentContext, docs: VaultDoc[]) {
   if (!memorySources(ctx, docs).length) return false;
   return /\b(remember|preference|prefer|mode|modes|context|what do you know|project direction|strategy)\b/i.test(question);
+}
+
+type AutomaticContext = { tool: string; label: string; content: string };
+
+function currentFileReport(ctx: AgentContext) {
+  const file = ctx.currentFile;
+  if (!file) return 'No single file is currently open.';
+  return [
+    `filename: ${file.filename}`,
+    file.blobId ? `blobId: ${file.blobId}` : '',
+    file.entryId ? `entryId: ${file.entryId}` : '',
+    file.listingId ? `listingId: ${file.listingId}` : '',
+    file.priceMist ? `priceMist: ${file.priceMist}` : '',
+    file.listed ? 'marketplace: listed' : '',
+    file.purchased ? 'marketplace: bought by this user' : '',
+    file.fileType ? `fileType: ${file.fileType}` : '',
+    file.encrypted ? `encryption: Seal encrypted${file.sealPolicyId ? ` (policy ${file.sealPolicyId})` : ''}${file.sealId ? ` (seal ${file.sealId})` : ''}` : '',
+    file.decryptedAt ? `decryptedAt: ${file.decryptedAt}` : '',
+    file.summary ? `summary: ${file.summary}` : '',
+    `content:\n${(file.content ?? '').slice(0, 12000) || (file.encrypted ? '(Seal encrypted. Decrypt in ChainMind with the owner wallet before reading exact contents.)' : '(No extracted text is loaded for this file. Use read_walrus_blob if a blobId exists.)')}`,
+  ].filter(Boolean).join('\n');
+}
+
+function vaultStatsReport(docs: VaultDoc[]) {
+  const files = visibleDocs(docs);
+  const totalSizeBytes = files.reduce((sum, d) => sum + (d.sizeBytes || 0), 0);
+  const largestFiles = [...files]
+    .sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
+    .slice(0, 8)
+    .map((d, i) => ({
+      rank: i + 1,
+      filename: d.filename,
+      sizeBytes: d.sizeBytes || 0,
+      sizeHuman: formatBytes(d.sizeBytes || 0),
+      fileType: d.fileType || 'unknown',
+      blobId: d.blobId,
+      entryId: d.entryId,
+      listed: !!d.listed,
+      purchased: !!d.purchased,
+      encrypted: !!d.encrypted,
+    }));
+  const missingContent = files.filter(d => !d.content?.trim());
+  const duplicates = duplicateGroups(files);
+  return JSON.stringify({
+    totalFiles: files.length,
+    totalSizeBytes,
+    totalSizeHuman: formatBytes(totalSizeBytes),
+    byType: byType(files),
+    largestFiles,
+    missingContentCount: missingContent.length,
+    duplicateGroupCount: duplicates.length,
+    estimatedDuplicateReclaimableBytes: duplicates.reduce((sum, group) => sum + group.reclaimableBytes, 0),
+    estimatedDuplicateReclaimableHuman: formatBytes(duplicates.reduce((sum, group) => sum + group.reclaimableBytes, 0)),
+  }, null, 2);
+}
+
+function duplicateReport(docs: VaultDoc[]) {
+  const groups = duplicateGroups(visibleDocs(docs));
+  if (!groups.length) return 'No duplicate-looking files found by blobId or filename+size.';
+  return JSON.stringify(groups.map(group => ({
+    reason: group.reason,
+    totalSizeBytes: group.totalSizeBytes,
+    totalSizeHuman: group.totalSizeHuman,
+    estimatedReclaimableBytes: group.reclaimableBytes,
+    estimatedReclaimableHuman: group.reclaimableHuman,
+    files: group.files.map((d, i) => ({
+      label: docLabel(d, i),
+      filename: d.filename,
+      blobId: d.blobId,
+      entryId: d.entryId,
+      sizeBytes: d.sizeBytes || 0,
+      sizeHuman: formatBytes(d.sizeBytes || 0),
+      txDigest: d.txDigest,
+    })),
+  })), null, 2);
+}
+
+function largeFilesReport(docs: VaultDoc[], minSizeBytes?: number | null) {
+  const files = [...visibleDocs(docs)]
+    .filter(d => !minSizeBytes || (d.sizeBytes || 0) >= minSizeBytes)
+    .sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
+    .slice(0, 15);
+  if (!files.length) return 'No files matched that size threshold.';
+  return JSON.stringify(files.map((d, i) => ({
+    rank: i + 1,
+    filename: d.filename,
+    sizeBytes: d.sizeBytes || 0,
+    sizeHuman: formatBytes(d.sizeBytes || 0),
+    fileType: d.fileType || 'unknown',
+    blobId: d.blobId,
+    entryId: d.entryId,
+    summary: d.summary,
+  })), null, 2);
+}
+
+function missingContentReport(docs: VaultDoc[]) {
+  const files = visibleDocs(docs)
+    .filter(d => !d.content?.trim())
+    .map((d, i) => ({
+      n: i + 1,
+      filename: d.filename,
+      fileType: d.fileType || 'unknown',
+      sizeBytes: d.sizeBytes || 0,
+      sizeHuman: formatBytes(d.sizeBytes || 0),
+      blobId: d.blobId,
+      entryId: d.entryId,
+      encrypted: !!d.encrypted,
+      summaryAvailable: Boolean(d.summary?.trim()),
+      suggestedFix: d.encrypted
+        ? 'Open this file in ChainMind with the owner wallet to decrypt it before AI can read the contents.'
+        : d.blobId ? 'Open/re-analyze this file or fetch its Walrus blob if the type is readable.' : 'Re-upload or restore this file so it has a blobId.',
+    }));
+  if (!files.length) return 'Every visible loaded file has extracted text available.';
+  return JSON.stringify({ missingContentCount: files.length, files }, null, 2);
+}
+
+function compareFilesReport(docs: VaultDoc[], left: string, right: string) {
+  const files = visibleDocs(docs);
+  const a = findDoc(files, left);
+  const b = findDoc(files, right);
+  if (!a || !b) {
+    return JSON.stringify({
+      error: 'Could not find both files.',
+      foundLeft: a?.filename || null,
+      foundRight: b?.filename || null,
+      hint: 'Use exact filenames or 1-based file numbers from inspect_loaded_vault.',
+    }, null, 2);
+  }
+  const overlap = sharedTerms(`${a.summary ?? ''}\n${a.content ?? ''}`, `${b.summary ?? ''}\n${b.content ?? ''}`);
+  return JSON.stringify({
+    left: { filename: a.filename, sizeBytes: a.sizeBytes || 0, sizeHuman: formatBytes(a.sizeBytes || 0), blobId: a.blobId, entryId: a.entryId, summary: a.summary },
+    right: { filename: b.filename, sizeBytes: b.sizeBytes || 0, sizeHuman: formatBytes(b.sizeBytes || 0), blobId: b.blobId, entryId: b.entryId, summary: b.summary },
+    sameBlob: Boolean(a.blobId && b.blobId && a.blobId === b.blobId),
+    sameFilename: a.filename.toLowerCase() === b.filename.toLowerCase(),
+    sameSize: (a.sizeBytes || 0) === (b.sizeBytes || 0),
+    lexicalOverlapScore: Number(overlap.overlap.toFixed(3)),
+    sharedKeywords: overlap.common,
+  }, null, 2);
+}
+
+function searchVaultReport(docs: VaultDoc[], query: string) {
+  const q = query.toLowerCase();
+  const hits = docs
+    .map(d => {
+      const hay = `${d.filename}\n${d.summary ?? ''}\n${d.content ?? ''}`;
+      return { d, score: scoreText(query, hay) + (d.filename.toLowerCase().includes(q) ? 5 : 0) };
+    })
+    .filter(h => h.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 7);
+
+  if (hits.length === 0) return 'No matching files found in the loaded vault.';
+  return hits.map(({ d }) => [
+    `# ${d.filename}`,
+    d.blobId ? `blobId: ${d.blobId}` : '',
+    d.entryId ? `entryId: ${d.entryId}` : '',
+    d.encrypted ? 'encryption: Seal encrypted' : '',
+    d.summary ? `summary: ${d.summary}` : '',
+    `snippet:\n${(d.content ?? '').slice(0, 1800) || (d.encrypted ? '(Locked until decrypted with the owner wallet.)' : '(No extracted text loaded.)')}`,
+  ].filter(Boolean).join('\n')).join('\n\n');
+}
+
+async function listOnchainVaultReport(owner: string) {
+  if (!owner) return 'No wallet address is available. Connect a wallet or provide an owner address.';
+  const entries = (await listVaultEntries(owner))
+    .filter(e => !e.filename.startsWith('.chat'))
+    .slice(0, 60);
+  if (!entries.length) return `No ChainMind VaultEntry objects found for ${owner}.`;
+  return JSON.stringify(entries.map(e => ({
+    filename: e.filename,
+    blobId: e.blobId,
+    fileType: e.fileType,
+    sizeBytes: e.sizeBytes,
+    txDigest: e.txDigest,
+    entryId: e.entryId,
+    encrypted: !!e.encrypted,
+    sealPolicyId: e.sealPolicyId,
+  })), null, 2);
+}
+
+async function searchOnchainVaultReport(query: string, owner: string) {
+  if (!owner) return 'No wallet address is available. Connect a wallet or provide an owner address.';
+  const entries = (await listVaultEntries(owner))
+    .filter(e => !e.filename.startsWith('.chat'))
+    .slice(0, 40);
+  if (!entries.length) return `No ChainMind VaultEntry objects found for ${owner}.`;
+
+  const hydrated = await Promise.all(entries.map(async e => {
+    if (e.encrypted) {
+      const hay = `${e.filename}\n${e.fileType}\nSeal encrypted`;
+      return { entry: e, text: '(Seal encrypted; decrypt in ChainMind with the owner wallet.)', score: scoreText(query, hay) + scoreText(query, e.filename) * 3 };
+    }
+    const text = await fetchBlobText(e.blobId);
+    const hay = `${e.filename}\n${e.fileType}\n${text.slice(0, 12000)}`;
+    return { entry: e, text, score: scoreText(query, hay) + scoreText(query, e.filename) * 3 };
+  }));
+
+  const hits = hydrated
+    .filter(h => h.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+  if (!hits.length) return `No on-chain vault files matched "${query}".`;
+
+  return hits.map(h => [
+    `# ${h.entry.filename}`,
+    `blobId: ${h.entry.blobId}`,
+    h.entry.entryId ? `entryId: ${h.entry.entryId}` : '',
+    h.entry.txDigest ? `txDigest: ${h.entry.txDigest}` : '',
+    `snippet:\n${(h.text || '(No readable text returned from Walrus.)').slice(0, 1800)}`,
+  ].filter(Boolean).join('\n')).join('\n\n');
+}
+
+async function auditVaultReport(ctx: AgentContext, owner: string) {
+  const visibleFiles = visibleDocs(ctx.docs ?? []);
+  const localIssues = visibleFiles.flatMap(d => {
+    const issues: string[] = [];
+    if (!d.blobId) issues.push('missing blobId');
+    if (!d.content?.trim()) issues.push('no extracted text loaded');
+    if (!d.txDigest) issues.push('no txDigest in loaded metadata');
+    if (!d.entryId) issues.push('no entryId in loaded metadata');
+    if (!d.owner && owner) issues.push('loaded metadata does not show wallet owner');
+    return issues.length ? [{ filename: d.filename, issues }] : [];
+  });
+
+  let onchain: Awaited<ReturnType<typeof listVaultEntries>> = [];
+  let onchainError = '';
+  if (owner) {
+    try {
+      onchain = (await listVaultEntries(owner)).filter(e => !e.filename.startsWith('.'));
+    } catch (err) {
+      onchainError = String(err).slice(0, 240);
+    }
+  }
+
+  const loadedBlobIds = new Set(visibleFiles.map(d => d.blobId).filter(Boolean));
+  const chainBlobIds = new Set(onchain.map(e => e.blobId));
+  const notLoaded = onchain.filter(e => !loadedBlobIds.has(e.blobId)).map(e => ({ filename: e.filename, blobId: e.blobId, entryId: e.entryId }));
+  const notOnchain = visibleFiles.filter(d => d.blobId && !chainBlobIds.has(d.blobId)).map(d => ({ filename: d.filename, blobId: d.blobId, entryId: d.entryId }));
+
+  return JSON.stringify({
+    connectedOwner: owner || null,
+    loadedVisibleFiles: visibleFiles.length,
+    onchainVisibleFiles: onchain.length,
+    localIssues,
+    onchainEntriesNotLoaded: notLoaded.slice(0, 10),
+    loadedFilesNotFoundOnchainForOwner: owner ? notOnchain.slice(0, 10) : [],
+    onchainError,
+    recommendedActions: [
+      notLoaded.length ? 'Restore vault from chain to pull missing on-chain files into this browser.' : '',
+      localIssues.some(i => i.issues.includes('no extracted text loaded')) ? 'Open or re-analyze files with missing extracted text so the agent can search them better.' : '',
+      notOnchain.length ? 'For loaded files not found under this owner, verify they were registered to this wallet or claim/register them.' : '',
+    ].filter(Boolean),
+  }, null, 2);
+}
+
+function mentionedDocs(question: string, docs: VaultDoc[]) {
+  const q = question.toLowerCase();
+  return visibleDocs(docs)
+    .filter(d => q.includes(d.filename.toLowerCase()))
+    .sort((a, b) => b.filename.length - a.filename.length);
+}
+
+function compactQuestionQuery(question: string) {
+  return question
+    .replace(/\b(search|find|where|which file|mentions|using only|loaded vault files|reply with|what is|what are|the)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180) || question.slice(0, 180);
+}
+
+async function runAutomaticReadTools(question: string, ctx: AgentContext): Promise<AutomaticContext[]> {
+  const q = question.toLowerCase();
+  const docs = ctx.docs ?? [];
+  const owner = cleanOwner(ctx.owner);
+  const out: AutomaticContext[] = [];
+  const add = (toolName: string, label: string, content: string) => {
+    if (!out.some(item => item.tool === toolName)) out.push({ tool: toolName, label, content });
+  };
+
+  if (ctx.currentFile && /\b(open|current|selected|this file|currently open)\b/.test(q)) {
+    add('read_current_file', 'Reading the open file', currentFileReport(ctx));
+  }
+  if (/\b(size|count|how many|largest|storage|what takes|total|vault)\b/.test(q)) {
+    add('vault_stats', 'Calculating vault stats', vaultStatsReport(docs));
+  }
+  if (/\b(duplicate|same|copy|copies|cleanup)\b/.test(q)) {
+    add('find_duplicate_files', 'Checking for duplicate files', duplicateReport(docs));
+  }
+  if (/\b(largest|large|biggest|takes the most space|storage)\b/.test(q)) {
+    add('find_large_files', 'Finding large files', largeFilesReport(docs));
+  }
+  if (/\b(missing|re-analysis|reanaly|empty|no extracted|shallow)\b/.test(q)) {
+    add('find_missing_content', 'Finding files missing extracted text', missingContentReport(docs));
+  }
+  if (/\b(compare|difference|different|versus| vs )\b/.test(q)) {
+    const named = mentionedDocs(question, docs);
+    if (named.length >= 2) add('compare_files', `Comparing ${named[0].filename} and ${named[1].filename}`, compareFilesReport(docs, named[0].filename, named[1].filename));
+  }
+  if (/\b(search|find|where|which file|keyword|mentions|codeword)\b/.test(q)) {
+    add('search_vault', `Searching loaded files for "${compactQuestionQuery(question)}"`, searchVaultReport(docs, compactQuestionQuery(question)));
+  }
+  if (/\b(entry\s?id|listing\s?id|listed|marketplace status|seal\s?id|seal policy|encrypted|purchased|bought)\b/.test(q)) {
+    add('inspect_loaded_vault', 'Inspecting the loaded vault', JSON.stringify(inspectDocs(docs), null, 2));
+  }
+  if (/\b(audit|health|improve|debug|clean up|cleanup|what should i do first)\b/.test(q)) {
+    add('audit_vault_health', 'Auditing vault health', await auditVaultReport(ctx, owner));
+  }
+  if (owner && /\b(on-chain|onchain|chain|restore|wallet|true|sui|walrus)\b/.test(q)) {
+    add('list_onchain_vault', 'Reading your on-chain vault through Tatum', await listOnchainVaultReport(owner));
+  }
+  if (owner && /\b(on-chain|onchain|chain|sui|walrus)\b/.test(q) && /\b(search|find|where|mentions|keyword)\b/.test(q)) {
+    add('search_onchain_vault', `Searching Sui + Walrus for "${compactQuestionQuery(question)}"`, await searchOnchainVaultReport(compactQuestionQuery(question), owner));
+  }
+  if (/\b(marketplace|for sale|listings|listed items|buyable)\b/.test(q) && !/\b(list|sell|buy|purchase|delist)\s+[\w.-]/.test(q)) {
+    const listings = await listMarketplace(undefined, 20);
+    add('list_marketplace', 'Reading marketplace listings', JSON.stringify(listings, null, 2));
+  }
+
+  return out.slice(0, 5);
 }
 
 function resultDetail(result: unknown) {
@@ -345,35 +684,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'vault_stats',
     () => 'Calculating vault stats',
-    () => {
-      const files = visibleDocs(docs);
-      const totalSizeBytes = files.reduce((sum, d) => sum + (d.sizeBytes || 0), 0);
-      const largestFiles = [...files]
-        .sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
-        .slice(0, 8)
-        .map((d, i) => ({
-          rank: i + 1,
-          filename: d.filename,
-          sizeBytes: d.sizeBytes || 0,
-          sizeHuman: formatBytes(d.sizeBytes || 0),
-          fileType: d.fileType || 'unknown',
-          blobId: d.blobId,
-          encrypted: !!d.encrypted,
-        }));
-      const missingContent = files.filter(d => !d.content?.trim());
-      const duplicates = duplicateGroups(files);
-      return JSON.stringify({
-        totalFiles: files.length,
-        totalSizeBytes,
-        totalSizeHuman: formatBytes(totalSizeBytes),
-        byType: byType(files),
-        largestFiles,
-        missingContentCount: missingContent.length,
-        duplicateGroupCount: duplicates.length,
-        estimatedDuplicateReclaimableBytes: duplicates.reduce((sum, group) => sum + group.reclaimableBytes, 0),
-        estimatedDuplicateReclaimableHuman: formatBytes(duplicates.reduce((sum, group) => sum + group.reclaimableBytes, 0)),
-      }, null, 2);
-    },
+    () => vaultStatsReport(docs),
     {
       description:
         'Compute vault-level operational stats: total files, total size, size by type, largest files, missing-content count, and duplicate estimates. Use for questions about vault size, storage, cleanup, or what is taking space.',
@@ -385,25 +696,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'find_duplicate_files',
     () => 'Checking for duplicate files',
-    () => {
-      const groups = duplicateGroups(visibleDocs(docs));
-      if (!groups.length) return 'No duplicate-looking files found by blobId or filename+size.';
-      return JSON.stringify(groups.map(group => ({
-        reason: group.reason,
-        totalSizeBytes: group.totalSizeBytes,
-        totalSizeHuman: group.totalSizeHuman,
-        estimatedReclaimableBytes: group.reclaimableBytes,
-        estimatedReclaimableHuman: group.reclaimableHuman,
-        files: group.files.map((d, i) => ({
-          label: docLabel(d, i),
-          filename: d.filename,
-          blobId: d.blobId,
-          sizeBytes: d.sizeBytes || 0,
-          sizeHuman: formatBytes(d.sizeBytes || 0),
-          txDigest: d.txDigest,
-        })),
-      })), null, 2);
-    },
+    () => duplicateReport(docs),
     {
       description:
         'Find duplicate-looking files in the loaded vault using exact Walrus blobId matches and filename+size matches. Use for cleanup, delete recommendations, duplicate audits, and storage reduction.',
@@ -415,22 +708,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'find_large_files',
     ({ minSizeBytes }: { minSizeBytes?: number | null }) => `Finding large files${minSizeBytes ? ` over ${formatBytes(minSizeBytes)}` : ''}`,
-    ({ minSizeBytes }: { minSizeBytes?: number | null }) => {
-      const files = [...visibleDocs(docs)]
-        .filter(d => !minSizeBytes || (d.sizeBytes || 0) >= minSizeBytes)
-        .sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
-        .slice(0, 15);
-      if (!files.length) return 'No files matched that size threshold.';
-      return JSON.stringify(files.map((d, i) => ({
-        rank: i + 1,
-        filename: d.filename,
-        sizeBytes: d.sizeBytes || 0,
-        sizeHuman: formatBytes(d.sizeBytes || 0),
-        fileType: d.fileType || 'unknown',
-        blobId: d.blobId,
-        summary: d.summary,
-      })), null, 2);
-    },
+    ({ minSizeBytes }: { minSizeBytes?: number | null }) => largeFilesReport(docs, minSizeBytes),
     {
       description:
         'List the largest files in the loaded vault, optionally above a byte threshold. Use for storage cleanup, cost, and “what takes the most space” questions.',
@@ -442,25 +720,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'find_missing_content',
     () => 'Finding files missing extracted text',
-    () => {
-      const files = visibleDocs(docs)
-        .filter(d => !d.content?.trim())
-        .map((d, i) => ({
-          n: i + 1,
-          filename: d.filename,
-          fileType: d.fileType || 'unknown',
-          sizeBytes: d.sizeBytes || 0,
-          sizeHuman: formatBytes(d.sizeBytes || 0),
-          blobId: d.blobId,
-          encrypted: !!d.encrypted,
-          summaryAvailable: Boolean(d.summary?.trim()),
-          suggestedFix: d.encrypted
-            ? 'Open this file in ChainMind with the owner wallet to decrypt it before AI can read the contents.'
-            : d.blobId ? 'Open/re-analyze this file or fetch its Walrus blob if the type is readable.' : 'Re-upload or restore this file so it has a blobId.',
-        }));
-      if (!files.length) return 'Every visible loaded file has extracted text available.';
-      return JSON.stringify({ missingContentCount: files.length, files }, null, 2);
-    },
+    () => missingContentReport(docs),
     {
       description:
         'Find loaded vault files that do not have extracted text/content available to the agent. Use when answers seem shallow, files have only summaries, or the user asks what needs re-analysis.',
@@ -472,29 +732,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'compare_files',
     ({ left, right }: { left: string; right: string }) => `Comparing ${left} and ${right}`,
-    ({ left, right }: { left: string; right: string }) => {
-      const files = visibleDocs(docs);
-      const a = findDoc(files, left);
-      const b = findDoc(files, right);
-      if (!a || !b) {
-        return JSON.stringify({
-          error: 'Could not find both files.',
-          foundLeft: a?.filename || null,
-          foundRight: b?.filename || null,
-          hint: 'Use exact filenames or 1-based file numbers from inspect_loaded_vault.',
-        }, null, 2);
-      }
-      const overlap = sharedTerms(`${a.summary ?? ''}\n${a.content ?? ''}`, `${b.summary ?? ''}\n${b.content ?? ''}`);
-      return JSON.stringify({
-        left: { filename: a.filename, sizeBytes: a.sizeBytes || 0, sizeHuman: formatBytes(a.sizeBytes || 0), blobId: a.blobId, summary: a.summary },
-        right: { filename: b.filename, sizeBytes: b.sizeBytes || 0, sizeHuman: formatBytes(b.sizeBytes || 0), blobId: b.blobId, summary: b.summary },
-        sameBlob: Boolean(a.blobId && b.blobId && a.blobId === b.blobId),
-        sameFilename: a.filename.toLowerCase() === b.filename.toLowerCase(),
-        sameSize: (a.sizeBytes || 0) === (b.sizeBytes || 0),
-        lexicalOverlapScore: Number(overlap.overlap.toFixed(3)),
-        sharedKeywords: overlap.common,
-      }, null, 2);
-    },
+    ({ left, right }: { left: string; right: string }) => compareFilesReport(docs, left, right),
     {
       description:
         'Compare two loaded vault files by filename or 1-based index: metadata, blob equality, size, summary, and lexical overlap. Use when the user asks how two files differ or whether they are duplicates.',
@@ -591,18 +829,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'read_current_file',
     () => 'Reading the open file',
-    () => {
-      const file = ctx.currentFile;
-      if (!file) return 'No single file is currently open.';
-      return [
-        `filename: ${file.filename}`,
-        file.blobId ? `blobId: ${file.blobId}` : '',
-        file.fileType ? `fileType: ${file.fileType}` : '',
-        file.encrypted ? `encryption: Seal encrypted${file.sealPolicyId ? ` (policy ${file.sealPolicyId})` : ''}` : '',
-        file.summary ? `summary: ${file.summary}` : '',
-        `content:\n${(file.content ?? '').slice(0, 12000) || (file.encrypted ? '(Seal encrypted. Decrypt in ChainMind with the owner wallet before reading exact contents.)' : '(No extracted text is loaded for this file. Use read_walrus_blob if a blobId exists.)')}`,
-      ].filter(Boolean).join('\n');
-    },
+    () => currentFileReport(ctx),
     {
       description:
         'Read the currently open file and its extracted text. Use this first for questions about the selected file.',
@@ -614,26 +841,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     lifecycle,
     'search_vault',
     ({ query }: { query: string }) => `Searching loaded files for "${query}"`,
-    ({ query }: { query: string }) => {
-      const q = query.toLowerCase();
-      const hits = docs
-        .map(d => {
-          const hay = `${d.filename}\n${d.summary ?? ''}\n${d.content ?? ''}`;
-          return { d, score: scoreText(query, hay) + (d.filename.toLowerCase().includes(q) ? 5 : 0) };
-        })
-        .filter(h => h.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 7);
-
-      if (hits.length === 0) return 'No matching files found in the loaded vault.';
-      return hits.map(({ d }) => [
-        `# ${d.filename}`,
-        d.blobId ? `blobId: ${d.blobId}` : '',
-        d.encrypted ? 'encryption: Seal encrypted' : '',
-        d.summary ? `summary: ${d.summary}` : '',
-        `snippet:\n${(d.content ?? '').slice(0, 1800) || (d.encrypted ? '(Locked until decrypted with the owner wallet.)' : '(No extracted text loaded.)')}`,
-      ].filter(Boolean).join('\n')).join('\n\n');
-    },
+    ({ query }: { query: string }) => searchVaultReport(docs, query),
     {
       description:
         "Search files already loaded in the user's ChainMind vault by keyword. Use before answering questions about visible/local vault files.",
@@ -647,21 +855,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     () => 'Reading your on-chain vault through Tatum',
     async ({ owner }: { owner?: string | null }) => {
       const address = cleanOwner(owner) || defaultOwner;
-      if (!address) return 'No wallet address is available. Connect a wallet or provide an owner address.';
-      const entries = (await listVaultEntries(address))
-        .filter(e => !e.filename.startsWith('.chat'))
-        .slice(0, 30);
-      if (!entries.length) return `No ChainMind VaultEntry objects found for ${address}.`;
-      return JSON.stringify(entries.map(e => ({
-        filename: e.filename,
-        blobId: e.blobId,
-        fileType: e.fileType,
-        sizeBytes: e.sizeBytes,
-        txDigest: e.txDigest,
-        entryId: e.entryId,
-        encrypted: !!e.encrypted,
-        sealPolicyId: e.sealPolicyId,
-      })), null, 2);
+      return listOnchainVaultReport(address);
     },
     {
       description:
@@ -694,34 +888,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     ({ query }: { query: string }) => `Searching Sui + Walrus for "${query}"`,
     async ({ query, owner }: { query: string; owner?: string | null }) => {
       const address = cleanOwner(owner) || defaultOwner;
-      if (!address) return 'No wallet address is available. Connect a wallet or provide an owner address.';
-      const entries = (await listVaultEntries(address))
-        .filter(e => !e.filename.startsWith('.chat'))
-        .slice(0, 20);
-      if (!entries.length) return `No ChainMind VaultEntry objects found for ${address}.`;
-
-      const hydrated = await Promise.all(entries.map(async e => {
-        if (e.encrypted) {
-          const hay = `${e.filename}\n${e.fileType}\nSeal encrypted`;
-          return { entry: e, text: '(Seal encrypted; decrypt in ChainMind with the owner wallet.)', score: scoreText(query, hay) + scoreText(query, e.filename) * 3 };
-        }
-        const text = await fetchBlobText(e.blobId);
-        const hay = `${e.filename}\n${e.fileType}\n${text.slice(0, 12000)}`;
-        return { entry: e, text, score: scoreText(query, hay) + scoreText(query, e.filename) * 3 };
-      }));
-
-      const hits = hydrated
-        .filter(h => h.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 5);
-      if (!hits.length) return `No on-chain vault files matched "${query}".`;
-
-      return hits.map(h => [
-        `# ${h.entry.filename}`,
-        `blobId: ${h.entry.blobId}`,
-        h.entry.txDigest ? `txDigest: ${h.entry.txDigest}` : '',
-        `snippet:\n${(h.text || '(No readable text returned from Walrus.)').slice(0, 1800)}`,
-      ].filter(Boolean).join('\n')).join('\n\n');
+      return searchOnchainVaultReport(query, address);
     },
     {
       description:
@@ -739,45 +906,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     () => 'Auditing vault health',
     async ({ owner }: { owner?: string | null }) => {
       const address = cleanOwner(owner) || defaultOwner;
-      const visibleFiles = docs.filter(d => !d.filename.startsWith('.'));
-      const localIssues = visibleFiles.flatMap(d => {
-        const issues: string[] = [];
-        if (!d.blobId) issues.push('missing blobId');
-        if (!d.content?.trim()) issues.push('no extracted text loaded');
-        if (!d.txDigest) issues.push('no txDigest in loaded metadata');
-        if (!d.owner && address) issues.push('loaded metadata does not show wallet owner');
-        return issues.length ? [{ filename: d.filename, issues }] : [];
-      });
-
-      let onchain: Awaited<ReturnType<typeof listVaultEntries>> = [];
-      let onchainError = '';
-      if (address) {
-        try {
-          onchain = (await listVaultEntries(address)).filter(e => !e.filename.startsWith('.'));
-        } catch (err) {
-          onchainError = String(err).slice(0, 240);
-        }
-      }
-
-      const loadedBlobIds = new Set(visibleFiles.map(d => d.blobId).filter(Boolean));
-      const chainBlobIds = new Set(onchain.map(e => e.blobId));
-      const notLoaded = onchain.filter(e => !loadedBlobIds.has(e.blobId)).map(e => ({ filename: e.filename, blobId: e.blobId }));
-      const notOnchain = visibleFiles.filter(d => d.blobId && !chainBlobIds.has(d.blobId)).map(d => ({ filename: d.filename, blobId: d.blobId }));
-
-      return JSON.stringify({
-        connectedOwner: address || null,
-        loadedVisibleFiles: visibleFiles.length,
-        onchainVisibleFiles: onchain.length,
-        localIssues,
-        onchainEntriesNotLoaded: notLoaded.slice(0, 10),
-        loadedFilesNotFoundOnchainForOwner: address ? notOnchain.slice(0, 10) : [],
-        onchainError,
-        recommendedActions: [
-          notLoaded.length ? 'Restore vault from chain to pull missing on-chain files into this browser.' : '',
-          localIssues.some(i => i.issues.includes('no extracted text loaded')) ? 'Open or re-analyze files with missing extracted text so the agent can search them better.' : '',
-          notOnchain.length ? 'For loaded files not found under this owner, verify they were registered to this wallet or claim/register them.' : '',
-        ].filter(Boolean),
-      }, null, 2);
+      return auditVaultReport(ctx, address);
     },
     {
       description:
@@ -802,8 +931,24 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     },
   );
 
+  const listMarketplaceTool = createTool(
+    lifecycle,
+    'list_marketplace',
+    () => 'Reading marketplace listings',
+    async ({ seller }: { seller?: string | null }) => {
+      const listings = await listMarketplace(cleanOwner(seller) || undefined, 30);
+      if (!listings.length) return 'No active marketplace listings right now.';
+      return JSON.stringify(listings, null, 2);
+    },
+    {
+      description:
+        'Read active ChainMind marketplace listings from Sui through Tatum RPC. Use for read-only marketplace browsing, prices, sellers, encrypted status, categories, and listing IDs.',
+      schema: z.object({ seller: optionalOwnerSchema }),
+    },
+  );
+
   const model = new ChatGroq({ model: GROQ_TOOL_MODEL, temperature });
-  const firstPartyTools = [planVaultWork, assessActionPolicy, inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, searchMemory, draftMemoryNote, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice];
+  const firstPartyTools = [planVaultWork, assessActionPolicy, inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, searchMemory, draftMemoryNote, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice, listMarketplaceTool];
   const tools = process.env.TAVILY_API_KEY
     ? [...firstPartyTools, makeWebSearchTool()]
     : firstPartyTools;
@@ -821,6 +966,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       'When the user asks about remembered preferences, product direction, recurring goals, or what you know about them, call search_memory or inspect_memory_context. ' +
       'When the user asks you to remember a durable preference, project fact, or decision, call draft_memory_note, show the note content, and offer to store it on-chain with the STORE marker. ' +
       'When the user asks what is truly on-chain, wants a restore/check, or needs higher confidence, call list_onchain_vault or search_onchain_vault; these read Sui through Tatum and Walrus blobs directly. ' +
+      'When the user asks to browse marketplace listings or asks what is for sale, call list_marketplace. ' +
       'When the user asks to audit, check, improve, clean up, debug, or understand vault health, call audit_vault_health. ' +
       'Before answering a request that could delete, list, buy, sell, transfer, restore, decrypt, share, or change wallet/vault state, call assess_action_policy. Do not perform financial, marketplace, delete, or wallet actions autonomously; propose the action and wait for the user to use the app controls or confirm through an approval UI. ' +
       'If an answer needs exact contents and you have a blobId, call read_walrus_blob. ' +
@@ -874,6 +1020,7 @@ function stepLabel(toolName: string, args: Record<string, unknown>): string {
   if (toolName === 'read_walrus_blob') return `Fetching Walrus blob ${String(args.blobId ?? '').slice(0, 14)}...`;
   if (toolName === 'audit_vault_health') return 'Auditing vault health';
   if (toolName === 'crypto_price') return `Checking ${String(args.symbol ?? '').toUpperCase()} price via Tatum`;
+  if (toolName === 'list_marketplace') return 'Reading marketplace listings';
   if (toolName.includes('tavily') || toolName.includes('search')) return q ? `Searching the web for "${q}"` : 'Searching the web';
   if (toolName === 'retry') return 'Reformatting the request and retrying';
   return `Running ${toolName}`;
@@ -942,6 +1089,114 @@ function extractArtifact(answer: string): string {
   return answer.trim();
 }
 
+function tryJson<T = Record<string, unknown>>(text: string): T | null {
+  try { return JSON.parse(text) as T; } catch { return null; }
+}
+
+function listFilenamesFromJson(value: unknown, max = 6) {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  const visit = (node: unknown) => {
+    if (names.length >= max || node == null) return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    if (typeof node === 'object') {
+      const record = node as Record<string, unknown>;
+      if (typeof record.filename === 'string' && !seen.has(record.filename)) {
+        seen.add(record.filename);
+        names.push(`[${record.filename}]`);
+      }
+      for (const value of Object.values(record)) visit(value);
+    }
+  };
+  visit(value);
+  return names;
+}
+
+function synthesizeAutomaticAnswer(question: string, contexts: AutomaticContext[], ctx: AgentContext) {
+  if (!contexts.length) return '';
+  const byTool = new Map(contexts.map(item => [item.tool, item]));
+  const policy = byTool.get('assess_action_policy');
+  if (policy?.content.includes('approval_required')) {
+    return [
+      'I can help prepare that, but I need your confirmation before anything that changes wallet, marketplace, vault, or private-data state.',
+      `Requested action: ${question}`,
+      'Use the app controls or confirm the exact action before signing. I have not executed it.',
+    ].join('\n');
+  }
+
+  const stats = byTool.get('vault_stats');
+  if (stats) {
+    const data = tryJson<{ totalFiles?: number; totalSizeHuman?: string; missingContentCount?: number; duplicateGroupCount?: number; largestFiles?: Array<{ filename?: string; sizeHuman?: string }> }>(stats.content);
+    if (data) {
+      const largest = data.largestFiles?.[0]?.filename ? ` Largest file: [${data.largestFiles[0].filename}] (${data.largestFiles[0].sizeHuman || 'unknown size'}).` : '';
+      return `Your loaded vault has ${data.totalFiles ?? 0} files using ${data.totalSizeHuman || '0 B'}.${largest} Missing-text files: ${data.missingContentCount ?? 0}. Duplicate groups: ${data.duplicateGroupCount ?? 0}.`;
+    }
+  }
+
+  const duplicates = byTool.get('find_duplicate_files');
+  if (duplicates) {
+    const data = tryJson<unknown>(duplicates.content);
+    const names = data ? listFilenamesFromJson(data, 8) : [];
+    return duplicates.content.startsWith('No duplicate')
+      ? 'I checked for duplicates by Walrus blob ID and filename plus size. No duplicate-looking files were found.'
+      : `I found duplicate-looking files: ${names.join(', ') || 'see the duplicate groups'}; review them before deleting anything.`;
+  }
+
+  const missing = byTool.get('find_missing_content');
+  if (missing) {
+    const data = tryJson<{ missingContentCount?: number; files?: Array<{ filename?: string }> }>(missing.content);
+    if (!data) return missing.content;
+    const names = (data.files || []).slice(0, 6).map(f => f.filename ? `[${f.filename}]` : '').filter(Boolean).join(', ');
+    return data.missingContentCount
+      ? `${data.missingContentCount} files need re-analysis or decrypt/read work: ${names}.`
+      : 'Every visible loaded file has extracted text available.';
+  }
+
+  const compare = byTool.get('compare_files');
+  if (compare) {
+    const data = tryJson<{ left?: { filename?: string }; right?: { filename?: string }; sameBlob?: boolean; sameSize?: boolean; lexicalOverlapScore?: number; sharedKeywords?: string[] }>(compare.content);
+    if (data?.left?.filename && data?.right?.filename) {
+      return `Compared [${data.left.filename}] and [${data.right.filename}]. Same Walrus blob: ${data.sameBlob ? 'yes' : 'no'}. Same size: ${data.sameSize ? 'yes' : 'no'}. Text overlap score: ${data.lexicalOverlapScore ?? 'unknown'}. Shared keywords: ${(data.sharedKeywords || []).slice(0, 8).join(', ') || 'none found'}.`;
+    }
+  }
+
+  const search = byTool.get('search_vault') || byTool.get('search_onchain_vault');
+  if (search) {
+    const names = [...search.content.matchAll(/^#\s+(.+)$/gm)].map(m => `[${m[1].trim()}]`).slice(0, 6);
+    return names.length
+      ? `I searched the vault and found likely matches in ${names.join(', ')}.`
+      : search.content;
+  }
+
+  const current = byTool.get('read_current_file');
+  if (current && ctx.currentFile) {
+    return `I read the open file [${ctx.currentFile.filename}]. ${ctx.currentFile.summary || 'Ask a specific question and I can answer from its loaded text.'}`;
+  }
+
+  const audit = byTool.get('audit_vault_health');
+  if (audit) {
+    const data = tryJson<{ loadedVisibleFiles?: number; onchainVisibleFiles?: number; localIssues?: unknown[]; recommendedActions?: string[] }>(audit.content);
+    if (data) {
+      return `Vault audit complete: ${data.loadedVisibleFiles ?? 0} loaded files, ${data.onchainVisibleFiles ?? 0} on-chain files for the connected wallet, ${data.localIssues?.length ?? 0} local issues. Next: ${(data.recommendedActions || ['No urgent fixes found.']).join(' ')}`;
+    }
+  }
+
+  const marketplace = byTool.get('list_marketplace');
+  if (marketplace) {
+    const data = tryJson<Array<{ title?: string; filename?: string; priceSui?: string }>>(marketplace.content);
+    if (Array.isArray(data)) {
+      const items = data.slice(0, 5).map(item => `${item.title || item.filename || 'Untitled'} (${item.priceSui || '0'} SUI)`);
+      return items.length ? `Active marketplace listings: ${items.join('; ')}.` : 'No active marketplace listings right now.';
+    }
+    return marketplace.content;
+  }
+
+  return `I completed real tool work (${contexts.map(c => c.tool).join(', ')}), but the model response was interrupted. Ask again with a narrower question and I can continue from the same vault context.`;
+}
+
 function isToolFormatError(err: unknown): boolean {
   const s = String(err);
   return s.includes('tool_use_failed') || s.includes('Failed to call a function');
@@ -1001,6 +1256,7 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
   };
   const trace = new AgentTraceRecorder();
   const queue = createEventQueue<AgentEvent>();
+  const automaticContexts: AutomaticContext[] = [];
   const lifecycle: ToolLifecycleSink = event => {
     if (event.type === 'tool_start') trace.toolCall(event.tool, { label: event.label });
     queue.push(event);
@@ -1012,60 +1268,56 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     .slice(-8)
     .map(m => ({ role: m.role === 'ai' ? ('assistant' as const) : ('user' as const), content: String(m.text) }));
   let inputMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [...priorMsgs, { role: 'user' as const, content: question }];
-  if (shouldAutoPlan(question)) {
+  const emitAutomaticContext = (item: AutomaticContext) => {
     const started = Date.now();
-    const id = `plan_vault_work-${Date.now()}-${++toolRunSeq}`;
-    const plan = JSON.stringify(inferWorkPlan(question, ctx, ctx.docs ?? []), null, 2);
-    trace.toolCall('plan_vault_work', { label: 'Planning the vault work', automatic: true });
-    queue.push({ type: 'tool_start', id, tool: 'plan_vault_work', label: 'Planning the vault work' });
+    const id = `${item.tool}-${Date.now()}-${++toolRunSeq}`;
+    automaticContexts.push(item);
+    trace.toolCall(item.tool, { label: item.label, automatic: true });
+    queue.push({ type: 'tool_start', id, tool: item.tool, label: item.label });
     queue.push({
       type: 'tool_done',
       id,
-      tool: 'plan_vault_work',
-      label: 'Planning the vault work',
-      detail: `${resultDetail(plan)} in ${Date.now() - started}ms`,
+      tool: item.tool,
+      label: item.label,
+      detail: `${resultDetail(item.content)} in ${Date.now() - started}ms`,
       durationMs: Date.now() - started,
     });
+  };
+  if (shouldAutoPlan(question)) {
+    const plan = JSON.stringify(inferWorkPlan(question, ctx, ctx.docs ?? []), null, 2);
+    emitAutomaticContext({ tool: 'plan_vault_work', label: 'Planning the vault work', content: plan });
     inputMessages = [
       { role: 'system' as const, content: `Internal ChainMind work plan for this request:\n${plan}\nUse this plan silently; do not mention that an internal plan exists unless it helps the user.` },
       ...inputMessages,
     ];
   }
   if (shouldAutoPolicy(question)) {
-    const started = Date.now();
-    const id = `assess_action_policy-${Date.now()}-${++toolRunSeq}`;
     const policy = JSON.stringify(inferActionPolicy(question), null, 2);
-    trace.toolCall('assess_action_policy', { label: 'Checking action policy', automatic: true });
-    queue.push({ type: 'tool_start', id, tool: 'assess_action_policy', label: 'Checking action policy' });
-    queue.push({
-      type: 'tool_done',
-      id,
-      tool: 'assess_action_policy',
-      label: 'Checking action policy',
-      detail: `${resultDetail(policy)} in ${Date.now() - started}ms`,
-      durationMs: Date.now() - started,
-    });
+    emitAutomaticContext({ tool: 'assess_action_policy', label: 'Checking action policy', content: policy });
     inputMessages = [
       { role: 'system' as const, content: `Internal ChainMind action policy for this request:\n${policy}\nFollow this policy exactly. If approval is required, do not imply the action has been done.` },
       ...inputMessages,
     ];
   }
   if (shouldAutoMemory(question, ctx, ctx.docs ?? [])) {
-    const started = Date.now();
-    const id = `search_memory-${Date.now()}-${++toolRunSeq}`;
     const hits = JSON.stringify({ query: question, hits: topMemorySnippets(ctx, ctx.docs ?? [], question) }, null, 2);
-    trace.toolCall('search_memory', { label: 'Searching saved memory', automatic: true });
-    queue.push({ type: 'tool_start', id, tool: 'search_memory', label: 'Searching saved memory' });
-    queue.push({
-      type: 'tool_done',
-      id,
-      tool: 'search_memory',
-      label: 'Searching saved memory',
-      detail: `${resultDetail(hits)} in ${Date.now() - started}ms`,
-      durationMs: Date.now() - started,
-    });
+    emitAutomaticContext({ tool: 'search_memory', label: 'Searching saved memory', content: hits });
     inputMessages = [
       { role: 'system' as const, content: `Relevant ChainMind memory search results:\n${hits}\nUse these only if relevant to the user's question.` },
+      ...inputMessages,
+    ];
+  }
+  try {
+    for (const item of await runAutomaticReadTools(question, ctx)) emitAutomaticContext(item);
+  } catch (err) {
+    emitAutomaticContext({ tool: 'automatic_tool_error', label: 'Automatic tool check hit an issue', content: String(err).slice(0, 500) });
+  }
+  if (automaticContexts.length) {
+    inputMessages = [
+      {
+        role: 'system' as const,
+        content: `Automatic ChainMind tool results already completed before the model response:\n${automaticContexts.map(item => `## ${item.tool}\n${item.content}`).join('\n\n')}\nUse these facts directly. Do not expose raw JSON unless the user asks for raw data.`,
+      },
       ...inputMessages,
     ];
   }
@@ -1180,6 +1432,15 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
         }
         const parsed = parseStoreMarker(restoreExactVaultCitations(finalText, ctx.docs ?? [], ctx.currentFile));
         if (!parsed.text.trim()) {
+          const fallback = synthesizeAutomaticAnswer(question, automaticContexts, ctx);
+          if (fallback) {
+            trace.answer(fallback.length, false);
+            queue.push({ type: 'answer', text: restoreExactVaultCitations(fallback, ctx.docs ?? [], ctx.currentFile) });
+            trace.finish();
+            queue.push({ type: 'trace', summary: trace.summary() });
+            queue.close();
+            return;
+          }
           trace.error('Agent returned no final answer.');
           trace.finish();
           queue.push({ type: 'trace', summary: trace.summary() });
@@ -1217,6 +1478,16 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
           trace.retry(attempt + 1, String(err));
           queue.push({ type: 'step', tool: 'retry', label: stepLabel('retry', {}) });
           continue;
+        }
+        const fallback = synthesizeAutomaticAnswer(question, automaticContexts, ctx);
+        if (fallback) {
+          trace.retry(attempt + 1, String(err));
+          trace.answer(fallback.length, false);
+          queue.push({ type: 'answer', text: restoreExactVaultCitations(fallback, ctx.docs ?? [], ctx.currentFile) });
+          trace.finish();
+          queue.push({ type: 'trace', summary: trace.summary() });
+          queue.close();
+          return;
         }
         trace.error(err);
         trace.finish();

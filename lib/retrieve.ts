@@ -9,10 +9,18 @@ export type RetrievedDoc = {
   sizeBytes?: number;
   owner?: string;
   txDigest?: string;
+  entryId?: string;
+  listingId?: string;
+  priceMist?: string;
+  listed?: boolean;
+  purchased?: boolean;
   tags?: string[];
   uploadedAt?: string;
   encrypted?: boolean;
+  sealId?: string;
   sealPolicyId?: string;
+  ciphertextSizeBytes?: number;
+  decryptedAt?: string;
 };
 
 type Chunk = { text: string; index: number; start: number; end: number; score: number };
@@ -124,9 +132,17 @@ export function selectVaultDocs(vault: VaultItem[], question: string, k = 5): Re
     sizeBytes: v.sizeBytes,
     owner: v.owner,
     txDigest: v.txDigest,
+    entryId: v.entryId,
+    listingId: v.listingId,
+    priceMist: v.priceMist,
+    listed: v.listed,
+    purchased: v.purchased,
     tags: v.tags,
     uploadedAt: v.uploadedAt,
     encrypted: v.encrypted,
+    sealId: v.sealId,
     sealPolicyId: v.sealPolicyId,
+    ciphertextSizeBytes: v.ciphertextSizeBytes,
+    decryptedAt: v.decryptedAt,
   }));
 }

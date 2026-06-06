@@ -35,6 +35,29 @@ const TOMBSTONE_KEY = 'chainmind_vault_tombstones';
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 type VaultTombstone = { blobId?: string; entryId?: string; deletedAt: number };
 
+function agentDoc(item: VaultItem) {
+  return {
+    filename: item.filename,
+    summary: item.summary,
+    content: item.content,
+    blobId: item.blobId,
+    fileType: item.fileType,
+    sizeBytes: item.sizeBytes,
+    owner: item.owner,
+    txDigest: item.txDigest,
+    entryId: item.entryId,
+    listingId: item.listingId,
+    priceMist: item.priceMist,
+    listed: item.listed,
+    purchased: item.purchased,
+    encrypted: item.encrypted,
+    sealId: item.sealId,
+    sealPolicyId: item.sealPolicyId,
+    ciphertextSizeBytes: item.ciphertextSizeBytes,
+    decryptedAt: item.decryptedAt,
+  };
+}
+
 function loadVault(): VaultItem[] {
   if (typeof window === 'undefined') return [];
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
@@ -985,30 +1008,8 @@ export default function Home() {
                   onAiConfigChange={updateAiConfig}
                   agent
                   buildBody={(question, history) => ({
-                    docs: [{
-                      filename: selected.filename,
-                      summary: selected.summary,
-                      content: selected.content,
-                      blobId: selected.blobId,
-                      fileType: selected.fileType,
-                      sizeBytes: selected.sizeBytes,
-                      owner: selected.owner,
-                      txDigest: selected.txDigest,
-                      encrypted: selected.encrypted,
-                      sealPolicyId: selected.sealPolicyId,
-                    }],
-                    currentFile: {
-                      filename: selected.filename,
-                      summary: selected.summary,
-                      content: selected.content,
-                      blobId: selected.blobId,
-                      fileType: selected.fileType,
-                      sizeBytes: selected.sizeBytes,
-                      owner: selected.owner,
-                      txDigest: selected.txDigest,
-                      encrypted: selected.encrypted,
-                      sealPolicyId: selected.sealPolicyId,
-                    },
+                    docs: [agentDoc(selected)],
+                    currentFile: agentDoc(selected),
                     owner: account?.address,
                     memory: memoryContext,
                     question,

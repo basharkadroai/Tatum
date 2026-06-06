@@ -20,6 +20,7 @@ const MARKET_PKGS = Array.from(new Set([PACKAGE_LATEST, ...PRIOR_MARKET_PKGS].fi
 const MIST_PER_SUI = BigInt(1_000_000_000);
 
 type RpcResult<T = unknown> = { result?: T; error?: { message?: string } };
+type SuiPage<T> = { data?: T[]; nextCursor?: unknown; hasNextPage?: boolean };
 
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
@@ -35,6 +36,23 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
     }
   }
   throw new Error('Sui RPC unavailable');
+}
+
+async function queryEvents<T extends { parsedJson?: Record<string, unknown> }>(moveEventType: string, totalLimit = 500): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: unknown = null;
+  while (out.length < totalLimit) {
+    const page = await rpc<SuiPage<T>>('suix_queryEvents', [
+      { MoveEventType: moveEventType },
+      cursor,
+      Math.min(100, totalLimit - out.length),
+      true,
+    ]);
+    out.push(...(page.data ?? []));
+    if (!page.hasNextPage || !page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return out;
 }
 
 function mistToSui(mist: string | number) {
@@ -88,13 +106,8 @@ async function encryptedEntries() {
   const encrypted = new Map<string, { policyId?: string; sealId?: string }>();
   if (!PACKAGE_LATEST) return encrypted;
   try {
-    const events = await rpc<{ data?: Array<{ parsedJson?: Record<string, unknown> }> }>('suix_queryEvents', [
-      { MoveEventType: `${PACKAGE_LATEST}::vault::EncryptedBlobRegistered` },
-      null,
-      200,
-      true,
-    ]);
-    for (const event of events.data ?? []) {
+    const events = await queryEvents<{ parsedJson?: Record<string, unknown> }>(`${PACKAGE_LATEST}::vault::EncryptedBlobRegistered`, 1000);
+    for (const event of events) {
       const entryId = event.parsedJson?.entry_id ? String(event.parsedJson.entry_id) : '';
       if (!entryId) continue;
       encrypted.set(entryId, {
@@ -112,13 +125,8 @@ async function listingMetadata() {
   const metadata = new Map<string, { title?: string; description?: string; category?: string; teaser?: string }>();
   if (!PACKAGE_LATEST) return metadata;
   try {
-    const events = await rpc<{ data?: Array<{ parsedJson?: Record<string, unknown> }> }>('suix_queryEvents', [
-      { MoveEventType: `${PACKAGE_LATEST}::vault::ListingMetadata` },
-      null,
-      200,
-      true,
-    ]);
-    for (const event of events.data ?? []) {
+    const events = await queryEvents<{ parsedJson?: Record<string, unknown> }>(`${PACKAGE_LATEST}::vault::ListingMetadata`, 1000);
+    for (const event of events) {
       const listingId = event.parsedJson?.listing_id ? String(event.parsedJson.listing_id) : '';
       if (!listingId) continue;
       metadata.set(listingId, {
@@ -144,8 +152,7 @@ export async function GET(req: NextRequest) {
     const rawEvents: Ev[] = [];
     for (const pkg of MARKET_PKGS) {
       try {
-        const ev = await rpc<{ data?: Ev[] }>('suix_queryEvents', [{ MoveEventType: `${pkg}::vault::Listed` }, null, limit, true]);
-        for (const e of ev.data ?? []) rawEvents.push(e);
+        rawEvents.push(...await queryEvents<Ev>(`${pkg}::vault::Listed`, Math.min(Math.max(limit * 3, 100), 500)));
       } catch { /* skip a version that errors */ }
     }
 
