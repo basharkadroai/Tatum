@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     console.warn('[agent-route]', JSON.stringify({ type: 'bad_json', error: String(err).slice(0, 200) }));
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-  const { docs, question, history, owner, currentFile } = body as Record<string, unknown>;
+  const { docs, question, history, owner, currentFile, memory } = body as Record<string, unknown>;
   if (!question || typeof question !== 'string') {
     console.warn('[agent-route]', JSON.stringify({ type: 'bad_request', reason: 'missing_question' }));
     return NextResponse.json({ error: 'Missing question' }, { status: 400 });
@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
     docs: safeDocs,
     owner: typeof owner === 'string' ? owner : undefined,
     currentFile: currentFile && typeof currentFile === 'object' ? currentFile as VaultDoc : undefined,
+    memory: typeof memory === 'string' ? memory.slice(0, 8000) : undefined,
   };
 
   const encoder = new TextEncoder();

@@ -189,7 +189,9 @@ async function startNextServer(preferredPort, timeoutMs) {
 function summarizeEvents(events) {
   const answer = [...events].reverse().find((event) => event.type === 'answer')?.text || '';
   const error = [...events].reverse().find((event) => event.type === 'error')?.message || '';
-  const tools = events.filter((event) => event.type === 'step').map((event) => event.tool);
+  const tools = events
+    .filter((event) => (event.type === 'step' || event.type === 'tool_start' || event.type === 'tool_done') && event.tool)
+    .map((event) => event.tool);
   return { answer, error, tools };
 }
 

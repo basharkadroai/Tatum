@@ -62,6 +62,18 @@ function formatBytes(b: number) {
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+function selectMemoryContext(vault: VaultItem[]) {
+  return vault
+    .filter(item => /memory|preference|profile|strategy|context/i.test(item.filename))
+    .slice(0, 5)
+    .map(item => [
+      `# ${item.filename}`,
+      item.summary ? `summary: ${item.summary}` : '',
+      item.content ? `content:\n${item.content.slice(0, 1800)}` : '',
+    ].filter(Boolean).join('\n'))
+    .join('\n\n')
+    .slice(0, 8000);
+}
 function suiToMist(input: string): string | null {
   const clean = input.trim();
   if (!/^\d+(\.\d{0,9})?$/.test(clean)) return null;
@@ -403,6 +415,7 @@ export default function Home() {
 
   const filtered = vault;
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
+  const memoryContext = selectMemoryContext(vault);
   const sidebarExpanded = isMobile || sidebarOpen;
   const hasVault = vault.length > 0;
   const sidebarEase = 'cubic-bezier(0.32, 0.72, 0, 1)';
@@ -607,7 +620,7 @@ export default function Home() {
                   greetingIcon="/logo.png"
                   endpoint="/api/ask-vault"
                   agent
-                  buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), owner: account?.address, question, history })}
+                  buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), owner: account?.address, memory: memoryContext, question, history })}
                   suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
                   aiLabel="ChainMind"
@@ -783,6 +796,7 @@ export default function Home() {
                       txDigest: selected.txDigest,
                     },
                     owner: account?.address,
+                    memory: memoryContext,
                     question,
                     history,
                   })}

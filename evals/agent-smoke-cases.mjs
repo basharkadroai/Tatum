@@ -13,6 +13,76 @@ export const agentSmokeCases = [
     },
   },
   {
+    name: 'vault-stats-count-size',
+    description: 'The agent should use vault stats for total file and size questions without leaking tool JSON.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [
+        { filename: 'one.txt', summary: 'First file.', content: 'alpha', fileType: 'text/plain', sizeBytes: 1024 },
+        { filename: 'two.txt', summary: 'Second file.', content: 'beta', fileType: 'text/plain', sizeBytes: 2048 },
+      ],
+      owner: null,
+      question: 'How many files are in my vault and how much size do they use?',
+    },
+    expect: {
+      answerIncludes: ['2', '3.0'],
+    },
+    warnIfNoToolFrom: ['vault_stats', 'inspect_loaded_vault'],
+  },
+  {
+    name: 'duplicate-by-blobid',
+    description: 'The agent should find exact duplicate files by shared Walrus blobId.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [
+        { filename: 'dealvault-a.md', summary: 'A copy.', content: 'same', fileType: 'text/markdown', sizeBytes: 1200, blobId: 'blob-shared' },
+        { filename: 'dealvault-b.md', summary: 'Another copy.', content: 'same', fileType: 'text/markdown', sizeBytes: 1200, blobId: 'blob-shared' },
+        { filename: 'unique.md', summary: 'Unique.', content: 'different', fileType: 'text/markdown', sizeBytes: 900, blobId: 'blob-unique' },
+      ],
+      question: 'Do I have duplicate files? Name them.',
+    },
+    expect: {
+      answerIncludes: ['dealvault-a.md', 'dealvault-b.md'],
+    },
+    warnIfNoToolFrom: ['find_duplicate_files'],
+  },
+  {
+    name: 'compare-two-loaded-files',
+    description: 'The agent should compare two files using metadata and content overlap.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [
+        { filename: 'alpha-plan.md', summary: 'Alpha launch plan.', content: 'Alpha has pricing and outreach tasks.', fileType: 'text/markdown', sizeBytes: 700 },
+        { filename: 'beta-plan.md', summary: 'Beta support plan.', content: 'Beta has support and onboarding tasks.', fileType: 'text/markdown', sizeBytes: 900 },
+      ],
+      question: 'Compare alpha-plan.md and beta-plan.md. What is different?',
+    },
+    expect: {
+      answerIncludes: ['alpha-plan.md', 'beta-plan.md'],
+    },
+    warnIfNoToolFrom: ['compare_files'],
+  },
+  {
+    name: 'missing-content-audit',
+    description: 'The agent should identify files with missing extracted text.',
+    kind: 'agent-ndjson',
+    requiresEnv: ['GROQ_API_KEY'],
+    request: {
+      docs: [
+        { filename: 'empty-restored.txt', summary: 'Restored from chain.', content: '', fileType: 'text/plain', sizeBytes: 300, blobId: 'blob-empty' },
+        { filename: 'ready.txt', summary: 'Ready file.', content: 'usable text', fileType: 'text/plain', sizeBytes: 200, blobId: 'blob-ready' },
+      ],
+      question: 'Which files need re-analysis or are missing extracted text?',
+    },
+    expect: {
+      answerIncludes: ['empty-restored.txt'],
+    },
+    warnIfNoToolFrom: ['find_missing_content', 'audit_vault_health'],
+  },
+  {
     name: 'loaded-vault-keyword',
     description: 'A loaded vault query should recover a unique keyword from local doc text.',
     kind: 'agent-ndjson',

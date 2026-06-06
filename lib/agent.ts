@@ -21,6 +21,7 @@ export type AgentContext = {
   docs: VaultDoc[];
   owner?: string;
   currentFile?: VaultDoc;
+  memory?: string;
 };
 
 const GROQ_TOOL_MODEL = 'openai/gpt-oss-120b';
@@ -73,6 +74,81 @@ function inspectDocs(docs: VaultDoc[]) {
       contentPreview: (d.content ?? '').slice(0, 900),
     })),
   };
+}
+
+function visibleDocs(docs: VaultDoc[]) {
+  return docs.filter(d => !d.filename.startsWith('.'));
+}
+
+function docLabel(d: VaultDoc, index: number) {
+  return `${index + 1}. ${d.filename}`;
+}
+
+function byType(docs: VaultDoc[]) {
+  const out: Record<string, { files: number; sizeBytes: number; sizeHuman: string }> = {};
+  for (const d of docs) {
+    const key = d.fileType || 'unknown';
+    const cur = out[key] ?? { files: 0, sizeBytes: 0, sizeHuman: '0 B' };
+    cur.files += 1;
+    cur.sizeBytes += d.sizeBytes || 0;
+    cur.sizeHuman = formatBytes(cur.sizeBytes);
+    out[key] = cur;
+  }
+  return out;
+}
+
+function duplicateGroups(docs: VaultDoc[]) {
+  const groups: Array<{ reason: string; files: VaultDoc[]; totalSizeBytes: number; totalSizeHuman: string; reclaimableBytes: number; reclaimableHuman: string }> = [];
+  const addGroups = (reason: string, keyFn: (d: VaultDoc) => string) => {
+    const map = new Map<string, VaultDoc[]>();
+    for (const d of docs) {
+      const key = keyFn(d);
+      if (!key) continue;
+      map.set(key, [...(map.get(key) ?? []), d]);
+    }
+    for (const files of map.values()) {
+      if (files.length < 2) continue;
+      const totalSizeBytes = files.reduce((sum, d) => sum + (d.sizeBytes || 0), 0);
+      const largest = Math.max(...files.map(d => d.sizeBytes || 0));
+      const reclaimableBytes = Math.max(0, totalSizeBytes - largest);
+      groups.push({
+        reason,
+        files,
+        totalSizeBytes,
+        totalSizeHuman: formatBytes(totalSizeBytes),
+        reclaimableBytes,
+        reclaimableHuman: formatBytes(reclaimableBytes),
+      });
+    }
+  };
+  addGroups('same Walrus blobId', d => d.blobId || '');
+  addGroups('same filename and size', d => `${d.filename.toLowerCase()}::${d.sizeBytes || 0}`);
+  const seen = new Set<string>();
+  return groups.filter(group => {
+    const sig = group.files.map(f => `${f.filename}:${f.blobId || f.sizeBytes || 0}`).sort().join('|');
+    if (seen.has(sig)) return false;
+    seen.add(sig);
+    return true;
+  });
+}
+
+function findDoc(docs: VaultDoc[], query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const asIndex = Number(q);
+  if (Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= docs.length) return docs[asIndex - 1];
+  return docs.find(d => d.filename.toLowerCase() === q)
+    || docs.find(d => d.filename.toLowerCase().includes(q) || q.includes(d.filename.toLowerCase()))
+    || null;
+}
+
+function sharedTerms(left: string, right: string) {
+  const tokenize = (s: string) => new Set((s.toLowerCase().match(/[a-z0-9]{4,}/g) || []).slice(0, 4000));
+  const a = tokenize(left);
+  const b = tokenize(right);
+  const common = [...a].filter(t => b.has(t));
+  const denom = Math.max(1, Math.min(a.size, b.size));
+  return { overlap: common.length / denom, common: common.slice(0, 24) };
 }
 
 function resultDetail(result: unknown) {
@@ -137,6 +213,192 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     {
       description:
         'Inspect the files currently loaded in ChainMind, including summaries, previews, and blob IDs. Use for broad context before answering about the visible vault.',
+      schema: z.object({}),
+    },
+  );
+
+  const vaultStats = createTool(
+    lifecycle,
+    'vault_stats',
+    () => 'Calculating vault stats',
+    () => {
+      const files = visibleDocs(docs);
+      const totalSizeBytes = files.reduce((sum, d) => sum + (d.sizeBytes || 0), 0);
+      const largestFiles = [...files]
+        .sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
+        .slice(0, 8)
+        .map((d, i) => ({
+          rank: i + 1,
+          filename: d.filename,
+          sizeBytes: d.sizeBytes || 0,
+          sizeHuman: formatBytes(d.sizeBytes || 0),
+          fileType: d.fileType || 'unknown',
+          blobId: d.blobId,
+        }));
+      const missingContent = files.filter(d => !d.content?.trim());
+      const duplicates = duplicateGroups(files);
+      return JSON.stringify({
+        totalFiles: files.length,
+        totalSizeBytes,
+        totalSizeHuman: formatBytes(totalSizeBytes),
+        byType: byType(files),
+        largestFiles,
+        missingContentCount: missingContent.length,
+        duplicateGroupCount: duplicates.length,
+        estimatedDuplicateReclaimableBytes: duplicates.reduce((sum, group) => sum + group.reclaimableBytes, 0),
+        estimatedDuplicateReclaimableHuman: formatBytes(duplicates.reduce((sum, group) => sum + group.reclaimableBytes, 0)),
+      }, null, 2);
+    },
+    {
+      description:
+        'Compute vault-level operational stats: total files, total size, size by type, largest files, missing-content count, and duplicate estimates. Use for questions about vault size, storage, cleanup, or what is taking space.',
+      schema: z.object({}),
+    },
+  );
+
+  const findDuplicates = createTool(
+    lifecycle,
+    'find_duplicate_files',
+    () => 'Checking for duplicate files',
+    () => {
+      const groups = duplicateGroups(visibleDocs(docs));
+      if (!groups.length) return 'No duplicate-looking files found by blobId or filename+size.';
+      return JSON.stringify(groups.map(group => ({
+        reason: group.reason,
+        totalSizeBytes: group.totalSizeBytes,
+        totalSizeHuman: group.totalSizeHuman,
+        estimatedReclaimableBytes: group.reclaimableBytes,
+        estimatedReclaimableHuman: group.reclaimableHuman,
+        files: group.files.map((d, i) => ({
+          label: docLabel(d, i),
+          filename: d.filename,
+          blobId: d.blobId,
+          sizeBytes: d.sizeBytes || 0,
+          sizeHuman: formatBytes(d.sizeBytes || 0),
+          txDigest: d.txDigest,
+        })),
+      })), null, 2);
+    },
+    {
+      description:
+        'Find duplicate-looking files in the loaded vault using exact Walrus blobId matches and filename+size matches. Use for cleanup, delete recommendations, duplicate audits, and storage reduction.',
+      schema: z.object({}),
+    },
+  );
+
+  const findLargeFiles = createTool(
+    lifecycle,
+    'find_large_files',
+    ({ minSizeBytes }: { minSizeBytes?: number | null }) => `Finding large files${minSizeBytes ? ` over ${formatBytes(minSizeBytes)}` : ''}`,
+    ({ minSizeBytes }: { minSizeBytes?: number | null }) => {
+      const files = [...visibleDocs(docs)]
+        .filter(d => !minSizeBytes || (d.sizeBytes || 0) >= minSizeBytes)
+        .sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
+        .slice(0, 15);
+      if (!files.length) return 'No files matched that size threshold.';
+      return JSON.stringify(files.map((d, i) => ({
+        rank: i + 1,
+        filename: d.filename,
+        sizeBytes: d.sizeBytes || 0,
+        sizeHuman: formatBytes(d.sizeBytes || 0),
+        fileType: d.fileType || 'unknown',
+        blobId: d.blobId,
+        summary: d.summary,
+      })), null, 2);
+    },
+    {
+      description:
+        'List the largest files in the loaded vault, optionally above a byte threshold. Use for storage cleanup, cost, and “what takes the most space” questions.',
+      schema: z.object({ minSizeBytes: z.union([z.number(), z.null()]).optional().describe('Optional minimum file size in bytes.') }),
+    },
+  );
+
+  const findMissingContent = createTool(
+    lifecycle,
+    'find_missing_content',
+    () => 'Finding files missing extracted text',
+    () => {
+      const files = visibleDocs(docs)
+        .filter(d => !d.content?.trim())
+        .map((d, i) => ({
+          n: i + 1,
+          filename: d.filename,
+          fileType: d.fileType || 'unknown',
+          sizeBytes: d.sizeBytes || 0,
+          sizeHuman: formatBytes(d.sizeBytes || 0),
+          blobId: d.blobId,
+          summaryAvailable: Boolean(d.summary?.trim()),
+          suggestedFix: d.blobId ? 'Open/re-analyze this file or fetch its Walrus blob if the type is readable.' : 'Re-upload or restore this file so it has a blobId.',
+        }));
+      if (!files.length) return 'Every visible loaded file has extracted text available.';
+      return JSON.stringify({ missingContentCount: files.length, files }, null, 2);
+    },
+    {
+      description:
+        'Find loaded vault files that do not have extracted text/content available to the agent. Use when answers seem shallow, files have only summaries, or the user asks what needs re-analysis.',
+      schema: z.object({}),
+    },
+  );
+
+  const compareFiles = createTool(
+    lifecycle,
+    'compare_files',
+    ({ left, right }: { left: string; right: string }) => `Comparing ${left} and ${right}`,
+    ({ left, right }: { left: string; right: string }) => {
+      const files = visibleDocs(docs);
+      const a = findDoc(files, left);
+      const b = findDoc(files, right);
+      if (!a || !b) {
+        return JSON.stringify({
+          error: 'Could not find both files.',
+          foundLeft: a?.filename || null,
+          foundRight: b?.filename || null,
+          hint: 'Use exact filenames or 1-based file numbers from inspect_loaded_vault.',
+        }, null, 2);
+      }
+      const overlap = sharedTerms(`${a.summary ?? ''}\n${a.content ?? ''}`, `${b.summary ?? ''}\n${b.content ?? ''}`);
+      return JSON.stringify({
+        left: { filename: a.filename, sizeBytes: a.sizeBytes || 0, sizeHuman: formatBytes(a.sizeBytes || 0), blobId: a.blobId, summary: a.summary },
+        right: { filename: b.filename, sizeBytes: b.sizeBytes || 0, sizeHuman: formatBytes(b.sizeBytes || 0), blobId: b.blobId, summary: b.summary },
+        sameBlob: Boolean(a.blobId && b.blobId && a.blobId === b.blobId),
+        sameFilename: a.filename.toLowerCase() === b.filename.toLowerCase(),
+        sameSize: (a.sizeBytes || 0) === (b.sizeBytes || 0),
+        lexicalOverlapScore: Number(overlap.overlap.toFixed(3)),
+        sharedKeywords: overlap.common,
+      }, null, 2);
+    },
+    {
+      description:
+        'Compare two loaded vault files by filename or 1-based index: metadata, blob equality, size, summary, and lexical overlap. Use when the user asks how two files differ or whether they are duplicates.',
+      schema: z.object({
+        left: z.string().describe('Left file filename, partial filename, or 1-based index.'),
+        right: z.string().describe('Right file filename, partial filename, or 1-based index.'),
+      }),
+    },
+  );
+
+  const inspectMemory = createTool(
+    lifecycle,
+    'inspect_memory_context',
+    () => 'Inspecting saved memory context',
+    () => {
+      const memoryDocs = visibleDocs(docs).filter(d => /memory|preference|profile|strategy|context/i.test(d.filename));
+      return JSON.stringify({
+        explicitMemory: ctx.memory || '',
+        memoryLikeFiles: memoryDocs.slice(0, 8).map(d => ({
+          filename: d.filename,
+          summary: d.summary,
+          contentPreview: (d.content || '').slice(0, 1200),
+          blobId: d.blobId,
+        })),
+        recommendation: ctx.memory || memoryDocs.length
+          ? 'Use these facts as persistent context only when relevant to the user request.'
+          : 'No dedicated memory file is loaded yet. If the user gives durable preferences or project facts, offer to store a concise memory note on-chain.',
+      }, null, 2);
+    },
+    {
+      description:
+        'Inspect durable user/project memory if provided or infer memory-like files from the loaded vault. Use when the user asks about preferences, recurring goals, product direction, or what the agent should remember.',
       schema: z.object({}),
     },
   );
@@ -348,8 +610,8 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
 
   const model = new ChatGroq({ model: GROQ_TOOL_MODEL, temperature });
   const tools = process.env.TAVILY_API_KEY
-    ? [inspectLoadedVault, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice, new TavilySearch({ maxResults: 5 })]
-    : [inspectLoadedVault, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice];
+    ? [inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice, new TavilySearch({ maxResults: 5 })]
+    : [inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice];
 
   return createAgent({
     model,
@@ -358,9 +620,12 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       "You are ChainMind's assistant, a useful working agent for a user-owned on-chain file vault. " +
       'Use tools for real work instead of pretending. ' +
       'When a question is about the currently open file, call read_current_file first. ' +
-      'When a question is about files visible in the app, including total file count or vault size, call inspect_loaded_vault or search_vault before answering. ' +
+      'When a question is about files visible in the app, including total file count or vault size, call vault_stats or inspect_loaded_vault before answering. ' +
+      'For cleanup, storage, duplicate, largest-file, missing-text, or comparison questions, choose the matching vault tool: vault_stats, find_duplicate_files, find_large_files, find_missing_content, or compare_files. ' +
+      'When the user asks about remembered preferences, product direction, recurring goals, or what you know about them, call inspect_memory_context. ' +
       'When the user asks what is truly on-chain, wants a restore/check, or needs higher confidence, call list_onchain_vault or search_onchain_vault; these read Sui through Tatum and Walrus blobs directly. ' +
       'When the user asks to audit, check, improve, clean up, debug, or understand vault health, call audit_vault_health. ' +
+      'Do not perform financial, marketplace, delete, or wallet actions autonomously; propose the action and wait for the user to use the app controls or confirm through an approval UI. ' +
       'If an answer needs exact contents and you have a blobId, call read_walrus_blob. ' +
       'When the user needs current or external information, use the web search tool when available, then cite what you found. ' +
       'For the live price of a crypto asset, use crypto_price. ' +
@@ -393,6 +658,12 @@ export type AgentEvent =
 function stepLabel(toolName: string, args: Record<string, unknown>): string {
   const q = String(args.query ?? args.input ?? '');
   if (toolName === 'inspect_loaded_vault') return 'Inspecting the loaded vault';
+  if (toolName === 'vault_stats') return 'Calculating vault stats';
+  if (toolName === 'find_duplicate_files') return 'Checking for duplicate files';
+  if (toolName === 'find_large_files') return 'Finding large files';
+  if (toolName === 'find_missing_content') return 'Finding files missing extracted text';
+  if (toolName === 'compare_files') return `Comparing ${String(args.left ?? 'file')} and ${String(args.right ?? 'file')}`;
+  if (toolName === 'inspect_memory_context') return 'Inspecting saved memory context';
   if (toolName === 'read_current_file') return 'Reading the open file';
   if (toolName === 'search_vault') return `Searching loaded files for "${q}"`;
   if (toolName === 'list_onchain_vault') return 'Reading your on-chain vault through Tatum';
