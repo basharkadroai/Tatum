@@ -44,6 +44,7 @@ export function InvestView() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState('');
   const [amounts, setAmounts] = useState<Record<string, string>>({}); // shares to buy per offering
+  const [distAmounts, setDistAmounts] = useState<Record<string, string>>({}); // SUI to distribute per offering (creator)
 
   const [offerOpen, setOfferOpen] = useState(false);
   const [myFiles, setMyFiles] = useState<VaultLite[]>([]);
@@ -133,6 +134,24 @@ export function InvestView() {
       setTimeout(() => { loadOfferings(true); loadHoldings(); }, 2500);
     } catch (e) {
       setMsg(`Buy failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 130)}`);
+    } finally { setBusy(''); }
+  }
+
+  // Creator pays proceeds into the share pool, credited pro-rata; holders then claim.
+  async function distribute(o: ShareOffering) {
+    const amt = suiToMist(distAmounts[o.vaultId] || '');
+    if (!account?.address || !PACKAGE_LATEST) { setMsg('Connect a wallet first.'); return; }
+    if (!amt) { setMsg('Enter an amount of SUI to distribute.'); return; }
+    setBusy(`dist:${o.vaultId}`); setMsg('');
+    try {
+      const tx = new Transaction();
+      const [pay] = tx.splitCoins(tx.gas, [tx.pure.u64(amt)]);
+      tx.moveCall({ target: `${PACKAGE_LATEST}::vault::distribute`, arguments: [tx.object(o.vaultId), pay] });
+      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      setMsg(`Distributed ${mistToSui(amt)} SUI to ${o.sharesSold} shares — holders can now claim.`);
+      setDistAmounts(a => ({ ...a, [o.vaultId]: '' }));
+    } catch (e) {
+      setMsg(`Distribute failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
     } finally { setBusy(''); }
   }
 
@@ -240,8 +259,23 @@ export function InvestView() {
                 </div>
                 {!account?.address ? (
                   <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>Connect wallet to invest</span>
-                ) : mine || remaining === 0 ? (
-                  <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>{remaining === 0 ? 'Fully subscribed' : 'Your offering'}</span>
+                ) : mine ? (
+                  o.sharesSold > 0 ? (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: 'auto' }}>
+                      <input value={distAmounts[o.vaultId] ?? ''} placeholder="SUI" inputMode="decimal"
+                        onChange={e => setDistAmounts(a => ({ ...a, [o.vaultId]: e.target.value }))}
+                        style={{ ...input, width: '80px' }} />
+                      <button onClick={() => distribute(o)} disabled={busy === `dist:${o.vaultId}`}
+                        title="Pay proceeds to shareholders (credited pro-rata; they claim it)"
+                        style={{ ...primaryBtn, background: 'var(--purple-bg)', color: 'var(--purple)', opacity: busy === `dist:${o.vaultId}` ? 0.6 : 1 }}>
+                        {busy === `dist:${o.vaultId}` ? 'Distributing…' : 'Distribute'}
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>Your offering — no shares sold yet</span>
+                  )
+                ) : remaining === 0 ? (
+                  <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>Fully subscribed</span>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: 'auto' }}>
                     <input value={amounts[o.vaultId] ?? ''} placeholder="shares" inputMode="numeric"
