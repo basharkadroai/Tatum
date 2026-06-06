@@ -268,13 +268,17 @@ export function MarketplaceView() {
         listingId: listing.listingId,
         priceMist: listing.priceMist,
       });
+      const isLicense = listing.saleType === 'license';
       const tx = new Transaction();
       const [payment] = tx.splitCoins(tx.gas, [tx.pure.u64(listing.priceMist)]);
-      tx.moveCall({ target: `${PACKAGE_LATEST}::vault::buy`, arguments: [tx.object(listing.listingId), payment] });
+      // License = sells copies: buy_license mints a copy + keeps the offer open.
+      // NFT = unique: buy transfers the one object and consumes the listing.
+      tx.moveCall({ target: `${PACKAGE_LATEST}::vault::${isLicense ? 'buy_license' : 'buy'}`, arguments: [tx.object(listing.listingId), payment] });
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
-      setListings(prev => prev.filter(item => item.listingId !== listing.listingId));
+      if (isLicense) loadListings(true); // offer stays listed; refresh copies-sold
+      else setListings(prev => prev.filter(item => item.listingId !== listing.listingId)); // sold/unique
       recordPurchase(listing, account.address, res.digest);
-      setActionMsg('Purchased — it’s now in your vault (sidebar), marked “Bought”.');
+      setActionMsg(isLicense ? 'License purchased — a copy is now in your vault (sidebar).' : 'Purchased — it’s now in your vault (sidebar), marked “Bought”.');
     } catch (err) {
       setActionMsg(`Buy failed: ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`);
     } finally {
