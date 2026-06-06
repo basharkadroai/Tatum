@@ -162,7 +162,13 @@ function memorySources(ctx: AgentContext, docs: VaultDoc[]) {
 }
 
 function topMemorySnippets(ctx: AgentContext, docs: VaultDoc[], query: string) {
-  const terms = Array.from(new Set((query.toLowerCase().match(/[a-z0-9]{3,}/g) || [])));
+  const rawTerms = query.toLowerCase().match(/[a-z0-9]{3,}/g) || [];
+  const terms = Array.from(new Set(rawTerms.flatMap(term => [
+    term,
+    term.replace(/s$/, ''),
+    term.replace(/ed$/, ''),
+    term.replace(/ing$/, ''),
+  ]).filter(term => term.length >= 3)));
   return memorySources(ctx, docs)
     .map(source => {
       const hay = source.text.toLowerCase();
@@ -230,6 +236,15 @@ function shouldAutoPlan(question: string) {
   return q.length > 160
     || /\b(audit|improve|debug|clean up|cleanup|what should i do first|what to improve|optimi[sz]e|review my vault|fix my vault)\b/.test(q)
     || /\b(delete|remove|wipe|clear|buy|purchase|sell|list|delist|transfer|send|swap|claim|register|restore|decrypt|share|publish)\b/.test(q);
+}
+
+function shouldAutoPolicy(question: string) {
+  return /\b(delete|remove|wipe|clear|buy|purchase|sell|list|delist|transfer|send|swap|claim|register|restore|decrypt|share|publish)\b/i.test(question);
+}
+
+function shouldAutoMemory(question: string, ctx: AgentContext, docs: VaultDoc[]) {
+  if (!memorySources(ctx, docs).length) return false;
+  return /\b(remember|preference|prefer|mode|modes|context|what do you know|project direction|strategy)\b/i.test(question);
 }
 
 function resultDetail(result: unknown) {
@@ -995,6 +1010,44 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     });
     inputMessages = [
       { role: 'system' as const, content: `Internal ChainMind work plan for this request:\n${plan}\nUse this plan silently; do not mention that an internal plan exists unless it helps the user.` },
+      ...inputMessages,
+    ];
+  }
+  if (shouldAutoPolicy(question)) {
+    const started = Date.now();
+    const id = `assess_action_policy-${Date.now()}-${++toolRunSeq}`;
+    const policy = JSON.stringify(inferActionPolicy(question), null, 2);
+    trace.toolCall('assess_action_policy', { label: 'Checking action policy', automatic: true });
+    queue.push({ type: 'tool_start', id, tool: 'assess_action_policy', label: 'Checking action policy' });
+    queue.push({
+      type: 'tool_done',
+      id,
+      tool: 'assess_action_policy',
+      label: 'Checking action policy',
+      detail: `${resultDetail(policy)} in ${Date.now() - started}ms`,
+      durationMs: Date.now() - started,
+    });
+    inputMessages = [
+      { role: 'system' as const, content: `Internal ChainMind action policy for this request:\n${policy}\nFollow this policy exactly. If approval is required, do not imply the action has been done.` },
+      ...inputMessages,
+    ];
+  }
+  if (shouldAutoMemory(question, ctx, ctx.docs ?? [])) {
+    const started = Date.now();
+    const id = `search_memory-${Date.now()}-${++toolRunSeq}`;
+    const hits = JSON.stringify({ query: question, hits: topMemorySnippets(ctx, ctx.docs ?? [], question) }, null, 2);
+    trace.toolCall('search_memory', { label: 'Searching saved memory', automatic: true });
+    queue.push({ type: 'tool_start', id, tool: 'search_memory', label: 'Searching saved memory' });
+    queue.push({
+      type: 'tool_done',
+      id,
+      tool: 'search_memory',
+      label: 'Searching saved memory',
+      detail: `${resultDetail(hits)} in ${Date.now() - started}ms`,
+      durationMs: Date.now() - started,
+    });
+    inputMessages = [
+      { role: 'system' as const, content: `Relevant ChainMind memory search results:\n${hits}\nUse these only if relevant to the user's question.` },
       ...inputMessages,
     ];
   }
