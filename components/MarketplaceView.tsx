@@ -154,6 +154,38 @@ function clearLocalListing(listing: MarketListing) {
   } catch { /* best-effort */ }
 }
 
+// After a successful buy, add the item to the buyer's local vault (marked
+// purchased) and tell the app to refresh the sidebar — so what you bought shows
+// up immediately instead of only after a manual restore.
+function recordPurchase(listing: MarketListing, buyer: string) {
+  try {
+    const raw = localStorage.getItem('chainmind_vault');
+    const list: Array<Record<string, unknown>> = raw && Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+    if (list.some(v => v.blobId && v.blobId === listing.blobId)) {
+      const next = list.map(v => (v.blobId === listing.blobId ? { ...v, purchased: true, owner: buyer } : v));
+      localStorage.setItem('chainmind_vault', JSON.stringify(next));
+    } else {
+      const item = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+        filename: listing.filename,
+        fileType: listing.fileType || 'application/octet-stream',
+        blobId: listing.blobId || '',
+        summary: 'Purchased on the marketplace — owned by you on Sui.',
+        content: '',
+        uploadedAt: new Date().toISOString(),
+        sizeBytes: listing.sizeBytes || 0,
+        entryId: listing.entryId,
+        owner: buyer,
+        purchased: true,
+        tags: [],
+        questions: [],
+      };
+      localStorage.setItem('chainmind_vault', JSON.stringify([item, ...list]));
+    }
+    window.dispatchEvent(new Event('chainmind:vault-updated'));
+  } catch { /* best-effort */ }
+}
+
 // The marketplace as an in-app view (rendered inside the main panel, keeping the
 // sidebar + wallet) — not a standalone route.
 export function MarketplaceView() {
@@ -215,7 +247,8 @@ export function MarketplaceView() {
       tx.moveCall({ target: `${PACKAGE_LATEST}::vault::buy`, arguments: [tx.object(listing.listingId), payment] });
       await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       setListings(prev => prev.filter(item => item.listingId !== listing.listingId));
-      setActionMsg('Purchase complete. Restore your vault from chain to pull the bought entry into ChainMind.');
+      recordPurchase(listing, account.address);
+      setActionMsg('Purchased — it’s now in your vault (sidebar), marked “Bought”.');
     } catch (err) {
       setActionMsg(`Buy failed: ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`);
     } finally {

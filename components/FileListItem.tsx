@@ -42,6 +42,9 @@ export function FileListItem({ item, active, onSelect, onDelete }: { item: Vault
         <Icon ref={iconRef} size={18} color="var(--text-2)" isAnimated={false} />
       </span>
       <p style={{ minWidth: 0, flex: 1, fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.filename}</p>
+      {item.purchased && !showDots && (
+        <span title="Bought on the marketplace" style={{ flexShrink: 0, fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'var(--purple-bg)', color: 'var(--purple)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Bought</span>
+      )}
       {onDelete && (
         <div style={{ position: 'relative', flexShrink: 0, width: '24px', height: '20px' }}>
           <button

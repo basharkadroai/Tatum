@@ -149,6 +149,13 @@ export default function Home() {
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); setAiConfig(loadAiConfig()); }, []);
+  // Refresh the sidebar when the vault changes elsewhere (e.g. a marketplace
+  // purchase writes the bought item to localStorage and fires this event).
+  useEffect(() => {
+    const onVaultUpdated = () => setVault(loadVault());
+    window.addEventListener('chainmind:vault-updated', onVaultUpdated);
+    return () => window.removeEventListener('chainmind:vault-updated', onVaultUpdated);
+  }, []);
   function updateAiConfig(c: AiConfig | null) { setAiConfig(c); }
   // New chat: clear the main vault conversation (and its saved history) and go home.
   function newChat() {
