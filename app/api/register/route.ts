@@ -3,9 +3,10 @@ import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 import { fromBase64 } from '@mysten/sui/utils';
+import { cleanEnv } from '@/lib/env';
 import { tatumRpcUrl, SUI_NETWORK, IS_MAINNET } from '@/lib/network';
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID!;
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 
 // Tatum RPC is the primary — falls back to the public fullnode inside tatumRpcUrl().
 const RPC_URL = tatumRpcUrl();
@@ -20,8 +21,9 @@ const GAS_BUDGET = 10_000_000; // 0.01 SUI — ample for a single moveCall
 function keypair(): Ed25519Keypair {
   const raw = process.env.SUI_DEPLOYER_KEY;
   if (!raw) throw new Error('SUI_DEPLOYER_KEY not set');
+  const cleaned = cleanEnv(raw);
   // Sui keystore format: 1-byte scheme flag + 32-byte private key
-  return Ed25519Keypair.fromSecretKey(fromBase64(raw).slice(1));
+  return Ed25519Keypair.fromSecretKey(fromBase64(cleaned).slice(1));
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

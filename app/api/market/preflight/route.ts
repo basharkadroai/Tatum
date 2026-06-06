@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tatumRpcUrl, PUBLIC_FULLNODE } from '@/lib/network';
+import { cleanEnv } from '@/lib/env';
 
 const RPC = tatumRpcUrl();
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 const MAX_PRICE_MIST = BigInt(1_000_000_000_000); // 1,000 SUI hard safety cap for v1 marketplace actions.
 
 type RpcResult<T = unknown> = { result?: T; error?: { message?: string } };

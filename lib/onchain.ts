@@ -1,11 +1,12 @@
 // Server-side reads of the on-chain vault — Sui via Tatum RPC + Walrus blobs.
 // Shared by the MCP server so any AI client can browse a wallet's owned files.
 import { tatumRpcUrl, PUBLIC_FULLNODE, WALRUS_AGGREGATOR } from '@/lib/network';
+import { cleanEnv } from '@/lib/env';
 
 const RPC = tatumRpcUrl();
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // `list` runs in the upgraded module → Listed events carry the upgraded id.
-const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
+const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
 
 export type VaultEntryOnchain = {
   entryId?: string;

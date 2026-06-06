@@ -5,6 +5,7 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions';
 import { Database, ShoppingCart, MoreHorizontal } from 'lucide-react';
 import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
+import { cleanEnv } from '@/lib/env';
 import type { MarketListing } from '@/types/market';
 
 const TEXTUAL_EXT = ['txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'html', 'htm', 'xml', 'yaml', 'yml', 'js', 'ts', 'tsx', 'jsx', 'py', 'sol', 'move', 'css', 'log'];
@@ -107,10 +108,10 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
   );
 }
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // list/buy/delist live at the upgraded package id (added in the upgrade); types
 // + events keep the original id.
-const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
+const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
 
 function clearLocalListing(listing: MarketListing) {
   try {

@@ -14,6 +14,7 @@ import { HomeBackground } from '@/components/HomeBackground';
 import { MarketplaceView } from '@/components/MarketplaceView';
 import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
+import { cleanEnv, envFlag } from '@/lib/env';
 import type { MarketTxEvent } from '@/types/market';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
@@ -21,12 +22,12 @@ import {
   PanelLeft, ChevronDown, Menu, Loader2, SquarePen, ShoppingCart,
 } from 'lucide-react';
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // Functions added in the on-chain UPGRADE (list/buy/delist) live at the upgraded
 // package id; `register` + all TYPE filters stay on the original id (type identity
 // is preserved across upgrades). Falls back to the original id if unset.
-const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
-const SEAL_UPLOADS_ENABLED = process.env.NEXT_PUBLIC_SEAL_UPLOADS === '1';
+const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
+const SEAL_UPLOADS_ENABLED = envFlag(process.env.NEXT_PUBLIC_SEAL_UPLOADS);
 
 const STORAGE_KEY = 'chainmind_vault';
 const TOMBSTONE_KEY = 'chainmind_vault_tombstones';

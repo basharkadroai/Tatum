@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tatumRpcUrl, PUBLIC_FULLNODE } from '@/lib/network';
+import { cleanEnv } from '@/lib/env';
 import type { MarketListing } from '@/types/market';
 
 const RPC = tatumRpcUrl();
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // `list` runs in the UPGRADED module, so the Listed event type carries the
 // upgraded package id (verified on-chain) — query events at the latest id.
-const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
+const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
 // Listed events carry the id of the package VERSION that emitted them, so query
 // the current + prior marketplace versions and merge (listings survive upgrades).
 const PRIOR_MARKET_PKGS = ['0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9'];

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tatumRpcUrl, PUBLIC_FULLNODE } from '@/lib/network';
+import { cleanEnv } from '@/lib/env';
 import type { ShareOffering } from '@/types/market';
 
 const RPC = tatumRpcUrl();
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // Fractional investing (offer_shares) was added in v3, so SharesOffered events
 // carry the latest package id.
-const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
+const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
 const MIST_PER_SUI = BigInt(1_000_000_000);
 
 type RpcResult<T = unknown> = { result?: T; error?: { message?: string } };

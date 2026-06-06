@@ -6,12 +6,13 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions';
 import { ArrowLeft, Database, LockKeyhole, RefreshCw, ShoppingCart } from 'lucide-react';
 import { SUI_CHAIN_ID } from '@/lib/network';
+import { cleanEnv } from '@/lib/env';
 import type { MarketListing } from '@/types/market';
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // list/buy/delist were added in the package upgrade — call them at the upgraded id
 // (type filters/events stay on the original id, which keeps its type identity).
-const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
+const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
 
 function short(addr?: string) {
   return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : 'Unknown';
