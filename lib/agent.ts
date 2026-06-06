@@ -1,6 +1,6 @@
 import { createAgent, tool } from 'langchain';
 import { ChatGroq } from '@langchain/groq';
-import { TavilySearch } from '@langchain/tavily';
+import { makeWebSearchTool } from '@/lib/webSearch';
 import { getExchangeRate } from '@/lib/tatum';
 import { fetchBlobText, listVaultEntries } from '@/lib/onchain';
 import { AgentTraceRecorder, type AgentTraceSummary } from '@/lib/agentTrace';
@@ -151,6 +151,80 @@ function sharedTerms(left: string, right: string) {
   return { overlap: common.length / denom, common: common.slice(0, 24) };
 }
 
+function memorySources(ctx: AgentContext, docs: VaultDoc[]) {
+  const sources: Array<{ source: string; text: string; blobId?: string }> = [];
+  if (ctx.memory?.trim()) sources.push({ source: 'explicit memory context', text: ctx.memory.trim() });
+  for (const d of visibleDocs(docs).filter(doc => /memory|preference|profile|strategy|context|decision|roadmap/i.test(doc.filename))) {
+    const text = [d.summary, d.content].filter(Boolean).join('\n').trim();
+    if (text) sources.push({ source: d.filename, text, blobId: d.blobId });
+  }
+  return sources;
+}
+
+function topMemorySnippets(ctx: AgentContext, docs: VaultDoc[], query: string) {
+  const terms = Array.from(new Set((query.toLowerCase().match(/[a-z0-9]{3,}/g) || [])));
+  return memorySources(ctx, docs)
+    .map(source => {
+      const hay = source.text.toLowerCase();
+      const score = terms.reduce((sum, term) => sum + (hay.includes(term) ? 2 : 0) + Math.min(hay.split(term).length - 1, 5), 0);
+      return { ...source, score, preview: source.text.slice(0, 1800) };
+    })
+    .filter(item => item.score > 0 || !terms.length)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+}
+
+function inferActionPolicy(request: string) {
+  const q = request.toLowerCase();
+  const mutates =
+    /\b(delete|remove|wipe|clear|buy|purchase|sell|list|delist|transfer|send|swap|claim|register|restore|decrypt|share|publish)\b/.test(q);
+  const financial = /\b(buy|purchase|sell|list|delist|transfer|send|swap|price|marketplace)\b/.test(q);
+  const destructive = /\b(delete|remove|wipe|clear|delist)\b/.test(q);
+  const privacy = /\b(decrypt|share|publish|private|secret|chat history)\b/.test(q);
+  if (!mutates) {
+    return {
+      decision: 'read_only_allowed',
+      reason: 'The request can be answered with read-only vault, memory, web, or chain inspection tools.',
+      requiredUserStep: '',
+    };
+  }
+  return {
+    decision: 'approval_required',
+    reason: [
+      financial ? 'market or wallet value is involved' : '',
+      destructive ? 'the action changes or removes user data' : '',
+      privacy ? 'private data access or sharing may be involved' : '',
+    ].filter(Boolean).join('; ') || 'the action changes user-owned state',
+    requiredUserStep: 'Explain the exact proposed action and wait for the user to confirm through app controls or an approval flow before anything is signed or changed.',
+  };
+}
+
+function inferWorkPlan(goal: string, ctx: AgentContext, docs: VaultDoc[]) {
+  const q = goal.toLowerCase();
+  const tools: string[] = [];
+  if (ctx.currentFile || /\b(open|current|selected|this file)\b/.test(q)) tools.push('read_current_file');
+  if (/\b(size|count|how many|largest|storage|duplicate|cleanup|missing|audit|health)\b/.test(q)) tools.push('vault_stats');
+  if (/\b(duplicate|same|copy|cleanup)\b/.test(q)) tools.push('find_duplicate_files');
+  if (/\b(compare|difference|different|versus| vs )\b/.test(q)) tools.push('compare_files');
+  if (/\b(search|find|where|which file|keyword|mentions)\b/.test(q)) tools.push('search_vault');
+  if (/\b(on-chain|chain|restore|wallet|true|sui|walrus)\b/.test(q)) tools.push('list_onchain_vault');
+  if (/\b(remember|preference|project direction|strategy|context|what do you know)\b/.test(q)) tools.push('search_memory');
+  if (/\b(price|sui|btc|eth|market)\b/.test(q)) tools.push('crypto_price');
+  const policy = inferActionPolicy(goal);
+  return {
+    inferredIntent: q.length > 180 ? 'multi-step vault request' : goal,
+    availableContext: {
+      loadedVisibleFiles: visibleDocs(docs).length,
+      hasCurrentFile: Boolean(ctx.currentFile),
+      hasMemoryContext: Boolean(ctx.memory?.trim()) || memorySources(ctx, docs).length > 0,
+      connectedOwner: ctx.owner || null,
+    },
+    suggestedTools: Array.from(new Set(tools.length ? tools : ['inspect_loaded_vault'])),
+    policy,
+    responseStandard: 'Use tools for facts, cite exact vault filenames in square brackets, be concise, and ask for confirmation before any state-changing action.',
+  };
+}
+
 function resultDetail(result: unknown) {
   const text = typeof result === 'string' ? result : JSON.stringify(result);
   if (!text) return 'Completed';
@@ -204,6 +278,30 @@ function createTool<TInput>(
 export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: ToolLifecycleSink) {
   const docs = ctx.docs ?? [];
   const defaultOwner = cleanOwner(ctx.owner);
+
+  const planVaultWork = createTool(
+    lifecycle,
+    'plan_vault_work',
+    () => 'Planning the vault work',
+    ({ goal }: { goal: string }) => JSON.stringify(inferWorkPlan(goal, ctx, docs), null, 2),
+    {
+      description:
+        'Create a concise internal work plan for a multi-step ChainMind request: likely intent, useful tools, available context, and approval policy. Use for broad, ambiguous, or high-stakes requests before acting.',
+      schema: z.object({ goal: z.string().describe('The user request or task to plan.') }),
+    },
+  );
+
+  const assessActionPolicy = createTool(
+    lifecycle,
+    'assess_action_policy',
+    () => 'Checking action policy',
+    ({ requestedAction }: { requestedAction: string }) => JSON.stringify(inferActionPolicy(requestedAction), null, 2),
+    {
+      description:
+        'Check whether a requested action is read-only or requires explicit user approval. Use before answering requests to delete, list, buy, sell, transfer, restore, decrypt, share, or otherwise change wallet/vault state.',
+      schema: z.object({ requestedAction: z.string().describe('The action the user appears to be asking for.') }),
+    },
+  );
 
   const inspectLoadedVault = createTool(
     lifecycle,
@@ -400,6 +498,62 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       description:
         'Inspect durable user/project memory if provided or infer memory-like files from the loaded vault. Use when the user asks about preferences, recurring goals, product direction, or what the agent should remember.',
       schema: z.object({}),
+    },
+  );
+
+  const searchMemory = createTool(
+    lifecycle,
+    'search_memory',
+    ({ query }: { query: string }) => `Searching saved memory for "${query}"`,
+    ({ query }: { query: string }) => {
+      const hits = topMemorySnippets(ctx, docs, query);
+      if (!hits.length) return 'No relevant saved memory was found for that query.';
+      return JSON.stringify({
+        query,
+        hits: hits.map(hit => ({
+          source: hit.source,
+          score: hit.score,
+          blobId: hit.blobId,
+          preview: hit.preview,
+        })),
+      }, null, 2);
+    },
+    {
+      description:
+        'Search durable memory context and memory-like vault files for relevant user preferences, project facts, decisions, or strategy notes. Use instead of stuffing all memory into every answer.',
+      schema: z.object({ query: z.string().describe('What memory to look up.') }),
+    },
+  );
+
+  const draftMemoryNote = createTool(
+    lifecycle,
+    'draft_memory_note',
+    () => 'Drafting a memory note',
+    ({ fact, reason }: { fact: string; reason?: string }) => {
+      const cleanFact = fact.trim().replace(/\s+/g, ' ').slice(0, 900);
+      const cleanReason = (reason || '').trim().replace(/\s+/g, ' ').slice(0, 260);
+      const today = new Date().toISOString().slice(0, 10);
+      const slug = cleanFact.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 42) || 'memory';
+      return JSON.stringify({
+        filename: `memory-${today}-${slug}.md`,
+        content: [
+          '# ChainMind Memory',
+          '',
+          `- Date: ${today}`,
+          `- Fact: ${cleanFact}`,
+          cleanReason ? `- Why it matters: ${cleanReason}` : '',
+          '- Scope: Use only when relevant to future ChainMind answers.',
+        ].filter(Boolean).join('\n'),
+        instruction: 'If the user wants this remembered, present this content and add a STORE marker so they can save it to Walrus + Sui.',
+      }, null, 2);
+    },
+    {
+      description:
+        'Draft a concise memory artifact when the user asks ChainMind to remember a durable preference, project fact, or decision. This does not save automatically; it prepares content for a store offer.',
+      schema: z.object({
+        fact: z.string().describe('The durable fact or preference to remember.'),
+        reason: z.string().optional().describe('Why this memory may help future answers.'),
+      }),
     },
   );
 
@@ -609,9 +763,10 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
   );
 
   const model = new ChatGroq({ model: GROQ_TOOL_MODEL, temperature });
+  const firstPartyTools = [planVaultWork, assessActionPolicy, inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, searchMemory, draftMemoryNote, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice];
   const tools = process.env.TAVILY_API_KEY
-    ? [inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice, new TavilySearch({ maxResults: 5 })]
-    : [inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice];
+    ? [...firstPartyTools, makeWebSearchTool()]
+    : firstPartyTools;
 
   return createAgent({
     model,
@@ -619,13 +774,15 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     systemPrompt:
       "You are ChainMind's assistant, a useful working agent for a user-owned on-chain file vault. " +
       'Use tools for real work instead of pretending. ' +
+      'For broad, ambiguous, multi-step, or high-stakes requests, call plan_vault_work first and then execute the useful read-only tools it suggests. ' +
       'When a question is about the currently open file, call read_current_file first. ' +
       'When a question is about files visible in the app, including total file count or vault size, call vault_stats or inspect_loaded_vault before answering. ' +
       'For cleanup, storage, duplicate, largest-file, missing-text, or comparison questions, choose the matching vault tool: vault_stats, find_duplicate_files, find_large_files, find_missing_content, or compare_files. ' +
-      'When the user asks about remembered preferences, product direction, recurring goals, or what you know about them, call inspect_memory_context. ' +
+      'When the user asks about remembered preferences, product direction, recurring goals, or what you know about them, call search_memory or inspect_memory_context. ' +
+      'When the user asks you to remember a durable preference, project fact, or decision, call draft_memory_note, show the note content, and offer to store it on-chain with the STORE marker. ' +
       'When the user asks what is truly on-chain, wants a restore/check, or needs higher confidence, call list_onchain_vault or search_onchain_vault; these read Sui through Tatum and Walrus blobs directly. ' +
       'When the user asks to audit, check, improve, clean up, debug, or understand vault health, call audit_vault_health. ' +
-      'Do not perform financial, marketplace, delete, or wallet actions autonomously; propose the action and wait for the user to use the app controls or confirm through an approval UI. ' +
+      'Before answering a request that could delete, list, buy, sell, transfer, restore, decrypt, share, or change wallet/vault state, call assess_action_policy. Do not perform financial, marketplace, delete, or wallet actions autonomously; propose the action and wait for the user to use the app controls or confirm through an approval UI. ' +
       'If an answer needs exact contents and you have a blobId, call read_walrus_blob. ' +
       'When the user needs current or external information, use the web search tool when available, then cite what you found. ' +
       'For the live price of a crypto asset, use crypto_price. ' +
@@ -658,6 +815,8 @@ export type AgentEvent =
 
 function stepLabel(toolName: string, args: Record<string, unknown>): string {
   const q = String(args.query ?? args.input ?? '');
+  if (toolName === 'plan_vault_work') return 'Planning the vault work';
+  if (toolName === 'assess_action_policy') return 'Checking action policy';
   if (toolName === 'inspect_loaded_vault') return 'Inspecting the loaded vault';
   if (toolName === 'vault_stats') return 'Calculating vault stats';
   if (toolName === 'find_duplicate_files') return 'Checking for duplicate files';
@@ -665,6 +824,8 @@ function stepLabel(toolName: string, args: Record<string, unknown>): string {
   if (toolName === 'find_missing_content') return 'Finding files missing extracted text';
   if (toolName === 'compare_files') return `Comparing ${String(args.left ?? 'file')} and ${String(args.right ?? 'file')}`;
   if (toolName === 'inspect_memory_context') return 'Inspecting saved memory context';
+  if (toolName === 'search_memory') return q ? `Searching saved memory for "${q}"` : 'Searching saved memory';
+  if (toolName === 'draft_memory_note') return 'Drafting a memory note';
   if (toolName === 'read_current_file') return 'Reading the open file';
   if (toolName === 'search_vault') return `Searching loaded files for "${q}"`;
   if (toolName === 'list_onchain_vault') return 'Reading your on-chain vault through Tatum';
