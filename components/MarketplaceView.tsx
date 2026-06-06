@@ -7,6 +7,7 @@ import { Database, ShoppingCart, MoreHorizontal, LockKeyhole } from 'lucide-reac
 import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import { cleanEnv } from '@/lib/env';
 import type { MarketListing } from '@/types/market';
+import { InvestView } from './InvestView';
 
 const TEXTUAL_EXT = ['txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'html', 'htm', 'xml', 'yaml', 'yml', 'js', 'ts', 'tsx', 'jsx', 'py', 'sol', 'move', 'css', 'log'];
 
@@ -218,6 +219,7 @@ export function MarketplaceView() {
   const [error, setError] = useState('');
   const [actionMsg, setActionMsg] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [tab, setTab] = useState<'buy' | 'invest'>('buy');
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
@@ -314,11 +316,23 @@ export function MarketplaceView() {
           A public marketplace for AI prompts, skills, datasets, templates, and knowledge files you own on-chain. Every item is stored on <strong style={{ color: 'var(--text-1)' }}>Walrus</strong> and owned as a <strong style={{ color: 'var(--text-1)' }}>Sui</strong> object. Private files stay Seal-encrypted until the buyer owns the vault entry.
         </p>
 
+        {/* Buy & sell vs Invest (fractional shares) */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+          {([['buy', 'Buy & sell'], ['invest', 'Invest']] as const).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t)}
+              style={{ padding: '8px 16px', borderRadius: '9px', border: `1px solid ${tab === t ? 'var(--purple)' : 'var(--border)'}`, background: tab === t ? 'var(--purple)' : 'transparent', color: tab === t ? 'var(--base)' : 'var(--text-2)', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         {actionMsg && (
           <p style={{ margin: '20px 0 0', color: actionMsg.includes('failed') ? 'var(--error)' : 'var(--mint-dark)', fontSize: '13px', lineHeight: 1.5 }}>{actionMsg}</p>
         )}
 
-        {loading && listings.length === 0 ? (
+        {tab === 'invest' ? (
+          <div style={{ marginTop: '26px' }}><InvestView /></div>
+        ) : loading && listings.length === 0 ? (
           <p style={{ color: 'var(--text-3)', fontSize: '14px', marginTop: '32px' }}>Loading marketplace listings…</p>
         ) : listings.length === 0 ? (
           <div style={{ marginTop: '36px', border: '1px solid var(--border)', borderRadius: '14px', background: 'var(--off-white)', padding: '36px', display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
