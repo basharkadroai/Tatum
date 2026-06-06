@@ -470,7 +470,13 @@ function createEventQueue<T>() {
 }
 
 export async function* streamVaultAgentEvents(ctx: AgentContext, question: string, history: ChatTurn[] = []): AsyncGenerator<AgentEvent> {
-  type Msg = { content?: unknown; tool_calls?: { name: string; args: Record<string, unknown> }[] };
+  type Msg = {
+    content?: unknown;
+    tool_calls?: { name: string; args: Record<string, unknown> }[];
+    tool_call_id?: string;
+    _getType?: () => string;
+    constructor?: { name?: string };
+  };
   const trace = new AgentTraceRecorder();
   const queue = createEventQueue<AgentEvent>();
   const lifecycle: ToolLifecycleSink = event => {
@@ -487,22 +493,20 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
   const inputMessages = [...priorMsgs, { role: 'user' as const, content: question }];
 
   const MAX_ATTEMPTS = 3;
-  const TAIL = 8;
   const produce = async () => {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let answered = false;
-      let acc = '';
-      let emitted = 0;
-      let markerHit = false;
+      let finalText = '';
       if (attempt > 1) queue.push({ type: 'reset' });
       try {
         const agent = buildVaultAgent(ctx, attempt === 1 ? 0 : 0.4, lifecycle);
-        const stream = await agent.stream({ messages: inputMessages }, { streamMode: ['updates', 'messages'] });
+        const stream = await agent.stream({ messages: inputMessages }, { streamMode: ['updates'] });
         for await (const item of stream as AsyncIterable<[string, unknown]>) {
           const [mode, data] = item;
           if (mode === 'updates') {
-            // Tool lifecycle is emitted by the wrapped tool functions. We only keep
-            // this branch for future non-wrapped tools and diagnostics.
+            // Tool lifecycle is emitted by the wrapped tool functions. We also
+            // capture only final AI messages here so ToolMessage JSON never leaks
+            // into the user-visible answer.
             for (const value of Object.values(data as Record<string, { messages?: Msg[] }>)) {
               for (const m of value?.messages ?? []) {
                 for (const tc of m.tool_calls ?? []) {
@@ -511,25 +515,18 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                     queue.push({ type: 'step', tool: tc.name, label: stepLabel(tc.name, tc.args) });
                   }
                 }
+                const type = m._getType?.() ?? m.constructor?.name ?? '';
+                const isToolMessage = Boolean(m.tool_call_id) || type.toLowerCase().includes('tool');
+                const isToolRequest = Boolean(m.tool_calls?.length);
+                if (!isToolMessage && !isToolRequest && typeof m.content === 'string' && m.content.trim()) {
+                  finalText = m.content;
+                  answered = true;
+                }
               }
-            }
-          } else if (mode === 'messages') {
-            const chunk = (data as [{ content?: unknown }, unknown])[0];
-            const piece = typeof chunk?.content === 'string' ? chunk.content : '';
-            if (!piece) continue;
-            answered = true;
-            acc += piece;
-            if (markerHit) continue;
-            const markerIndex = acc.indexOf('[[STORE');
-            const safeEnd = markerIndex >= 0 ? markerIndex : Math.max(emitted, acc.length - TAIL);
-            if (markerIndex >= 0) markerHit = true;
-            if (safeEnd > emitted) {
-              queue.push({ type: 'token', text: acc.slice(emitted, safeEnd) });
-              emitted = safeEnd;
             }
           }
         }
-        const parsed = parseStoreMarker(acc);
+        const parsed = parseStoreMarker(finalText);
         trace.answer(parsed.text.length, Boolean(parsed.filename));
         queue.push({ type: 'answer', text: parsed.text });
         if (parsed.filename && parsed.text.trim().length > 0) {
