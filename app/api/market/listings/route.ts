@@ -7,6 +7,10 @@ const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 // `list` runs in the UPGRADED module, so the Listed event type carries the
 // upgraded package id (verified on-chain) — query events at the latest id.
 const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
+// Listed events carry the id of the package VERSION that emitted them, so query
+// the current + prior marketplace versions and merge (listings survive upgrades).
+const PRIOR_MARKET_PKGS = ['0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9'];
+const MARKET_PKGS = Array.from(new Set([PACKAGE_LATEST, ...PRIOR_MARKET_PKGS].filter(Boolean)));
 const MIST_PER_SUI = BigInt(1_000_000_000);
 
 type RpcResult<T = unknown> = { result?: T; error?: { message?: string } };
@@ -72,24 +76,23 @@ export async function GET(req: NextRequest) {
     const limitParam = Number(req.nextUrl.searchParams.get('limit') ?? '50');
     const limit = Math.max(1, Math.min(Number.isFinite(limitParam) ? limitParam : 50, 100));
     const seller = req.nextUrl.searchParams.get('seller')?.toLowerCase();
-    const events = await rpc<{
-      data?: Array<{
-        id?: { txDigest?: string; eventSeq?: string };
-        parsedJson?: Record<string, unknown>;
-      }>;
-    }>('suix_queryEvents', [
-      { MoveEventType: `${PACKAGE_LATEST}::vault::Listed` },
-      null,
-      limit,
-      true,
-    ]);
+    type Ev = { id?: { txDigest?: string }; parsedJson?: Record<string, unknown> };
+    const rawEvents: Ev[] = [];
+    for (const pkg of MARKET_PKGS) {
+      try {
+        const ev = await rpc<{ data?: Ev[] }>('suix_queryEvents', [{ MoveEventType: `${pkg}::vault::Listed` }, null, limit, true]);
+        for (const e of ev.data ?? []) rawEvents.push(e);
+      } catch { /* skip a version that errors */ }
+    }
 
     const listings: MarketListing[] = [];
-    for (const event of events.data ?? []) {
+    const seen = new Set<string>();
+    for (const event of rawEvents) {
       const parsed = event.parsedJson ?? {};
       const listingId = String(parsed.listing_id ?? '');
       const entryId = String(parsed.entry_id ?? '');
-      if (!listingId || !entryId) continue;
+      if (!listingId || !entryId || seen.has(listingId)) continue;
+      seen.add(listingId);
 
       const fields = await readListingObject(listingId);
       if (!fields) continue; // object was sold/delisted or unavailable
