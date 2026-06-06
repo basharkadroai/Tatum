@@ -20,6 +20,10 @@ import {
 } from 'lucide-react';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+// Functions added in the on-chain UPGRADE (list/buy/delist) live at the upgraded
+// package id; `register` + all TYPE filters stay on the original id (type identity
+// is preserved across upgrades). Falls back to the original id if unset.
+const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
 
 const STORAGE_KEY = 'chainmind_vault';
 function loadVault(): VaultItem[] {
@@ -345,7 +349,7 @@ export default function Home() {
     try {
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::vault::list`,
+        target: `${PACKAGE_LATEST}::vault::list`,
         arguments: [tx.object(item.entryId), tx.pure.u64(priceMist)],
       });
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
@@ -376,7 +380,7 @@ export default function Home() {
     try {
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::vault::delist`,
+        target: `${PACKAGE_LATEST}::vault::delist`,
         arguments: [tx.object(item.listingId)],
       });
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });

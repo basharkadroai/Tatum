@@ -9,6 +9,9 @@ import { SUI_CHAIN_ID } from '@/lib/network';
 import type { MarketListing } from '@/types/market';
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
+// list/buy/delist were added in the package upgrade — call them at the upgraded id
+// (type filters/events stay on the original id, which keeps its type identity).
+const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
 
 function short(addr?: string) {
   return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : 'Unknown';
@@ -77,7 +80,7 @@ export default function MarketplacePage() {
       const tx = new Transaction();
       const [payment] = tx.splitCoins(tx.gas, [tx.pure.u64(listing.priceMist)]);
       tx.moveCall({
-        target: `${PACKAGE_ID}::vault::buy`,
+        target: `${PACKAGE_LATEST}::vault::buy`,
         arguments: [tx.object(listing.listingId), payment],
       });
       await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
@@ -98,7 +101,7 @@ export default function MarketplacePage() {
     try {
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::vault::delist`,
+        target: `${PACKAGE_LATEST}::vault::delist`,
         arguments: [tx.object(listing.listingId)],
       });
       await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
