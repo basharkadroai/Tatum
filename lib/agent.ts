@@ -789,6 +789,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       'When the user asks you to create/write/generate something useful, produce the finished content as your answer, then on the VERY LAST line add a marker exactly like ' +
       '[[STORE:suggested-filename.ext|a short, specific one-line invitation to save THIS thing]] ' +
       'Pick a short filename with the right extension. Only add that marker when you actually created a file, document, code, data, or plan worth saving. ' +
+      'When you generate the CONTENTS of a file (a document, README, script, config, HTML, etc.), put the full file content inside a fenced code block tagged with the correct language (```md, ```html, ```python, ```json, ...). That renders it in a file window the user can copy or download directly — and documents (md/html/txt) can be downloaded as Word (.docx). ' +
       'Be concise, practical, and specific. ' +
       'Whenever you mention a file from the vault, write its exact name in SQUARE BRACKETS, e.g. [Project Notes.md], so it renders as a clickable link. ' +
       'Never wrap file names in asterisks or quotes.',

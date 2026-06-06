@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check, Download } from 'lucide-react';
+import { Copy, Check, Download, FileText } from 'lucide-react';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -27,6 +27,7 @@ function extForLang(lang?: string): string {
 // A code/file window: sidebar-colored (not navy), language label + copy button.
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const [copied, setCopied] = useState(false);
+  const [docxBusy, setDocxBusy] = useState(false);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
@@ -47,11 +48,34 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  // Document-like content can also be exported to a real Word .docx (server-side).
+  const docLike = ['md', 'markdown', 'html', 'htm', 'txt', 'text', ''].includes((lang ?? '').toLowerCase());
+  const downloadDocx = async () => {
+    setDocxBusy(true);
+    try {
+      const res = await fetch('/api/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: code, format: 'docx' }) });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'chainmind.docx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { /* ignore */ } finally { setDocxBusy(false); }
+  };
   const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--text-2)', background: 'var(--off-white)', border: '1px solid var(--border)', borderRadius: '7px', padding: '4px 8px', cursor: 'pointer' };
   return (
     <div style={{ position: 'relative', margin: '8px 0', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--sidebar-bg)', overflow: 'hidden' }}>
       {lang && <span style={{ position: 'absolute', top: '9px', left: '13px', fontSize: '11px', fontWeight: 600, color: 'var(--text-3)', fontFamily: MONO }}>{lang.toLowerCase()}</span>}
       <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 1, display: 'flex', gap: '6px' }}>
+        {docLike && (
+          <button onClick={downloadDocx} disabled={docxBusy} title="Download as Word (.docx)" style={{ ...btn, opacity: docxBusy ? 0.6 : 1 }}>
+            <FileText size={12} strokeWidth={2} /> {docxBusy ? '…' : '.docx'}
+          </button>
+        )}
         <button onClick={download} title={`Download .${ext}`} style={btn}>
           <Download size={12} strokeWidth={2} /> .{ext}
         </button>
