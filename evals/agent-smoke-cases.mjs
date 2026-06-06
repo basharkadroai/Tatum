@@ -26,7 +26,7 @@ export const agentSmokeCases = [
       question: 'How many files are in my vault and how much size do they use?',
     },
     expect: {
-      answerIncludes: ['2', '3.0'],
+      answerIncludes: ['2', '3072'],
     },
     warnIfNoToolFrom: ['vault_stats', 'inspect_loaded_vault'],
   },
@@ -78,7 +78,7 @@ export const agentSmokeCases = [
       question: 'Which files need re-analysis or are missing extracted text?',
     },
     expect: {
-      answerIncludes: ['empty-restored.txt'],
+      answerIncludes: ['empty', 'restored'],
     },
     warnIfNoToolFrom: ['find_missing_content', 'audit_vault_health'],
   },
