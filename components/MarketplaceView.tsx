@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
-import { Database, LockKeyhole, RefreshCw, ShoppingCart, FileText } from 'lucide-react';
+import { Database, ShoppingCart, FileText } from 'lucide-react';
 
 // Human-readable "what is it" for a listing, from filename/MIME.
 function kindLabel(filename: string, fileType?: string): string {
@@ -18,17 +18,91 @@ function kindLabel(filename: string, fileType?: string): string {
   };
   return map[ext] || (fileType || 'File');
 }
-import { SUI_CHAIN_ID } from '@/lib/network';
+import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import type { MarketListing } from '@/types/market';
+
+const TEXTUAL_EXT = ['txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'html', 'htm', 'xml', 'yaml', 'yml', 'js', 'ts', 'tsx', 'jsx', 'py', 'sol', 'move', 'css', 'log'];
+
+// A listing card that fetches a public preview of the file from Walrus — an
+// image thumbnail, or a cleaned text blurb — so buyers see what they're buying.
+function ListingCard({ listing, mine, busyId, hasWallet, chip, onBuy, onDelist }: {
+  listing: MarketListing; mine: boolean; busyId: string; hasWallet: boolean; chip: React.CSSProperties;
+  onBuy: (l: MarketListing) => void; onDelist: (l: MarketListing) => void;
+}) {
+  const [preview, setPreview] = useState('');
+  const isImage = (listing.fileType || '').startsWith('image/');
+  const blobUrl = listing.blobId ? `${WALRUS_AGGREGATOR}/v1/blobs/${listing.blobId}` : '';
+  const busy = busyId === listing.listingId;
+
+  useEffect(() => {
+    if (isImage || !blobUrl) return;
+    const ext = listing.filename.split('.').pop()?.toLowerCase() || '';
+    const textual = (listing.fileType || '').startsWith('text/') || TEXTUAL_EXT.includes(ext);
+    if (!textual) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(blobUrl);
+        if (!res.ok) return;
+        let t = await res.text();
+        t = t.replace(/```[\s\S]*?```/g, ' ').replace(/<[^>]+>/g, ' ').replace(/[#*_>`~|=-]{2,}/g, ' ').replace(/[#*_>`~|]/g, '').replace(/\s+/g, ' ').trim();
+        if (!cancelled && t) setPreview(t.slice(0, 180));
+      } catch { /* preview is best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [blobUrl, isImage, listing.fileType, listing.filename]);
+
+  return (
+    <article style={{ border: '1px solid var(--border)', borderRadius: '14px', background: 'var(--off-white)', padding: '18px', display: 'flex', flexDirection: 'column', gap: '13px', minHeight: '210px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
+          <FileText size={18} strokeWidth={2} />
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listing.filename}</h3>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: '12px' }}>{kindLabel(listing.filename, listing.fileType)} · {formatBytes(listing.sizeBytes)}</p>
+        </div>
+        {mine && <span style={{ ...chip, padding: '3px 9px', fontSize: '10.5px', color: 'var(--mint-dark)' }}>Yours</span>}
+      </div>
+
+      {/* What it is — public preview from Walrus */}
+      {isImage && blobUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={blobUrl} alt={listing.filename} style={{ width: '100%', height: '96px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border)' }} />
+      ) : (
+        <p style={{ margin: 0, fontSize: '12.5px', lineHeight: 1.5, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {preview ? `${preview}…` : `${kindLabel(listing.filename, listing.fileType)} stored on Walrus — preview loads from the public blob.`}
+        </p>
+      )}
+
+      <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-3)' }}>Seller {listing.seller.slice(0, 6)}…{listing.seller.slice(-4)}</p>
+
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', marginTop: 'auto' }}>
+        <div>
+          <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)' }}>Price</div>
+          <strong style={{ fontSize: '20px', color: 'var(--text-1)' }}>{listing.priceSui} <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>SUI</span></strong>
+        </div>
+        {!hasWallet ? (
+          <button disabled style={{ padding: '9px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12.5px', fontWeight: 800, opacity: 0.55 }}>Connect wallet</button>
+        ) : mine ? (
+          <button onClick={() => onDelist(listing)} disabled={busy} style={{ padding: '9px 14px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: '12.5px', fontWeight: 800, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Cancelling…' : 'Delist'}
+          </button>
+        ) : (
+          <button onClick={() => onBuy(listing)} disabled={!!busyId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', fontSize: '12.5px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId ? 0.6 : 1 }}>
+            <ShoppingCart size={14} /> {busy ? 'Buying…' : 'Buy'}
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
 
 const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 // list/buy/delist live at the upgraded package id (added in the upgrade); types
 // + events keep the original id.
 const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
 
-function short(addr?: string) {
-  return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : 'Unknown';
-}
 function formatBytes(bytes?: number) {
   if (!bytes) return 'Unknown size';
   if (bytes < 1024) return `${bytes} B`;
@@ -90,7 +164,6 @@ export function MarketplaceView() {
       document.removeEventListener('visibilitychange', onFocus);
       window.removeEventListener('focus', onFocus);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function isSeller(listing: MarketListing) {
@@ -145,14 +218,6 @@ export function MarketplaceView() {
         <p style={{ margin: '12px 0 0', maxWidth: '740px', color: 'var(--text-2)', fontSize: '15.5px', lineHeight: 1.65 }}>
           A public marketplace for data you own on-chain. Every item is a file stored on <strong style={{ color: 'var(--text-1)' }}>Walrus</strong> and owned as a <strong style={{ color: 'var(--text-1)' }}>Sui</strong> object — anyone can browse; connect a wallet to buy (paid in SUI) or list your own files. Private files stay Seal-encrypted until you own them.
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
-          <span style={chip} title="Listings update automatically from the chain">
-            {loading
-              ? <><RefreshCw size={12} className="lucide-spin" /> Updating…</>
-              : <><span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#65ca9d', boxShadow: '0 0 0 3px rgba(101,202,157,0.18)' }} /> Live</>}
-          </span>
-          <span style={chip}><LockKeyhole size={13} color="#65ca9d" /> Seal-gated access</span>
-        </div>
 
         {actionMsg && (
           <p style={{ margin: '20px 0 0', color: actionMsg.includes('failed') ? 'var(--error)' : 'var(--mint-dark)', fontSize: '13px', lineHeight: 1.5 }}>{actionMsg}</p>
@@ -171,44 +236,18 @@ export function MarketplaceView() {
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px', marginTop: '30px' }}>
-            {listings.map(listing => {
-              const mine = isSeller(listing);
-              const busy = busyId === listing.listingId;
-              return (
-                <article key={listing.listingId} style={{ border: '1px solid var(--border)', borderRadius: '14px', background: 'var(--off-white)', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '188px' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
-                      <FileText size={18} strokeWidth={2} />
-                    </span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listing.filename}</h3>
-                      <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: '12px' }}>{kindLabel(listing.filename, listing.fileType)} · {formatBytes(listing.sizeBytes)}</p>
-                    </div>
-                    {mine && <span style={{ ...chip, padding: '3px 9px', fontSize: '10.5px', color: 'var(--mint-dark)' }}>Yours</span>}
-                  </div>
-
-                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-3)' }}>Seller {short(listing.seller)} · owned on Sui, stored on Walrus</p>
-
-                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', marginTop: 'auto' }}>
-                    <div>
-                      <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)' }}>Price</div>
-                      <strong style={{ fontSize: '20px', color: 'var(--text-1)' }}>{listing.priceSui} <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>SUI</span></strong>
-                    </div>
-                    {!account?.address ? (
-                      <button disabled style={{ padding: '9px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12.5px', fontWeight: 800, opacity: 0.55 }}>Connect wallet</button>
-                    ) : mine ? (
-                      <button onClick={() => delistListing(listing)} disabled={busy} style={{ padding: '9px 14px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: '12.5px', fontWeight: 800, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
-                        {busy ? 'Cancelling…' : 'Delist'}
-                      </button>
-                    ) : (
-                      <button onClick={() => buyListing(listing)} disabled={!!busyId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', fontSize: '12.5px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId ? 0.6 : 1 }}>
-                        <ShoppingCart size={14} /> {busy ? 'Buying…' : 'Buy'}
-                      </button>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
+            {listings.map(listing => (
+              <ListingCard
+                key={listing.listingId}
+                listing={listing}
+                mine={isSeller(listing)}
+                busyId={busyId}
+                hasWallet={!!account?.address}
+                chip={chip}
+                onBuy={buyListing}
+                onDelist={delistListing}
+              />
+            ))}
           </div>
         )}
       </div>
