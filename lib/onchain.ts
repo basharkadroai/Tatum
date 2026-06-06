@@ -56,6 +56,65 @@ export async function listVaultEntries(owner: string): Promise<VaultEntryOnchain
     .filter((e): e is VaultEntryOnchain => e !== null);
 }
 
+export type MarketListingOnchain = {
+  listingId: string;
+  entryId: string;
+  filename: string;
+  fileType?: string;
+  blobId?: string;
+  sizeBytes?: number;
+  seller: string;
+  priceMist: string;
+  priceSui: string;
+};
+
+const MIST_PER_SUI = BigInt(1_000_000_000);
+function mistToSui(mist: string | number): string {
+  try {
+    const raw = BigInt(String(mist));
+    const whole = raw / MIST_PER_SUI;
+    const frac = raw % MIST_PER_SUI;
+    if (frac === BigInt(0)) return whole.toString();
+    return `${whole}.${frac.toString().padStart(9, '0').replace(/0+$/, '').slice(0, 4)}`;
+  } catch { return '0'; }
+}
+
+// Active marketplace listings — read from the `Listed` events on Sui via Tatum,
+// then confirmed against the live shared Listing object (skips sold/delisted).
+// Shared by the /api/market/listings route and the MCP `list_marketplace` tool.
+export async function listMarketplace(seller?: string, limit = 50): Promise<MarketListingOnchain[]> {
+  if (!PACKAGE_ID) return [];
+  const events = (await rpc('suix_queryEvents', [
+    { MoveEventType: `${PACKAGE_ID}::vault::Listed` }, null, Math.min(Math.max(limit, 1), 100), true,
+  ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
+
+  const out: MarketListingOnchain[] = [];
+  for (const ev of events?.data ?? []) {
+    const p = ev.parsedJson ?? {};
+    const listingId = String(p.listing_id ?? '');
+    const entryId = String(p.entry_id ?? '');
+    if (!listingId || !entryId) continue;
+    const obj = (await rpc('sui_getObject', [listingId, { showContent: true }])) as {
+      data?: { content?: { fields?: { price?: string | number; seller?: string; entry?: { fields?: Record<string, unknown> } } } };
+    };
+    const fields = obj?.data?.content?.fields;
+    if (!fields) continue; // sold/delisted/unavailable
+    const entry = fields.entry?.fields;
+    const s = String(fields.seller ?? p.seller ?? '');
+    if (seller && s.toLowerCase() !== seller.toLowerCase()) continue;
+    const priceMist = String(fields.price ?? p.price ?? '0');
+    out.push({
+      listingId, entryId,
+      filename: String(entry?.filename ?? p.filename ?? 'Untitled vault item'),
+      fileType: entry?.file_type ? String(entry.file_type) : undefined,
+      blobId: entry?.blob_id ? String(entry.blob_id) : undefined,
+      sizeBytes: entry?.size_bytes != null ? Number(entry.size_bytes) : undefined,
+      seller: s, priceMist, priceSui: mistToSui(priceMist),
+    });
+  }
+  return out;
+}
+
 // Pull a blob's text content back from Walrus (for text/code files).
 export async function fetchBlobText(blobId: string): Promise<string> {
   try {

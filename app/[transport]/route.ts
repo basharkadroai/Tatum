@@ -1,6 +1,6 @@
 import { createMcpHandler } from 'mcp-handler';
 import { z } from 'zod';
-import { listVaultEntries, fetchBlobText } from '@/lib/onchain';
+import { listVaultEntries, fetchBlobText, listMarketplace } from '@/lib/onchain';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -47,6 +47,19 @@ const handler = createMcpHandler(server => {
         }
       }
       return { content: [{ type: 'text', text: hits.length ? hits.join('\n\n') : `No matches for "${query}".` }] };
+    },
+  );
+
+  server.tool(
+    'list_marketplace',
+    'Browse files currently for sale in the ChainMind marketplace — live Sui listings priced in SUI (read via Tatum RPC).',
+    { seller: z.string().optional().describe('Optional: only show listings from this seller wallet address') },
+    async ({ seller }) => {
+      const listings = await listMarketplace(seller);
+      const text = listings.length
+        ? listings.map(l => `• ${l.filename} — ${l.priceSui} SUI  ·  seller ${l.seller.slice(0, 6)}…${l.seller.slice(-4)}  ·  listingId ${l.listingId}`).join('\n')
+        : 'No active marketplace listings right now.';
+      return { content: [{ type: 'text', text }] };
     },
   );
 });
