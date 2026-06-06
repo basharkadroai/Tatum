@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { VaultItem } from '@/types/vault';
@@ -479,13 +480,14 @@ export default function Home() {
               >
                 <SquarePen size={15} strokeWidth={2} /> New chat
               </button>
-              <a href="/marketplace" title="Open the ChainMind marketplace"
+              <Link href="/marketplace" title="Open the ChainMind marketplace"
+                onClick={() => setMobileNavOpen(false)}
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '2px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
               >
                 <ShoppingCart size={15} strokeWidth={2} /> Marketplace
-              </a>
+              </Link>
             </div>
           </div>
 
