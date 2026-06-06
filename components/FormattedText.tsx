@@ -2,9 +2,27 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Download } from 'lucide-react';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
+// Map a code-fence language to a file extension + MIME, so generated files
+// (md / html / txt / code) download with the right type.
+const EXT_BY_LANG: Record<string, string> = {
+  md: 'md', markdown: 'md', html: 'html', htm: 'html', xml: 'xml', svg: 'svg',
+  txt: 'txt', text: 'txt', plaintext: 'txt', json: 'json', csv: 'csv', tsv: 'tsv',
+  yaml: 'yaml', yml: 'yml', toml: 'toml', js: 'js', javascript: 'js', ts: 'ts',
+  typescript: 'ts', tsx: 'tsx', jsx: 'jsx', py: 'py', python: 'py', rb: 'rb',
+  go: 'go', rs: 'rs', java: 'java', c: 'c', cpp: 'cpp', cs: 'cs', css: 'css',
+  scss: 'scss', sh: 'sh', bash: 'sh', sql: 'sql', move: 'move', solidity: 'sol',
+};
+const MIME_BY_EXT: Record<string, string> = {
+  md: 'text/markdown', html: 'text/html', xml: 'application/xml', svg: 'image/svg+xml',
+  json: 'application/json', csv: 'text/csv', txt: 'text/plain',
+};
+function extForLang(lang?: string): string {
+  return (lang && EXT_BY_LANG[lang.toLowerCase()]) || 'txt';
+}
 
 // A code/file window: sidebar-colored (not navy), language label + copy button.
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
@@ -16,15 +34,31 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
       setTimeout(() => setCopied(false), 1500);
     } catch { /* ignore */ }
   };
+  const ext = extForLang(lang);
+  const download = () => {
+    const mime = MIME_BY_EXT[ext] || 'text/plain';
+    const blob = new Blob([code], { type: `${mime};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chainmind.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--text-2)', background: 'var(--off-white)', border: '1px solid var(--border)', borderRadius: '7px', padding: '4px 8px', cursor: 'pointer' };
   return (
     <div style={{ position: 'relative', margin: '8px 0', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--sidebar-bg)', overflow: 'hidden' }}>
       {lang && <span style={{ position: 'absolute', top: '9px', left: '13px', fontSize: '11px', fontWeight: 600, color: 'var(--text-3)', fontFamily: MONO }}>{lang.toLowerCase()}</span>}
-      <button
-        onClick={copy} title="Copy"
-        style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 1, display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: copied ? '#65ca9d' : 'var(--text-2)', background: 'var(--off-white)', border: '1px solid var(--border)', borderRadius: '7px', padding: '4px 8px', cursor: 'pointer' }}
-      >
-        {copied ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
-      </button>
+      <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 1, display: 'flex', gap: '6px' }}>
+        <button onClick={download} title={`Download .${ext}`} style={btn}>
+          <Download size={12} strokeWidth={2} /> .{ext}
+        </button>
+        <button onClick={copy} title="Copy" style={{ ...btn, color: copied ? '#65ca9d' : 'var(--text-2)' }}>
+          {copied ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
+        </button>
+      </div>
       <pre className="code-scroll" style={{ margin: 0, padding: '34px 14px 14px', background: 'transparent', color: 'var(--text-1)', overflow: 'auto', fontSize: '12.5px', lineHeight: 1.5, fontFamily: MONO }}>
         <code>{code}</code>
       </pre>
@@ -83,7 +117,7 @@ export function FormattedText({ text, onCitation }: { text: string; onCitation?:
         hr: () => <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '12px 0' }} />,
         blockquote: ({ children }) => <blockquote style={{ margin: '8px 0', paddingLeft: '12px', borderLeft: '3px solid var(--border-2)', color: 'var(--text-2)' }}>{children}</blockquote>,
         table: ({ children }) => (
-          <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+          <div className="code-scroll" style={{ overflowX: 'auto', margin: '8px 0' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '13px' }}>{children}</table>
           </div>
         ),
