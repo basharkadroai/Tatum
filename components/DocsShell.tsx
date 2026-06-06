@@ -23,24 +23,34 @@ export function DocsShell({
   // bottom, so short trailing sections still highlight).
   useEffect(() => {
     const ids = toc.map(t => t.id);
-    const onScroll = () => {
-      const offset = 96;
+    const recompute = () => {
+      const offset = 100;
       let current = ids[0] ?? '';
       for (const id of ids) {
         const el = document.getElementById(id);
         if (el && el.getBoundingClientRect().top <= offset) current = id;
       }
-      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 6) {
+      const se = document.scrollingElement ?? document.documentElement;
+      if (se && se.scrollHeight - se.scrollTop - se.clientHeight < 8) {
         current = ids[ids.length - 1] ?? current;
       }
       setActiveId(current);
     };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
+    // Capture-phase scroll: scroll events don't bubble, but they DO fire during
+    // capture — so this catches scrolling whether it's the window or any inner
+    // scroll container. (A plain window 'scroll' listener misses inner scrollers.)
+    window.addEventListener('scroll', recompute, true);
+    window.addEventListener('resize', recompute);
+    // IntersectionObserver backup — fires on section boundaries regardless of
+    // which element scrolls.
+    const els = ids.map(id => document.getElementById(id)).filter((e): e is HTMLElement => !!e);
+    const obs = new IntersectionObserver(recompute, { rootMargin: '-90px 0px -80% 0px', threshold: [0, 1] });
+    els.forEach(el => obs.observe(el));
+    recompute();
     return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
+      window.removeEventListener('scroll', recompute, true);
+      window.removeEventListener('resize', recompute);
+      obs.disconnect();
     };
   }, [toc]);
 
