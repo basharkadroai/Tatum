@@ -54,8 +54,10 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-const optionalOwnerSchema = z.union([z.string(), z.null()]).optional()
-  .describe('Sui wallet address. Omit or pass null to use the connected wallet.');
+const optionalOwnerSchema = z.preprocess(
+  value => (value == null ? undefined : value),
+  z.string().optional(),
+).describe('Sui wallet address. Omit this field to use the connected wallet.');
 
 function inspectDocs(docs: VaultDoc[]) {
   const visibleDocs = docs.filter(d => !d.filename.startsWith('.'));
@@ -652,6 +654,7 @@ export type AgentEvent =
   | { type: 'token'; text: string }
   | { type: 'reset' }
   | { type: 'answer'; text: string }
+  | { type: 'error'; message: string }
   | { type: 'trace'; summary: AgentTraceSummary }
   | { type: 'offer'; kind: 'store'; filename: string; question: string; content: string; message?: string };
 
@@ -680,6 +683,28 @@ function parseStoreMarker(answer: string): { filename: string | null; message?: 
   const m = answer.match(/\[\[STORE:\s*([^\]|]+?)\s*(?:\|\s*([^\]]*?))?\s*\]\]\s*$/i);
   if (!m) return { filename: null, text: answer };
   return { filename: m[1].trim(), message: m[2]?.trim() || undefined, text: answer.slice(0, m.index).trimEnd() };
+}
+
+function normalizeCitationLabel(label: string) {
+  return label
+    .normalize('NFKC')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function restoreExactVaultCitations(answer: string, docs: VaultDoc[], currentFile?: VaultDoc) {
+  const exactByNormalized = new Map<string, string>();
+  for (const doc of [...visibleDocs(docs), ...(currentFile ? [currentFile] : [])]) {
+    if (doc?.filename) exactByNormalized.set(normalizeCitationLabel(doc.filename), doc.filename);
+  }
+  if (!exactByNormalized.size) return answer;
+  return answer.replace(/\[([^\]\n]{1,180})\]/g, (match, label: string) => {
+    const normalized = normalizeCitationLabel(label);
+    const exact = exactByNormalized.get(normalized);
+    return exact ? `[${exact}]` : match;
+  });
 }
 
 function detectExt(question: string, answer: string): string {
@@ -716,6 +741,23 @@ function isToolFormatError(err: unknown): boolean {
 
 export type ChatTurn = { role?: string; text?: string };
 
+function messageContentToText(content: unknown) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map(part => {
+      if (typeof part === 'string') return part;
+      if (part && typeof part === 'object') {
+        const record = part as Record<string, unknown>;
+        if (typeof record.text === 'string') return record.text;
+        if (typeof record.content === 'string') return record.content;
+      }
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 function createEventQueue<T>() {
   const items: T[] = [];
   const waiters: Array<(value: T | null) => void> = [];
@@ -740,11 +782,12 @@ function createEventQueue<T>() {
   };
 }
 
-export async function* streamVaultAgentEvents(ctx: AgentContext, question: string, history: ChatTurn[] = []): AsyncGenerator<AgentEvent> {
+export async function* streamVaultAgentEvents(ctx: AgentContext, question: string, history: ChatTurn[] = [], options: { signal?: AbortSignal } = {}): AsyncGenerator<AgentEvent> {
   type Msg = {
     content?: unknown;
-    tool_calls?: { name: string; args: Record<string, unknown> }[];
+    tool_calls?: { id?: string; name: string; args: Record<string, unknown> }[];
     tool_call_id?: string;
+    name?: string;
     _getType?: () => string;
     constructor?: { name?: string };
   };
@@ -771,8 +814,9 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
       if (attempt > 1) queue.push({ type: 'reset' });
       try {
         const agent = buildVaultAgent(ctx, attempt === 1 ? 0 : 0.4, lifecycle);
-        const stream = await agent.stream({ messages: inputMessages }, { streamMode: ['updates'] });
+        const stream = await agent.stream({ messages: inputMessages }, { streamMode: ['updates'], signal: options.signal });
         for await (const item of stream as AsyncIterable<[string, unknown]>) {
+          if (options.signal?.aborted) throw new Error('Agent request was cancelled.');
           const [mode, data] = item;
           if (mode === 'updates') {
             // Tool lifecycle is emitted by the wrapped tool functions. We also
@@ -786,6 +830,7 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                     const callKey = String((tc as { id?: string }).id ?? tc.name);
                     const label = stepLabel(tc.name, tc.args);
                     thirdPartyCalls.set(callKey, { id, tool: tc.name, label, started: Date.now() });
+                    thirdPartyCalls.set(tc.name, { id, tool: tc.name, label, started: Date.now() });
                     trace.toolCall(tc.name, tc.args);
                     queue.push({ type: 'tool_start', id, tool: tc.name, label });
                   }
@@ -793,9 +838,9 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                 const type = m._getType?.() ?? m.constructor?.name ?? '';
                 const isToolMessage = Boolean(m.tool_call_id) || type.toLowerCase().includes('tool');
                 if (m.tool_call_id) {
-                  const pending = thirdPartyCalls.get(String(m.tool_call_id)) || thirdPartyCalls.get(type);
+                  const pending = thirdPartyCalls.get(String(m.tool_call_id)) || thirdPartyCalls.get(String(m.name ?? '')) || thirdPartyCalls.get(type);
                   if (pending) {
-                    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+                    const content = messageContentToText(m.content) || JSON.stringify(m.content ?? '');
                     queue.push({
                       type: 'tool_done',
                       id: pending.id,
@@ -805,18 +850,39 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                       durationMs: Date.now() - pending.started,
                     });
                     thirdPartyCalls.delete(String(m.tool_call_id));
+                    thirdPartyCalls.delete(String(m.name ?? ''));
+                    thirdPartyCalls.delete(pending.tool);
                   }
                 }
                 const isToolRequest = Boolean(m.tool_calls?.length);
-                if (!isToolMessage && !isToolRequest && typeof m.content === 'string' && m.content.trim()) {
-                  finalText = m.content;
+                const contentText = messageContentToText(m.content);
+                if (!isToolMessage && !isToolRequest && contentText.trim()) {
+                  finalText = contentText;
                   answered = true;
                 }
               }
             }
           }
         }
-        const parsed = parseStoreMarker(finalText);
+        for (const pending of new Map([...thirdPartyCalls.values()].map(call => [call.id, call])).values()) {
+          queue.push({
+            type: 'tool_done',
+            id: pending.id,
+            tool: pending.tool,
+            label: pending.label,
+            detail: `Completed in ${Date.now() - pending.started}ms`,
+            durationMs: Date.now() - pending.started,
+          });
+        }
+        const parsed = parseStoreMarker(restoreExactVaultCitations(finalText, ctx.docs ?? [], ctx.currentFile));
+        if (!parsed.text.trim()) {
+          trace.error('Agent returned no final answer.');
+          trace.finish();
+          queue.push({ type: 'trace', summary: trace.summary() });
+          queue.push({ type: 'error', message: 'The agent did real work, but did not return a final answer. Please retry.' });
+          queue.close();
+          return;
+        }
         trace.answer(parsed.text.length, Boolean(parsed.filename));
         queue.push({ type: 'answer', text: parsed.text });
         if (parsed.filename && parsed.text.trim().length > 0) {

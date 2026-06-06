@@ -198,6 +198,11 @@ export function ChatPanel({
       steps[idx] = { ...steps[idx], ...patch };
       return true;
     };
+    const finishRunningSteps = (steps: UploadStep[], status: UploadStep['status'], detail: string) => {
+      for (let i = 0; i < steps.length; i++) {
+        if (steps[i].status === 'running') steps[i] = { ...steps[i], status, detail };
+      }
+    };
     try {
       const res = await fetch('/api/agent', {
         method: 'POST',
@@ -212,6 +217,7 @@ export function ChatPanel({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
+      let receivedAnswer = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -247,15 +253,19 @@ export function ChatPanel({
             if (ev.type === 'step') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'done', detail: ev.detail }); }
             else if (ev.type === 'tool_start') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'running' }); }
             else if (ev.type === 'tool_done') {
-              updateStep(steps, ev.id, { status: 'done', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Completed in ${ev.durationMs}ms` : undefined) });
+              if (!updateStep(steps, ev.id, { status: 'done', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Completed in ${ev.durationMs}ms` : undefined) })) {
+                steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'done', detail: ev.detail });
+              }
             }
             else if (ev.type === 'tool_error') {
-              updateStep(steps, ev.id, { status: 'error', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Failed after ${ev.durationMs}ms` : undefined) });
+              if (!updateStep(steps, ev.id, { status: 'error', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Failed after ${ev.durationMs}ms` : undefined) })) {
+                steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'error', detail: ev.detail });
+              }
             }
             else if (ev.type === 'token') { last.text = (last.text ?? '') + (ev.text ?? ''); }  // live streaming
             else if (ev.type === 'reset') { last.text = ''; }                                                       // retry → clear partial
-            else if (ev.type === 'answer') { last.text = ev.text ?? ''; }                                           // final cleaned (replaces)
-            else if (ev.type === 'error') { last.text = `The agent hit an error: ${ev.message ?? ''}`; }
+            else if (ev.type === 'answer') { receivedAnswer = true; last.text = ev.text ?? ''; }
+            else if (ev.type === 'error') { receivedAnswer = true; finishRunningSteps(steps, 'error', 'Stopped'); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
             else if (ev.type === 'trace') {
               const ms = typeof ev.summary?.durationMs === 'number' ? ` · ${ev.summary.durationMs}ms` : '';
               steps.push({ label: `Trace logged ${ev.summary?.runId?.slice(0, 8) ?? ''}${ms}`, status: 'done' });
@@ -277,7 +287,8 @@ export function ChatPanel({
         const c = [...m];
         const last = { ...c[c.length - 1] };
         const steps = [...(last.steps ?? [])];
-        if (!last.text) last.text = 'Done.';
+        finishRunningSteps(steps, 'done', 'Completed');
+        if (!last.text && !receivedAnswer) last.text = 'No final answer came back. Please retry.';
         last.steps = steps;
         c[c.length - 1] = last;
         return c;

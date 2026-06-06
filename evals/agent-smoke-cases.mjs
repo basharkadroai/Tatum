@@ -27,6 +27,8 @@ export const agentSmokeCases = [
     },
     expect: {
       answerIncludesOneOf: [['2'], ['3072', '3.0 KB', '3 KB']],
+      answerExcludes: ['"totalFiles"', '"files":', '"blobId"', 'tool_calls'],
+      toolsIncludeOneOf: ['vault_stats', 'inspect_loaded_vault'],
     },
     warnIfNoToolFrom: ['vault_stats', 'inspect_loaded_vault'],
   },
@@ -45,6 +47,8 @@ export const agentSmokeCases = [
     },
     expect: {
       answerIncludes: ['dealvault-a.md', 'dealvault-b.md'],
+      answerExcludes: ['"files":', '"blobId"', 'tool_calls'],
+      toolsIncludeOneOf: ['find_duplicate_files'],
     },
     warnIfNoToolFrom: ['find_duplicate_files'],
   },
@@ -62,6 +66,8 @@ export const agentSmokeCases = [
     },
     expect: {
       answerIncludes: ['alpha-plan.md', 'beta-plan.md'],
+      answerExcludes: ['"left":', '"right":', 'tool_calls'],
+      toolsIncludeOneOf: ['compare_files'],
     },
     warnIfNoToolFrom: ['compare_files'],
   },
@@ -79,6 +85,8 @@ export const agentSmokeCases = [
     },
     expect: {
       answerIncludes: ['empty', 'restored'],
+      answerExcludes: ['"missingContentCount"', '"files":', 'tool_calls'],
+      toolsIncludeOneOf: ['find_missing_content', 'audit_vault_health'],
     },
     warnIfNoToolFrom: ['find_missing_content', 'audit_vault_health'],
   },
@@ -108,6 +116,8 @@ export const agentSmokeCases = [
     },
     expect: {
       answerIncludes: ['heliotrope'],
+      answerExcludes: ['tool_calls'],
+      toolsIncludeOneOf: ['inspect_loaded_vault', 'search_vault'],
     },
     warnIfNoToolFrom: ['inspect_loaded_vault', 'search_vault'],
   },
@@ -130,6 +140,8 @@ export const agentSmokeCases = [
     },
     expect: {
       answerIncludes: ['42', 'SUI'],
+      answerExcludes: ['tool_calls'],
+      toolsIncludeOneOf: ['read_current_file'],
     },
     warnIfNoToolFrom: ['read_current_file'],
   },

@@ -189,10 +189,17 @@ async function startNextServer(preferredPort, timeoutMs) {
 function summarizeEvents(events) {
   const answer = [...events].reverse().find((event) => event.type === 'answer')?.text || '';
   const error = [...events].reverse().find((event) => event.type === 'error')?.message || '';
-  const tools = events
-    .filter((event) => (event.type === 'step' || event.type === 'tool_start' || event.type === 'tool_done') && event.tool)
-    .map((event) => event.tool);
-  return { answer, error, tools };
+  const tools = [...new Set(events
+    .filter((event) => (event.type === 'tool_start' || event.type === 'tool_done' || event.type === 'tool_error') && event.tool)
+    .map((event) => event.tool))];
+  const lifecycleErrors = [];
+  const running = new Map();
+  for (const event of events) {
+    if (event.type === 'tool_start' && event.id) running.set(event.id, event.tool || event.label || event.id);
+    if ((event.type === 'tool_done' || event.type === 'tool_error') && event.id) running.delete(event.id);
+  }
+  for (const [id, tool] of running) lifecycleErrors.push(`${tool}:${id}`);
+  return { answer, error, tools, lifecycleErrors };
 }
 
 async function postAgentJson(agentUrl, body, timeoutMs) {
@@ -251,9 +258,12 @@ async function runAgentNdjsonCase(testCase, agentUrl, timeoutMs) {
     }
   }
 
-  const { answer, error, tools } = summarizeEvents(events);
+  const { answer, error, tools, lifecycleErrors } = summarizeEvents(events);
   if (error) return { status: 'BLOCKED', detail: `Agent emitted error: ${error}` };
   if (!answer) return { status: 'FAIL', detail: 'No final answer event was emitted.' };
+  if (lifecycleErrors.length) {
+    return { status: 'FAIL', detail: `Unclosed tool lifecycle events: ${lifecycleErrors.join(', ')}` };
+  }
   const normalizedAnswer = answer.toLowerCase().replace(/\s+/g, ' ');
 
   const missing = (testCase.expect.answerIncludes || []).filter(
@@ -272,6 +282,21 @@ async function runAgentNdjsonCase(testCase, agentUrl, timeoutMs) {
     return {
       status: 'FAIL',
       detail: `Answer did not include one of ${missingGroups.map(g => `[${g.join(', ')}]`).join(', ')}. Answer: ${answer.slice(0, 500)}`,
+    };
+  }
+  const excluded = (testCase.expect.answerExcludes || []).filter(
+    (needle) => normalizedAnswer.includes(String(needle).toLowerCase().replace(/\s+/g, ' ')),
+  );
+  if (excluded.length) {
+    return {
+      status: 'FAIL',
+      detail: `Answer leaked forbidden text ${excluded.join(', ')}. Answer: ${answer.slice(0, 500)}`,
+    };
+  }
+  if (testCase.expect.toolsIncludeOneOf?.length && !testCase.expect.toolsIncludeOneOf.some((tool) => tools.includes(tool))) {
+    return {
+      status: 'FAIL',
+      detail: `Expected a real lifecycle event from one of [${testCase.expect.toolsIncludeOneOf.join(', ')}], saw [${tools.join(', ') || 'none'}]`,
     };
   }
 
