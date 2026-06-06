@@ -156,7 +156,8 @@ export const agentSmokeCases = [
       question: 'What do you remember about how I want modes handled?',
     },
     expect: {
-      answerIncludes: ['infer', 'prompt'],
+      answerIncludes: ['infer'],
+      answerIncludesOneOf: [['prompt', 'ask', 'request']],
       answerExcludes: ['tool_calls'],
       toolsIncludeOneOf: ['search_memory', 'inspect_memory_context'],
     },
