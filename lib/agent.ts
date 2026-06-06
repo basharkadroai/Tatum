@@ -236,10 +236,10 @@ function inferWorkPlan(goal: string, ctx: AgentContext, docs: VaultDoc[]) {
   if (/\b(compare|difference|different|versus| vs )\b/.test(q)) tools.push('compare_files');
   if (/\b(search|find|where|which file|keyword|mentions)\b/.test(q)) tools.push('search_vault');
   if (/\b(entry\s?id|listing\s?id|listed|marketplace status|seal\s?id|seal policy|encrypted|purchased|bought)\b/.test(q)) tools.push('inspect_loaded_vault');
-  if (/\b(on-chain|chain|restore|wallet|true|sui|walrus)\b/.test(q)) tools.push('list_onchain_vault');
+  if (/\b(on-chain|onchain|chain|restore|wallet|vaultentry|owned on sui|sui object|walrus proof)\b/.test(q)) tools.push('list_onchain_vault');
   if (/\b(marketplace|for sale|listings|listed items|buyable)\b/.test(q)) tools.push('list_marketplace');
   if (/\b(remember|preference|project direction|strategy|context|what do you know)\b/.test(q)) tools.push('search_memory');
-  if (/\b(price|sui|btc|eth|market)\b/.test(q)) tools.push('crypto_price');
+  if (/\b(current price|live price|price of|exchange rate|rate for|worth|btc|eth|sui price)\b/.test(q)) tools.push('crypto_price');
   const policy = inferActionPolicy(goal);
   return {
     inferredIntent: q.length > 180 ? 'multi-step vault request' : goal,
@@ -576,10 +576,10 @@ async function runAutomaticReadTools(question: string, ctx: AgentContext): Promi
   if (/\b(audit|health|improve|debug|clean up|cleanup|what should i do first)\b/.test(q)) {
     add('audit_vault_health', 'Auditing vault health', await auditVaultReport(ctx, owner));
   }
-  if (owner && /\b(on-chain|onchain|chain|restore|wallet|true|sui|walrus)\b/.test(q)) {
+  if (owner && /\b(on-chain|onchain|chain|restore|wallet|vaultentry|owned on sui|sui object|walrus proof)\b/.test(q)) {
     add('list_onchain_vault', 'Reading your on-chain vault through Tatum', await listOnchainVaultReport(owner));
   }
-  if (owner && /\b(on-chain|onchain|chain|sui|walrus)\b/.test(q) && /\b(search|find|where|mentions|keyword)\b/.test(q)) {
+  if (owner && /\b(on-chain|onchain|chain|vaultentry|owned on sui|sui object|walrus proof)\b/.test(q) && /\b(search|find|where|mentions|keyword)\b/.test(q)) {
     add('search_onchain_vault', `Searching Sui + Walrus for "${compactQuestionQuery(question)}"`, await searchOnchainVaultReport(compactQuestionQuery(question), owner));
   }
   if (/\b(marketplace|for sale|listings|listed items|buyable)\b/.test(q) && !/\b(list|sell|buy|purchase|delist)\s+[\w.-]/.test(q)) {
