@@ -43,7 +43,7 @@ function clearLocalListing(listing: MarketListing) {
   }
 }
 
-function recordPurchase(listing: MarketListing, buyer: string) {
+function recordPurchase(listing: MarketListing, buyer: string, txDigest?: string) {
   try {
     const raw = localStorage.getItem('chainmind_vault');
     const list: Array<Record<string, unknown>> = raw && Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
@@ -56,6 +56,7 @@ function recordPurchase(listing: MarketListing, buyer: string) {
         listingId: undefined,
         priceMist: undefined,
         entryId: listing.entryId,
+        txDigest: txDigest || v.txDigest,
         encrypted: listing.encrypted,
         sealId: listing.sealId,
         sealPolicyId: listing.sealPolicyId,
@@ -71,6 +72,7 @@ function recordPurchase(listing: MarketListing, buyer: string) {
         content: '',
         uploadedAt: new Date().toISOString(),
         sizeBytes: listing.sizeBytes || 0,
+        txDigest,
         entryId: listing.entryId,
         owner: buyer,
         purchased: true,
@@ -145,9 +147,9 @@ export default function MarketplacePage() {
         target: `${PACKAGE_LATEST}::vault::buy`,
         arguments: [tx.object(listing.listingId), payment],
       });
-      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       setListings(prev => prev.filter(item => item.listingId !== listing.listingId));
-      recordPurchase(listing, account.address);
+      recordPurchase(listing, account.address, res.digest);
       setActionMsg('Purchase complete. The item is now saved in your ChainMind vault.');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);

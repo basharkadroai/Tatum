@@ -162,7 +162,7 @@ function clearLocalListing(listing: MarketListing) {
 // After a successful buy, add the item to the buyer's local vault (marked
 // purchased) and tell the app to refresh the sidebar — so what you bought shows
 // up immediately instead of only after a manual restore.
-function recordPurchase(listing: MarketListing, buyer: string) {
+function recordPurchase(listing: MarketListing, buyer: string, txDigest?: string) {
   try {
     const raw = localStorage.getItem('chainmind_vault');
     const list: Array<Record<string, unknown>> = raw && Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
@@ -177,6 +177,7 @@ function recordPurchase(listing: MarketListing, buyer: string) {
         listingId: undefined,
         priceMist: undefined,
         entryId: listing.entryId,
+        txDigest: txDigest || v.txDigest,
         encrypted: listing.encrypted,
         sealId: listing.sealId,
         sealPolicyId: listing.sealPolicyId,
@@ -192,6 +193,7 @@ function recordPurchase(listing: MarketListing, buyer: string) {
         content: '',
         uploadedAt: new Date().toISOString(),
         sizeBytes: listing.sizeBytes || 0,
+        txDigest,
         entryId: listing.entryId,
         owner: buyer,
         purchased: true,
@@ -267,9 +269,9 @@ export function MarketplaceView() {
       const tx = new Transaction();
       const [payment] = tx.splitCoins(tx.gas, [tx.pure.u64(listing.priceMist)]);
       tx.moveCall({ target: `${PACKAGE_LATEST}::vault::buy`, arguments: [tx.object(listing.listingId), payment] });
-      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       setListings(prev => prev.filter(item => item.listingId !== listing.listingId));
-      recordPurchase(listing, account.address);
+      recordPurchase(listing, account.address, res.digest);
       setActionMsg('Purchased — it’s now in your vault (sidebar), marked “Bought”.');
     } catch (err) {
       setActionMsg(`Buy failed: ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`);

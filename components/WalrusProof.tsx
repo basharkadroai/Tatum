@@ -10,6 +10,7 @@ interface Props {
   fileType: string;
   filename: string;
   txDigest?: string;
+  entryId?: string;
 }
 
 type ChainState =
@@ -19,10 +20,10 @@ type ChainState =
 
 // Reads the VaultEntry back from the Sui chain via Tatum RPC to PROVE the blob
 // is genuinely registered on-chain — not just that a tx was once sent.
-function useOnChainVerify(txDigest: string | undefined, blobId: string): ChainState {
+function useOnChainVerify(txDigest: string | undefined, blobId: string, entryId?: string): ChainState {
   const [state, setState] = useState<ChainState>({ status: 'idle' });
   useEffect(() => {
-    if (!txDigest) { setState({ status: 'idle' }); return; }
+    if (!txDigest && !entryId) { setState({ status: 'idle' }); return; }
     let cancelled = false;
     setState({ status: 'loading' });
     (async () => {
@@ -30,7 +31,7 @@ function useOnChainVerify(txDigest: string | undefined, blobId: string): ChainSt
         const res = await fetch('/api/verify-chain', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ digest: txDigest, blobId }),
+          body: JSON.stringify({ digest: txDigest, blobId, entryId }),
         });
         const data = await res.json();
         if (cancelled) return;
@@ -42,15 +43,15 @@ function useOnChainVerify(txDigest: string | undefined, blobId: string): ChainSt
       }
     })();
     return () => { cancelled = true; };
-  }, [txDigest, blobId]);
+  }, [txDigest, blobId, entryId]);
   return state;
 }
 
 // Fetches the blob back from Walrus to PROVE it's really on decentralized
 // storage (not just in our localStorage). Renders images inline, previews text.
-export function WalrusProof({ blobId, fileType, filename, txDigest }: Props) {
+export function WalrusProof({ blobId, fileType, filename, txDigest, entryId }: Props) {
   const blobUrl = `${AGGREGATOR}/v1/blobs/${blobId}`;
-  const chain = useOnChainVerify(txDigest, blobId);
+  const chain = useOnChainVerify(txDigest, blobId, entryId);
   const isImage = fileType.startsWith('image/');
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
   const isText =
@@ -125,7 +126,7 @@ export function WalrusProof({ blobId, fileType, filename, txDigest }: Props) {
       </div>
 
       {/* On-chain verification — reads the VaultEntry back via Tatum Sui RPC */}
-      {txDigest && chain.status !== 'idle' && (
+      {(txDigest || entryId) && chain.status !== 'idle' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span
             style={{

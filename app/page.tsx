@@ -192,7 +192,7 @@ export default function Home() {
       analyzeRestoredFile(selected);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id]);
+  }, [selected?.id, selected?.summary, selected?.filename, selected?.fileType, selected?.encrypted]);
 
   // Reconstruct the files OWNED by an address on-chain (VaultEntry objects, read
   // from Sui via Tatum) and pull their content back from Walrus. Read-only — no
@@ -968,7 +968,7 @@ export default function Home() {
                             : 'This older vault item is missing Seal policy data. Restore it from chain again after the upgraded contract is live.'}
                       </div>
                     )}
-                    <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} txDigest={selected.txDigest} />
+                    <WalrusProof key={selected.id} blobId={selected.blobId} fileType={selected.fileType} filename={selected.filename} txDigest={selected.txDigest} entryId={selected.entryId} />
                   </div>
                 )}
               </div>
