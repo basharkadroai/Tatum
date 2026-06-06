@@ -42,6 +42,16 @@ function clearLocalListing(listing: MarketListing) {
   }
 }
 
+async function preflightMarket(body: Record<string, unknown>) {
+  const res = await fetch('/api/market/preflight', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Marketplace safety check failed.');
+}
+
 export default function MarketplacePage() {
   const [listings, setListings] = useState<MarketListing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +87,12 @@ export default function MarketplacePage() {
     setBusyId(listing.listingId);
     setActionMsg('');
     try {
+      await preflightMarket({
+        action: 'market.buy',
+        owner: account.address,
+        listingId: listing.listingId,
+        priceMist: listing.priceMist,
+      });
       const tx = new Transaction();
       const [payment] = tx.splitCoins(tx.gas, [tx.pure.u64(listing.priceMist)]);
       tx.moveCall({
@@ -99,6 +115,11 @@ export default function MarketplacePage() {
     setBusyId(listing.listingId);
     setActionMsg('');
     try {
+      await preflightMarket({
+        action: 'market.delist',
+        owner: account.address,
+        listingId: listing.listingId,
+      });
       const tx = new Transaction();
       tx.moveCall({
         target: `${PACKAGE_LATEST}::vault::delist`,

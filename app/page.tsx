@@ -27,11 +27,44 @@ const PACKAGE_ID = process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID || '';
 const PACKAGE_LATEST = process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST || PACKAGE_ID;
 
 const STORAGE_KEY = 'chainmind_vault';
+const TOMBSTONE_KEY = 'chainmind_vault_tombstones';
+const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+type VaultTombstone = { blobId?: string; entryId?: string; deletedAt: number };
+
 function loadVault(): VaultItem[] {
   if (typeof window === 'undefined') return [];
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
 }
 function saveVault(items: VaultItem[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+function loadTombstones(): VaultTombstone[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const cutoff = Date.now() - TOMBSTONE_TTL_MS;
+    const raw = JSON.parse(localStorage.getItem(TOMBSTONE_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(t => Number(t?.deletedAt) > cutoff) : [];
+  } catch {
+    return [];
+  }
+}
+function saveTombstone(item: VaultItem) {
+  const tombstone = { blobId: item.blobId, entryId: item.entryId, deletedAt: Date.now() };
+  const next = [tombstone, ...loadTombstones()]
+    .filter((t, index, arr) => index === arr.findIndex(other => other.blobId === t.blobId && other.entryId === t.entryId))
+    .slice(0, 200);
+  localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(next));
+}
+function isTombstoned(entry: { blobId?: string; entryId?: string }) {
+  return loadTombstones().some(t => (entry.blobId && t.blobId === entry.blobId) || (entry.entryId && t.entryId === entry.entryId));
+}
+async function preflightMarket(body: Record<string, unknown>) {
+  const res = await fetch('/api/market/preflight', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Marketplace safety check failed.');
+}
 
 // Pull a text blob's content back from Walrus so restored files are queryable.
 async function fetchWalrusText(blobId: string, fileType: string, filename: string): Promise<string> {
@@ -155,7 +188,8 @@ export default function Home() {
       // Replay the latest snapshot per chat into localStorage so chats are portable.
       const chatEntries = entries.filter((e: { filename?: string }) => typeof e.filename === 'string' && e.filename.startsWith('.chat'));
       const fileEntries = entries.filter((e: { filename?: string }) => !(typeof e.filename === 'string' && e.filename.startsWith('.chat')));
-      if (chatEntries.length) {
+      const canRestoreChat = !!account?.address && account.address.toLowerCase() === owner.trim().toLowerCase();
+      if (chatEntries.length && canRestoreChat) {
         const latest: Record<string, { ts: number; messages: unknown }> = {};
         for (const e of chatEntries) {
           try {
@@ -186,6 +220,7 @@ export default function Home() {
         const have = new Set(prev.map(i => i.blobId));
         for (const e of fileEntries) {
           if (have.has(e.blobId)) continue;
+          if (isTombstoned({ blobId: e.blobId, entryId: e.entryId })) continue;
           fresh.push({
             id: crypto.randomUUID(),
             filename: e.filename, fileType: e.fileType, blobId: e.blobId,
@@ -230,7 +265,13 @@ export default function Home() {
     setVault(prev => { const next = [item, ...prev]; saveVault(next); return next; });
   }
   function handleDelete(id: string) {
-    setVault(prev => { const next = prev.filter(i => i.id !== id); saveVault(next); return next; });
+    setVault(prev => {
+      const item = prev.find(i => i.id === id);
+      if (item) saveTombstone(item);
+      const next = prev.filter(i => i.id !== id);
+      saveVault(next);
+      return next;
+    });
     if (selected?.id === id) setSelected(null);
     try { localStorage.removeItem(`chainmind_chat_${id}`); } catch { /* ignore */ }
   }
@@ -360,6 +401,12 @@ export default function Home() {
     setMarketBusy(true);
     setMarketMsg('');
     try {
+      await preflightMarket({
+        action: 'market.list',
+        owner: account.address,
+        entryId: item.entryId,
+        priceMist,
+      });
       const tx = new Transaction();
       tx.moveCall({
         target: `${PACKAGE_LATEST}::vault::list`,
@@ -391,6 +438,11 @@ export default function Home() {
     setMarketBusy(true);
     setMarketMsg('');
     try {
+      await preflightMarket({
+        action: 'market.delist',
+        owner: account.address,
+        listingId: item.listingId,
+      });
       const tx = new Transaction();
       tx.moveCall({
         target: `${PACKAGE_LATEST}::vault::delist`,

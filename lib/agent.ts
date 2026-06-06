@@ -755,7 +755,6 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     queue.push(event);
   };
   trace.start({ question, owner: ctx.owner, currentFile: ctx.currentFile?.filename });
-  queue.push({ type: 'tool_done', id: `run-${trace.runId}`, tool: 'agent_trace', label: `Started agent run ${trace.runId.slice(0, 8)}`, detail: 'Run trace is active', durationMs: 0 });
 
   const priorMsgs = (Array.isArray(history) ? history : [])
     .filter(m => m && (m.role === 'user' || m.role === 'ai') && m.text)
@@ -768,6 +767,7 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let answered = false;
       let finalText = '';
+      const thirdPartyCalls = new Map<string, { id: string; tool: string; label: string; started: number }>();
       if (attempt > 1) queue.push({ type: 'reset' });
       try {
         const agent = buildVaultAgent(ctx, attempt === 1 ? 0 : 0.4, lifecycle);
@@ -782,12 +782,31 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
               for (const m of value?.messages ?? []) {
                 for (const tc of m.tool_calls ?? []) {
                   if (tc.name.includes('tavily')) {
+                    const id = `${tc.name}-${Date.now()}-${++toolRunSeq}`;
+                    const callKey = String((tc as { id?: string }).id ?? tc.name);
+                    const label = stepLabel(tc.name, tc.args);
+                    thirdPartyCalls.set(callKey, { id, tool: tc.name, label, started: Date.now() });
                     trace.toolCall(tc.name, tc.args);
-                    queue.push({ type: 'step', tool: tc.name, label: stepLabel(tc.name, tc.args) });
+                    queue.push({ type: 'tool_start', id, tool: tc.name, label });
                   }
                 }
                 const type = m._getType?.() ?? m.constructor?.name ?? '';
                 const isToolMessage = Boolean(m.tool_call_id) || type.toLowerCase().includes('tool');
+                if (m.tool_call_id) {
+                  const pending = thirdPartyCalls.get(String(m.tool_call_id)) || thirdPartyCalls.get(type);
+                  if (pending) {
+                    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+                    queue.push({
+                      type: 'tool_done',
+                      id: pending.id,
+                      tool: pending.tool,
+                      label: pending.label,
+                      detail: `${resultDetail(content)} in ${Date.now() - pending.started}ms`,
+                      durationMs: Date.now() - pending.started,
+                    });
+                    thirdPartyCalls.delete(String(m.tool_call_id));
+                  }
+                }
                 const isToolRequest = Boolean(m.tool_calls?.length);
                 if (!isToolMessage && !isToolRequest && typeof m.content === 'string' && m.content.trim()) {
                   finalText = m.content;
