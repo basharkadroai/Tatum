@@ -46,4 +46,7 @@ next-env.d.ts
 SUBMISSION.md
 CLAUDE.md
 AGENTS.md
-PRODUCT_IDEAS.md
+# Private planning / internal docs — never commit to the public repo
+PRODUCT_IDEAS*.md
+SEAL_MARKETPLACE_PLAN.md
+CHAINMIND_TATUM_SUBMISSION.md
