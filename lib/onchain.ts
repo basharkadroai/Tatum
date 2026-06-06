@@ -115,6 +115,12 @@ export type MarketListingOnchain = {
 };
 
 const MIST_PER_SUI = BigInt(1_000_000_000);
+const PRIOR_MARKET_PKGS = [
+  '0x370bd880fdd2dcb8d07613087a41bb88caa393db33d5b48834dcf798cfb9ecdc',
+  '0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9',
+];
+const MARKET_PKGS = Array.from(new Set([PACKAGE_LATEST, ...PRIOR_MARKET_PKGS].filter(Boolean)));
+
 function mistToSui(mist: string | number): string {
   try {
     const raw = BigInt(String(mist));
@@ -130,9 +136,15 @@ function mistToSui(mist: string | number): string {
 // Shared by the /api/market/listings route and the MCP `list_marketplace` tool.
 export async function listMarketplace(seller?: string, limit = 50): Promise<MarketListingOnchain[]> {
   if (!PACKAGE_ID) return [];
-  const events = (await rpc('suix_queryEvents', [
-    { MoveEventType: `${PACKAGE_LATEST}::vault::Listed` }, null, Math.min(Math.max(limit, 1), 100), true,
-  ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
+  const events: Array<{ parsedJson?: Record<string, unknown> }> = [];
+  for (const pkg of MARKET_PKGS) {
+    try {
+      const page = (await rpc('suix_queryEvents', [
+        { MoveEventType: `${pkg}::vault::Listed` }, null, Math.min(Math.max(limit, 1), 100), true,
+      ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
+      for (const event of page?.data ?? []) events.push(event);
+    } catch { /* skip unavailable package version */ }
+  }
   const encrypted = new Map<string, { policyId?: string }>();
   try {
     const encryptedEvents = (await rpc('suix_queryEvents', [
@@ -148,11 +160,13 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
   } catch { /* encrypted metadata is best effort */ }
 
   const out: MarketListingOnchain[] = [];
-  for (const ev of events?.data ?? []) {
+  const seen = new Set<string>();
+  for (const ev of events) {
     const p = ev.parsedJson ?? {};
     const listingId = String(p.listing_id ?? '');
     const entryId = String(p.entry_id ?? '');
-    if (!listingId || !entryId) continue;
+    if (!listingId || !entryId || seen.has(listingId)) continue;
+    seen.add(listingId);
     const obj = (await rpc('sui_getObject', [listingId, { showContent: true }])) as {
       data?: { content?: { fields?: { price?: string | number; seller?: string; entry?: { fields?: Record<string, unknown> } } } };
     };

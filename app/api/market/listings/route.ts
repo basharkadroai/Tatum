@@ -11,7 +11,10 @@ const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
 // Listed events carry the id of the package VERSION that emitted them, so query
 // the current + prior marketplace versions and merge (listings survive upgrades).
-const PRIOR_MARKET_PKGS = ['0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9'];
+const PRIOR_MARKET_PKGS = [
+  '0x370bd880fdd2dcb8d07613087a41bb88caa393db33d5b48834dcf798cfb9ecdc',
+  '0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9',
+];
 const MARKET_PKGS = Array.from(new Set([PACKAGE_LATEST, ...PRIOR_MARKET_PKGS].filter(Boolean)));
 const MIST_PER_SUI = BigInt(1_000_000_000);
 
