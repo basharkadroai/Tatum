@@ -82,6 +82,12 @@ export default function McpGuidePage() {
             <p style={{ ...p, margin: '8px 0 0' }}>Searches a wallet&rsquo;s vault by keyword across filenames and file contents, returning matches with short snippets.</p>
             <p style={{ ...p, margin: '6px 0 0' }}><code style={codeInline}>owner</code> — Sui wallet address. <code style={codeInline}>query</code> — keyword or phrase.</p>
           </div>
+
+          <div style={toolCard}>
+            <div style={toolName}>list_marketplace(seller?)</div>
+            <p style={{ ...p, margin: '8px 0 0' }}>Browses files currently for sale in the ChainMind marketplace — live Sui listings priced in SUI, read from the on-chain <code style={codeInline}>Listed</code> events via Tatum. Returns filename, price, seller, and listing id.</p>
+            <p style={{ ...p, margin: '6px 0 0' }}><code style={codeInline}>seller</code> — optional; only listings from this wallet address.</p>
+          </div>
         </section>
 
         <section style={section}>
@@ -100,6 +106,7 @@ export default function McpGuidePage() {
         <section style={section}>
           <h2 style={h2}>Notes</h2>
           <p style={p}>The server is read-only and stateless. Internal chat-history backups are filtered out of results. Built on <code style={codeInline}>mcp-handler</code> as a Next.js route handler; reads use the same Tatum RPC and Walrus endpoints as the app.</p>
+          <p style={p}>Files sold on the marketplace can be <strong style={{ color: 'var(--text-1)' }}>Seal-encrypted</strong> — `read_file` returns ciphertext for those unless the caller owns the entry and decrypts via <code style={codeInline}>seal_approve</code> (see the <Link href="/docs" style={link}>docs</Link>).</p>
           <p style={{ ...p, color: 'var(--text-3)', fontSize: '13px', marginTop: '20px' }}>See also the <Link href="/docs" style={link}>main documentation</Link>.</p>
         </section>
       </div>

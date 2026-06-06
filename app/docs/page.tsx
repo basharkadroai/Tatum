@@ -81,8 +81,25 @@ export default function DocsPage() {
             <li style={li}><strong style={{ color: 'var(--text-1)' }}>Create and store</strong> — generate a document or code, then store the exact artifact on-chain.</li>
             <li style={li}><strong style={{ color: 'var(--text-1)' }}>Portable chat history</strong> — conversations persist locally and back up to Walrus and Sui.</li>
             <li style={li}><strong style={{ color: 'var(--text-1)' }}>Voice input</strong> — hold to talk or tap to toggle, with a live waveform.</li>
-            <li style={li}><strong style={{ color: 'var(--text-1)' }}>MCP server</strong> — your vault, usable by any AI client. See the <Link href="/mcp-guide" style={link}>MCP guide</Link>.</li>
+            <li style={li}><strong style={{ color: 'var(--text-1)' }}>Marketplace</strong> — list a vault file for sale, buy with SUI, ownership transfers on-chain.</li>
+            <li style={li}><strong style={{ color: 'var(--text-1)' }}>MCP server</strong> — your vault (and the marketplace) usable by any AI client. See the <Link href="/mcp-guide" style={link}>MCP guide</Link>.</li>
           </ul>
+        </section>
+
+        <section style={section}>
+          <h2 style={h2}>Marketplace</h2>
+          <p style={p}>Because every file is a wallet-owned Sui object, it can be sold. The Move contract adds a simple, trustless market:</p>
+          <ul>
+            <li style={li}><strong style={{ color: 'var(--text-1)' }}>List</strong> (<code style={code}>vault::list</code>) — wrap your <code style={code}>VaultEntry</code> in a shared <code style={code}>Listing</code> at a price in SUI.</li>
+            <li style={li}><strong style={{ color: 'var(--text-1)' }}>Buy</strong> (<code style={code}>vault::buy</code>) — pay the exact price; the entry transfers to you and the SUI goes to the seller, atomically.</li>
+            <li style={li}><strong style={{ color: 'var(--text-1)' }}>Delist</strong> (<code style={code}>vault::delist</code>) — the seller can cancel and reclaim the entry.</li>
+          </ul>
+          <p style={p}>Listings are read from the on-chain <code style={code}>Listed</code> events via Tatum RPC — browse at <Link href="/marketplace" style={link}>/marketplace</Link>, or from any AI via the MCP <code style={code}>list_marketplace</code> tool.</p>
+        </section>
+
+        <section style={section}>
+          <h2 style={h2}>Encryption (Seal)</h2>
+          <p style={p}>Public Walrus blobs are readable by anyone, so a sale only matters if the data is private. ChainMind integrates <a style={link} href="https://seal.mystenlabs.com/" target="_blank" rel="noreferrer">Seal</a> for that: a file is encrypted before it goes to Walrus, and decryption is gated by an on-chain <code style={code}>seal_approve</code> check that the requester <strong style={{ color: 'var(--text-1)' }}>owns the entry</strong>. When a buyer takes ownership, the right to decrypt follows automatically — and no one else can read it.</p>
         </section>
 
         <section style={section}>
