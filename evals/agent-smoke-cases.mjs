@@ -26,7 +26,7 @@ export const agentSmokeCases = [
       question: 'How many files are in my vault and how much size do they use?',
     },
     expect: {
-      answerIncludes: ['2', '3072'],
+      answerIncludesOneOf: [['2'], ['3072', '3.0 KB', '3 KB']],
     },
     warnIfNoToolFrom: ['vault_stats', 'inspect_loaded_vault'],
   },

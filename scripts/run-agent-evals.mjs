@@ -254,14 +254,24 @@ async function runAgentNdjsonCase(testCase, agentUrl, timeoutMs) {
   const { answer, error, tools } = summarizeEvents(events);
   if (error) return { status: 'BLOCKED', detail: `Agent emitted error: ${error}` };
   if (!answer) return { status: 'FAIL', detail: 'No final answer event was emitted.' };
+  const normalizedAnswer = answer.toLowerCase().replace(/\s+/g, ' ');
 
   const missing = (testCase.expect.answerIncludes || []).filter(
-    (needle) => !answer.toLowerCase().includes(String(needle).toLowerCase()),
+    (needle) => !normalizedAnswer.includes(String(needle).toLowerCase().replace(/\s+/g, ' ')),
   );
   if (missing.length) {
     return {
       status: 'FAIL',
       detail: `Answer did not include ${missing.join(', ')}. Answer: ${answer.slice(0, 500)}`,
+    };
+  }
+  const missingGroups = (testCase.expect.answerIncludesOneOf || []).filter(
+    (needles) => !needles.some((needle) => normalizedAnswer.includes(String(needle).toLowerCase().replace(/\s+/g, ' '))),
+  );
+  if (missingGroups.length) {
+    return {
+      status: 'FAIL',
+      detail: `Answer did not include one of ${missingGroups.map(g => `[${g.join(', ')}]`).join(', ')}. Answer: ${answer.slice(0, 500)}`,
     };
   }
 
