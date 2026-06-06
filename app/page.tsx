@@ -12,6 +12,7 @@ import { ChatPanel } from '@/components/ChatPanel';
 import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
 import { MarketplaceView } from '@/components/MarketplaceView';
+import { ContentCoinsView } from '@/components/ContentCoinsView';
 import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { cleanEnv, envFlag } from '@/lib/env';
@@ -20,7 +21,7 @@ import type { MarketTxEvent } from '@/types/market';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Database, Link2, X, Check,
-  PanelLeft, ChevronDown, Menu, Loader2, SquarePen, ShoppingCart,
+  PanelLeft, ChevronDown, Menu, Loader2, SquarePen, ShoppingCart, TrendingUp,
 } from 'lucide-react';
 
 const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
@@ -146,6 +147,7 @@ export default function Home() {
   const [vault, setVault] = useState<VaultItem[]>([]);
   const [selected, setSelected] = useState<VaultItem | null>(null);
   const [showMarket, setShowMarket] = useState(false); // marketplace view (in-app, no chat)
+  const [showCoins, setShowCoins] = useState(false); // content-coins view (in-app, no chat)
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [proofExpanded, setProofExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -192,6 +194,7 @@ export default function Home() {
     try { localStorage.setItem('chainmind_chat_home', '[]'); } catch { /* ignore */ }
     setSelected(null);
     setShowMarket(false);
+    setShowCoins(false);
     setMobileNavOpen(false);
     setChatRestoreTick(t => t + 1); // remount the home chat so it loads empty
   }
@@ -619,7 +622,7 @@ export default function Home() {
         {/* Brand + collapse/close toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: sidebarExpanded ? '8px' : 0, padding: sidebarExpanded ? '16px 14px 12px' : '16px 13px 12px', flexShrink: 0, transition: `gap 0.28s ${sidebarEase}, padding 0.28s ${sidebarEase}` }}>
           <button
-            onClick={() => { setSelected(null); setShowMarket(false); setMobileNavOpen(false); }}
+            onClick={() => { setSelected(null); setShowMarket(false); setShowCoins(false); setMobileNavOpen(false); }}
             title="Home"
             aria-hidden={!sidebarExpanded}
             tabIndex={sidebarExpanded ? 0 : -1}
@@ -656,12 +659,19 @@ export default function Home() {
               >
                 <SquarePen size={15} strokeWidth={2} /> New chat
               </button>
-              <button onClick={() => { setShowMarket(true); setSelected(null); setMobileNavOpen(false); }} title="Open the ChainMind marketplace"
+              <button onClick={() => { setShowMarket(true); setShowCoins(false); setSelected(null); setMobileNavOpen(false); }} title="Open the ChainMind marketplace"
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '2px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: showMarket ? 'var(--hover)' : 'transparent', color: showMarket ? 'var(--text-1)' : 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textAlign: 'left' }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
                 onMouseLeave={e => { if (!showMarket) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; } }}
               >
                 <ShoppingCart size={15} strokeWidth={2} /> Marketplace
+              </button>
+              <button onClick={() => { setShowCoins(true); setShowMarket(false); setSelected(null); setMobileNavOpen(false); }} title="Content coins — tradeable attention markets"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginTop: '2px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: showCoins ? 'var(--hover)' : 'transparent', color: showCoins ? 'var(--text-1)' : 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, textAlign: 'left' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+                onMouseLeave={e => { if (!showCoins) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; } }}
+              >
+                <TrendingUp size={15} strokeWidth={2} /> Content Coins
               </button>
             </div>
           </div>
@@ -691,7 +701,7 @@ export default function Home() {
                 key={item.id}
                 item={item}
                 active={selected?.id === item.id}
-                onSelect={() => { setSelected(item); setShowMarket(false); setMobileNavOpen(false); }}
+                onSelect={() => { setSelected(item); setShowMarket(false); setShowCoins(false); setMobileNavOpen(false); }}
                 onDelete={() => handleDelete(item.id)}
               />
             ))}
@@ -768,6 +778,15 @@ export default function Home() {
             /* Marketplace — in-app view (sidebar stays, no chat) */
             <div style={{ flex: 1, minHeight: 0 }}>
               <MarketplaceView />
+            </div>
+          ) : showCoins ? (
+            /* Content Coins — in-app view (sidebar stays, no chat) */
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: 'var(--sidebar-bg)' }}>
+              <div style={{ maxWidth: '1180px', width: '100%', margin: '0 auto', padding: '44px 28px 90px' }}>
+                <p style={{ margin: 0, color: '#65ca9d', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Content Coins</p>
+                <h1 style={{ margin: '8px 0 0', fontSize: '30px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>Trade attention — back the files you believe in.</h1>
+                <div style={{ marginTop: '22px' }}><ContentCoinsView /></div>
+              </div>
             </div>
           ) : !selected ? (
             /* Home: centered chat over the scene */
