@@ -48,8 +48,8 @@ export function MarketplaceView() {
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
-  async function loadListings() {
-    setLoading(true);
+  async function loadListings(silent = false) {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const res = await fetch('/api/market/listings', { cache: 'no-store' });
@@ -63,7 +63,21 @@ export function MarketplaceView() {
     }
   }
 
-  useEffect(() => { loadListings(); }, []);
+  // Auto-refresh: load on open, then poll every 15s (silently) and whenever the
+  // tab regains focus — so new listings from anyone appear without a manual refresh.
+  useEffect(() => {
+    loadListings();
+    const id = setInterval(() => loadListings(true), 15000);
+    const onFocus = () => { if (document.visibilityState === 'visible') loadListings(true); };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function isSeller(listing: MarketListing) {
     return !!account?.address && listing.seller.toLowerCase() === account.address.toLowerCase();
@@ -118,10 +132,12 @@ export function MarketplaceView() {
             <p style={{ fontSize: '11.5px', color: 'var(--text-3)', marginTop: '1px' }}>Buy &amp; sell vault files as Sui objects · paid in SUI</p>
           </div>
         </div>
-        <button onClick={loadListings} disabled={loading}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: loading ? 'default' : 'pointer', fontSize: '12px', fontWeight: 700, flexShrink: 0 }}>
-          <RefreshCw size={14} className={loading ? 'lucide-spin' : ''} /> Refresh
-        </button>
+        <span title="Listings auto-update from the chain"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-3)', fontSize: '12px', fontWeight: 700, flexShrink: 0 }}>
+          {loading
+            ? <><RefreshCw size={13} className="lucide-spin" /> Updating…</>
+            : <><span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#65ca9d', boxShadow: '0 0 0 3px rgba(101,202,157,0.18)' }} /> Live</>}
+        </span>
       </div>
 
       {/* Listings */}
