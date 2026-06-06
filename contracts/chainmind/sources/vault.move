@@ -206,11 +206,9 @@ module chainmind::vault {
         object::delete(id);
     }
 
-    // ── Fractional investing ──────────────────────────────────────────────
-    // A data asset can be offered as fractional SHARES. Investors buy shares
-    // (SUI → creator). Later proceeds (e.g. a resale) are added to the pool via
-    // `distribute`, and each shareholder pulls their pro-rata cut via `claim`
-    // (a dividend accumulator — scales to any number of holders without loops).
+    // Experimental creator-share vaults - parked for later legal review.
+    // Not exposed in the main product flow; ChainMind focuses on direct
+    // encrypted knowledge and AI-skills sales.
 
     public struct ShareVault has key {
         id: UID,

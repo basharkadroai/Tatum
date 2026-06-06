@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
-import { Database, ShoppingCart, MoreHorizontal } from 'lucide-react';
+import { Database, ShoppingCart, MoreHorizontal, LockKeyhole } from 'lucide-react';
 import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import { cleanEnv } from '@/lib/env';
 import type { MarketListing } from '@/types/market';
@@ -24,10 +24,11 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
   const blobUrl = listing.blobId ? `${WALRUS_AGGREGATOR}/v1/blobs/${listing.blobId}` : '';
   const ext = (listing.filename.split('.').pop() || '').toLowerCase();
   const isTextual = (listing.fileType || '').startsWith('text/') || TEXTUAL_EXT.includes(ext);
+  const isLocked = !!listing.encrypted;
   const busy = busyId === listing.listingId;
 
   useEffect(() => {
-    if (isImage || !blobUrl || !isTextual) return;
+    if (isLocked || isImage || !blobUrl || !isTextual) return;
     let cancelled = false;
     (async () => {
       try {
@@ -39,7 +40,7 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
       } catch { /* preview is best-effort */ }
     })();
     return () => { cancelled = true; };
-  }, [blobUrl, isImage, isTextual]);
+  }, [blobUrl, isImage, isLocked, isTextual]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -55,7 +56,17 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
       style={{ border: `1px solid ${hover ? 'var(--border-2)' : 'var(--border)'}`, borderRadius: '16px', background: 'var(--off-white)', padding: '18px', display: 'flex', flexDirection: 'column', gap: '11px', minHeight: '196px', transition: 'border-color 0.15s ease' }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-        <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{listing.filename}</h3>
+        <div style={{ minWidth: 0, display: 'grid', gap: '7px' }}>
+          <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{listing.filename}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: '999px', padding: '3px 8px', background: 'var(--base)' }}>{listing.category || 'Knowledge'}</span>
+            {isLocked && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#65ca9d', border: '1px solid rgba(101,202,157,0.35)', borderRadius: '999px', padding: '3px 8px', background: 'rgba(101,202,157,0.08)' }}>
+                <LockKeyhole size={11} /> Seal locked
+              </span>
+            )}
+          </div>
+        </div>
         {mine && (
           <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
             <button onClick={() => setMenuOpen(o => !o)} aria-label="Options"
@@ -81,7 +92,11 @@ function ListingCard({ listing, mine, busyId, hasWallet, onBuy, onDelist }: {
       </div>
 
       {/* What it's about — public preview from Walrus */}
-      {isImage && blobUrl ? (
+      {isLocked ? (
+        <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-3)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {listing.teaser || 'Seal-encrypted knowledge asset. Buy the vault entry to unlock access with the owner wallet.'}
+        </p>
+      ) : isImage && blobUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={blobUrl} alt={listing.filename} style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: '10px', border: '1px solid var(--border)' }} />
       ) : (
@@ -112,6 +127,16 @@ const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // list/buy/delist live at the upgraded package id (added in the upgrade); types
 // + events keep the original id.
 const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
+
+async function preflightMarket(body: Record<string, unknown>) {
+  const res = await fetch('/api/market/preflight', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Marketplace safety check failed.');
+}
 
 function clearLocalListing(listing: MarketListing) {
   try {
@@ -179,6 +204,12 @@ export function MarketplaceView() {
     setBusyId(listing.listingId);
     setActionMsg('');
     try {
+      await preflightMarket({
+        action: 'market.buy',
+        owner: account.address,
+        listingId: listing.listingId,
+        priceMist: listing.priceMist,
+      });
       const tx = new Transaction();
       const [payment] = tx.splitCoins(tx.gas, [tx.pure.u64(listing.priceMist)]);
       tx.moveCall({ target: `${PACKAGE_LATEST}::vault::buy`, arguments: [tx.object(listing.listingId), payment] });
@@ -197,6 +228,11 @@ export function MarketplaceView() {
     setBusyId(listing.listingId);
     setActionMsg('');
     try {
+      await preflightMarket({
+        action: 'market.delist',
+        owner: account.address,
+        listingId: listing.listingId,
+      });
       const tx = new Transaction();
       tx.moveCall({ target: `${PACKAGE_LATEST}::vault::delist`, arguments: [tx.object(listing.listingId)] });
       await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
@@ -216,9 +252,9 @@ export function MarketplaceView() {
       <div style={{ maxWidth: '1180px', width: '100%', margin: '0 auto', padding: '44px 28px 90px' }}>
         {/* Intro — what this is (no header bar) */}
         <p style={{ margin: 0, color: '#65ca9d', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Marketplace</p>
-        <h1 style={{ margin: '8px 0 0', fontSize: '30px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>Own it. Sell it. Invest in it.</h1>
+        <h1 style={{ margin: '8px 0 0', fontSize: '30px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>Sell encrypted knowledge and AI skills.</h1>
         <p style={{ margin: '12px 0 0', maxWidth: '740px', color: 'var(--text-2)', fontSize: '15.5px', lineHeight: 1.65 }}>
-          A public marketplace for data you own on-chain. Every item is a file stored on <strong style={{ color: 'var(--text-1)' }}>Walrus</strong> and owned as a <strong style={{ color: 'var(--text-1)' }}>Sui</strong> object — anyone can browse; connect a wallet to buy (paid in SUI) or list your own files. Private files stay Seal-encrypted until you own them.
+          A public marketplace for AI prompts, skills, datasets, templates, and knowledge files you own on-chain. Every item is stored on <strong style={{ color: 'var(--text-1)' }}>Walrus</strong> and owned as a <strong style={{ color: 'var(--text-1)' }}>Sui</strong> object. Private files stay Seal-encrypted until the buyer owns the vault entry.
         </p>
 
         {actionMsg && (

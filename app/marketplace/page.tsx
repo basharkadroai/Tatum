@@ -159,13 +159,13 @@ export default function MarketplacePage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap' }}>
           <div>
             <p style={{ margin: 0, color: '#65ca9d', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Marketplace v1</p>
-            <h1 style={{ margin: '8px 0 0', fontSize: '32px', lineHeight: 1.1, fontWeight: 800, letterSpacing: '-0.02em' }}>Tokenized knowledge vault</h1>
+            <h1 style={{ margin: '8px 0 0', fontSize: '32px', lineHeight: 1.1, fontWeight: 800, letterSpacing: '-0.02em' }}>Encrypted knowledge and AI skills marketplace</h1>
             <p style={{ margin: '12px 0 0', maxWidth: '680px', color: 'var(--text-2)', fontSize: '15px', lineHeight: 1.65 }}>
-              Buy and sell wallet-owned ChainMind files as Sui vault entries. The contract foundation is being added first; paid private data becomes meaningful after Seal encryption gates decryption to the current owner.
+              Buy and sell prompts, agent instructions, datasets, templates, and knowledge files as wallet-owned Sui vault entries. Seal encryption is live for private uploads, so access follows ownership after purchase.
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--off-white)', fontSize: '12px', fontWeight: 700 }}>
-            <LockKeyhole size={16} color="#65ca9d" /> Seal-gated access next
+            <LockKeyhole size={16} color="#65ca9d" /> Seal-gated access live
           </div>
         </div>
         {actionMsg && (
@@ -180,7 +180,7 @@ export default function MarketplacePage() {
               <Database size={26} color="var(--text-3)" />
               <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>No active listings yet</h2>
               <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '14px', lineHeight: 1.6, maxWidth: '620px' }}>
-                The page is ready for active on-chain listings from the upgraded vault contract. Next steps are deploying the contract upgrade, adding list/buy wallet actions, and enabling Seal encryption so buyers receive real gated access.
+                Open a file in your vault and choose List for sale. Listings are read from the upgraded on-chain vault contract, and private uploads can be Seal-gated for the buyer.
               </p>
               {error && <p style={{ margin: '4px 0 0', color: 'var(--error)', fontSize: '12px' }}>RPC note: {error}</p>}
             </div>
@@ -190,6 +190,15 @@ export default function MarketplacePage() {
                 <article key={listing.listingId} style={{ border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--off-white)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
                     <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 800, overflowWrap: 'anywhere' }}>{listing.filename}</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', marginTop: '9px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: '999px', padding: '3px 8px', background: 'var(--base)' }}>{listing.category || 'Knowledge'}</span>
+                      {listing.encrypted && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#65ca9d', border: '1px solid rgba(101,202,157,0.35)', borderRadius: '999px', padding: '3px 8px', background: 'rgba(101,202,157,0.08)' }}>
+                          <LockKeyhole size={11} /> Seal locked
+                        </span>
+                      )}
+                    </div>
+                    {listing.teaser && <p style={{ margin: '10px 0 0', color: 'var(--text-2)', fontSize: '12.5px', lineHeight: 1.5 }}>{listing.teaser}</p>}
                     <p style={{ margin: '6px 0 0', color: 'var(--text-3)', fontSize: '12px' }}>{listing.fileType || 'application/octet-stream'} · {formatBytes(listing.sizeBytes)}</p>
                   </div>
                   <div style={{ display: 'grid', gap: '5px', color: 'var(--text-2)', fontSize: '12px' }}>

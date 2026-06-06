@@ -59,6 +59,8 @@ Endpoint: `https://chainmind-seven.vercel.app/mcp` (Streamable HTTP). Connect it
 - 🌐 **Web search** via Tavily, cited in answers.
 - ✍️ **Create → store on-chain** — ask it to write a doc/script; it streams the result and offers a one-click, **context-aware Store on-chain** (Walrus + Sui), storing the precise artifact (just the code block when that's what you made).
 - 🗂️ **On-chain vault** — upload any file; stored on Walrus + owned on Sui, restorable anywhere from your wallet.
+- **Seal-encrypted uploads** - private files are encrypted before Walrus storage; decryption follows on-chain ownership.
+- **Knowledge marketplace** - sell AI prompts, skills, datasets, templates, and knowledge files as wallet-owned Sui vault entries.
 - 💬 **Portable chat history** — per-file conversations persist locally and back up to Walrus + Sui.
 - 🎙️ **Voice input** — hold-to-talk or tap-to-toggle, live waveform (Web Speech API + Groq Whisper fallback).
 - 🔌 **MCP server** — your on-chain vault is exposed to any AI client (Claude Desktop, Cursor…) via a built-in Model Context Protocol server. See [`/mcp-guide`](https://chainmind-seven.vercel.app/mcp-guide).

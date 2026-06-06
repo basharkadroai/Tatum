@@ -80,14 +80,14 @@ export default function DocsPage() {
           <li style={li}><strong style={strong}>Create and store</strong> — generate a document or code, then store the exact artifact on-chain.</li>
           <li style={li}><strong style={strong}>Portable chat history</strong> — conversations persist locally and back up to Walrus and Sui.</li>
           <li style={li}><strong style={strong}>Voice input</strong> — hold to talk or tap to toggle, with a live waveform.</li>
-          <li style={li}><strong style={strong}>Marketplace</strong> — list a vault file for sale, buy with SUI, ownership transfers on-chain.</li>
+          <li style={li}><strong style={strong}>Marketplace</strong> - list encrypted knowledge, prompts, AI skills, templates, or datasets for sale; buy with SUI, ownership transfers on-chain.</li>
           <li style={li}><strong style={strong}>MCP server</strong> — your vault (and the marketplace) usable by any AI client. See the <Link href="/mcp-guide" style={link}>MCP guide</Link>.</li>
         </ul>
       </section>
 
       <section id="marketplace" style={section}>
         <h2 style={h2}>Marketplace</h2>
-        <p style={p}>Because every file is a wallet-owned Sui object, it can be sold. The Move contract adds a simple, trustless market:</p>
+        <p style={p}>Because every file is a wallet-owned Sui object, it can be sold. The product focus is a private knowledge and AI-skills marketplace: prompts, agent instructions, datasets, templates, and other useful files, with Seal encryption for private access.</p>
         <ul>
           <li style={li}><strong style={strong}>List</strong> (<code style={code}>vault::list</code>) — wrap your <code style={code}>VaultEntry</code> in a shared <code style={code}>Listing</code> at a price in SUI.</li>
           <li style={li}><strong style={strong}>Buy</strong> (<code style={code}>vault::buy</code>) — pay the exact price; the entry transfers to you and the SUI goes to the seller, atomically.</li>

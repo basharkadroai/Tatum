@@ -2,6 +2,7 @@
 // Shared by the MCP server so any AI client can browse a wallet's owned files.
 import { tatumRpcUrl, PUBLIC_FULLNODE, WALRUS_AGGREGATOR } from '@/lib/network';
 import { cleanEnv } from '@/lib/env';
+import { listingCategory, listingTeaser } from '@/lib/marketListing';
 
 const RPC = tatumRpcUrl();
 const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
@@ -107,6 +108,10 @@ export type MarketListingOnchain = {
   seller: string;
   priceMist: string;
   priceSui: string;
+  encrypted?: boolean;
+  sealPolicyId?: string;
+  category?: string;
+  teaser?: string;
 };
 
 const MIST_PER_SUI = BigInt(1_000_000_000);
@@ -128,6 +133,19 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
   const events = (await rpc('suix_queryEvents', [
     { MoveEventType: `${PACKAGE_LATEST}::vault::Listed` }, null, Math.min(Math.max(limit, 1), 100), true,
   ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
+  const encrypted = new Map<string, { policyId?: string }>();
+  try {
+    const encryptedEvents = (await rpc('suix_queryEvents', [
+      { MoveEventType: `${PACKAGE_LATEST}::vault::EncryptedBlobRegistered` }, null, 200, true,
+    ])) as { data?: Array<{ parsedJson?: Record<string, unknown> }> };
+    for (const event of encryptedEvents?.data ?? []) {
+      const entryId = event.parsedJson?.entry_id ? String(event.parsedJson.entry_id) : '';
+      if (!entryId) continue;
+      encrypted.set(entryId, {
+        policyId: event.parsedJson?.policy_id ? String(event.parsedJson.policy_id) : undefined,
+      });
+    }
+  } catch { /* encrypted metadata is best effort */ }
 
   const out: MarketListingOnchain[] = [];
   for (const ev of events?.data ?? []) {
@@ -144,13 +162,21 @@ export async function listMarketplace(seller?: string, limit = 50): Promise<Mark
     const s = String(fields.seller ?? p.seller ?? '');
     if (seller && s.toLowerCase() !== seller.toLowerCase()) continue;
     const priceMist = String(fields.price ?? p.price ?? '0');
+    const filename = String(entry?.filename ?? p.filename ?? 'Untitled vault item');
+    const fileType = entry?.file_type ? String(entry.file_type) : undefined;
+    const seal = encrypted.get(entryId);
+    const isEncrypted = !!seal;
     out.push({
       listingId, entryId,
-      filename: String(entry?.filename ?? p.filename ?? 'Untitled vault item'),
-      fileType: entry?.file_type ? String(entry.file_type) : undefined,
+      filename,
+      fileType,
       blobId: entry?.blob_id ? String(entry.blob_id) : undefined,
       sizeBytes: entry?.size_bytes != null ? Number(entry.size_bytes) : undefined,
       seller: s, priceMist, priceSui: mistToSui(priceMist),
+      encrypted: isEncrypted,
+      sealPolicyId: seal?.policyId,
+      category: listingCategory(filename, fileType),
+      teaser: listingTeaser(filename, fileType, isEncrypted),
     });
   }
   return out;
