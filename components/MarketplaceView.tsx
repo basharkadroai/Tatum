@@ -3,7 +3,21 @@
 import { useEffect, useState } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
-import { Database, LockKeyhole, RefreshCw, ShoppingCart } from 'lucide-react';
+import { Database, LockKeyhole, RefreshCw, ShoppingCart, FileText } from 'lucide-react';
+
+// Human-readable "what is it" for a listing, from filename/MIME.
+function kindLabel(filename: string, fileType?: string): string {
+  if (fileType?.startsWith('image/')) return 'Image';
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const map: Record<string, string> = {
+    html: 'Web page', htm: 'Web page', md: 'Markdown doc', markdown: 'Markdown doc',
+    pdf: 'PDF document', txt: 'Text file', json: 'JSON data', csv: 'CSV dataset',
+    docx: 'Word document', xlsx: 'Spreadsheet', js: 'JavaScript', ts: 'TypeScript',
+    tsx: 'TypeScript', py: 'Python script', sol: 'Solidity', move: 'Move module',
+    zip: 'Archive', mp3: 'Audio', mp4: 'Video',
+  };
+  return map[ext] || (fileType || 'File');
+}
 import { SUI_CHAIN_ID } from '@/lib/network';
 import type { MarketListing } from '@/types/market';
 
@@ -119,80 +133,84 @@ export function MarketplaceView() {
     }
   }
 
+  const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 11px', borderRadius: '20px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-2)', fontSize: '11.5px', fontWeight: 700 };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Header bar (matches the file-view header) */}
-      <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexShrink: 0, background: 'rgba(26,25,23,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '11px', minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
-            <ShoppingCart size={16} strokeWidth={2} />
+    // Solid sidebar-colored background (covers the home scene), own scroll.
+    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--sidebar-bg)' }}>
+      <div style={{ maxWidth: '1180px', width: '100%', margin: '0 auto', padding: '44px 28px 90px' }}>
+        {/* Intro — what this is (no header bar) */}
+        <p style={{ margin: 0, color: '#65ca9d', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Marketplace</p>
+        <h1 style={{ margin: '8px 0 0', fontSize: '30px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>Own it. Sell it. Invest in it.</h1>
+        <p style={{ margin: '12px 0 0', maxWidth: '740px', color: 'var(--text-2)', fontSize: '15.5px', lineHeight: 1.65 }}>
+          A public marketplace for data you own on-chain. Every item is a file stored on <strong style={{ color: 'var(--text-1)' }}>Walrus</strong> and owned as a <strong style={{ color: 'var(--text-1)' }}>Sui</strong> object — anyone can browse; connect a wallet to buy (paid in SUI) or list your own files. Private files stay Seal-encrypted until you own them.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
+          <span style={chip} title="Listings update automatically from the chain">
+            {loading
+              ? <><RefreshCw size={12} className="lucide-spin" /> Updating…</>
+              : <><span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#65ca9d', boxShadow: '0 0 0 3px rgba(101,202,157,0.18)' }} /> Live</>}
           </span>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-1)' }}>Marketplace</p>
-            <p style={{ fontSize: '11.5px', color: 'var(--text-3)', marginTop: '1px' }}>Buy &amp; sell vault files as Sui objects · paid in SUI</p>
-          </div>
+          <span style={chip}><LockKeyhole size={13} color="#65ca9d" /> Seal-gated access</span>
         </div>
-        <span title="Listings auto-update from the chain"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-3)', fontSize: '12px', fontWeight: 700, flexShrink: 0 }}>
-          {loading
-            ? <><RefreshCw size={13} className="lucide-spin" /> Updating…</>
-            : <><span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#65ca9d', boxShadow: '0 0 0 3px rgba(101,202,157,0.18)' }} /> Live</>}
-        </span>
-      </div>
 
-      {/* Listings */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px' }}>
-        <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--off-white)', fontSize: '12px', fontWeight: 700, width: 'fit-content' }}>
-            <LockKeyhole size={15} color="#65ca9d" /> Seal-gated access for private files
+        {actionMsg && (
+          <p style={{ margin: '20px 0 0', color: actionMsg.includes('failed') ? 'var(--error)' : 'var(--mint-dark)', fontSize: '13px', lineHeight: 1.5 }}>{actionMsg}</p>
+        )}
+
+        {loading && listings.length === 0 ? (
+          <p style={{ color: 'var(--text-3)', fontSize: '14px', marginTop: '32px' }}>Loading marketplace listings…</p>
+        ) : listings.length === 0 ? (
+          <div style={{ marginTop: '36px', border: '1px solid var(--border)', borderRadius: '14px', background: 'var(--off-white)', padding: '36px', display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+            <Database size={26} color="var(--text-3)" />
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text-1)' }}>No items for sale yet</h2>
+            <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '14px', lineHeight: 1.6, maxWidth: '620px' }}>
+              Open a file in your vault and choose <strong style={{ color: 'var(--text-1)' }}>List for sale</strong> to put it here. Listings are read live from the on-chain <code>Listed</code> events via Tatum.
+            </p>
+            {error && <p style={{ margin: '4px 0 0', color: 'var(--error)', fontSize: '12px' }}>RPC note: {error}</p>}
           </div>
-          {actionMsg && (
-            <p style={{ margin: '16px 0 0', color: actionMsg.includes('failed') ? 'var(--error)' : 'var(--mint-dark)', fontSize: '13px', lineHeight: 1.5 }}>{actionMsg}</p>
-          )}
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px', marginTop: '30px' }}>
+            {listings.map(listing => {
+              const mine = isSeller(listing);
+              const busy = busyId === listing.listingId;
+              return (
+                <article key={listing.listingId} style={{ border: '1px solid var(--border)', borderRadius: '14px', background: 'var(--off-white)', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '188px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '10px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
+                      <FileText size={18} strokeWidth={2} />
+                    </span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h3 title={listing.filename} style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listing.filename}</h3>
+                      <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: '12px' }}>{kindLabel(listing.filename, listing.fileType)} · {formatBytes(listing.sizeBytes)}</p>
+                    </div>
+                    {mine && <span style={{ ...chip, padding: '3px 9px', fontSize: '10.5px', color: 'var(--mint-dark)' }}>Yours</span>}
+                  </div>
 
-          {loading ? (
-            <p style={{ color: 'var(--text-3)', fontSize: '14px', marginTop: '24px' }}>Loading marketplace listings…</p>
-          ) : listings.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start', paddingTop: '28px' }}>
-              <Database size={26} color="var(--text-3)" />
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>No active listings yet</h2>
-              <p style={{ margin: 0, color: 'var(--text-2)', fontSize: '14px', lineHeight: 1.6, maxWidth: '620px' }}>
-                Open a file in your vault and choose <strong style={{ color: 'var(--text-1)' }}>List for sale</strong> to put it here. Listings are read live from the on-chain <code>Listed</code> events via Tatum.
-              </p>
-              {error && <p style={{ margin: '4px 0 0', color: 'var(--error)', fontSize: '12px' }}>RPC note: {error}</p>}
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', paddingTop: '20px' }}>
-              {listings.map(listing => (
-                <article key={listing.listingId} style={{ border: '1px solid var(--border)', borderRadius: '10px', background: 'var(--off-white)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div>
-                    <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 800, overflowWrap: 'anywhere' }}>{listing.filename}</h2>
-                    <p style={{ margin: '6px 0 0', color: 'var(--text-3)', fontSize: '12px' }}>{listing.fileType || 'application/octet-stream'} · {formatBytes(listing.sizeBytes)}</p>
-                  </div>
-                  <div style={{ display: 'grid', gap: '5px', color: 'var(--text-2)', fontSize: '12px' }}>
-                    <span>Seller: {short(listing.seller)}</span>
-                    <span>Listing: {short(listing.listingId)}</span>
-                    {listing.blobId && <span>Blob: {listing.blobId.slice(0, 14)}…</span>}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: 'auto' }}>
-                    <strong style={{ fontSize: '18px' }}>{listing.priceSui} SUI</strong>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-3)' }}>Seller {short(listing.seller)} · owned on Sui, stored on Walrus</p>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', marginTop: 'auto' }}>
+                    <div>
+                      <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)' }}>Price</div>
+                      <strong style={{ fontSize: '20px', color: 'var(--text-1)' }}>{listing.priceSui} <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>SUI</span></strong>
+                    </div>
                     {!account?.address ? (
-                      <button disabled style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12px', fontWeight: 800, opacity: 0.55 }}>Connect wallet</button>
-                    ) : isSeller(listing) ? (
-                      <button onClick={() => delistListing(listing)} disabled={busyId === listing.listingId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: '12px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId === listing.listingId ? 0.6 : 1 }}>
-                        {busyId === listing.listingId ? 'Cancelling…' : 'Delist'}
+                      <button disabled style={{ padding: '9px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12.5px', fontWeight: 800, opacity: 0.55 }}>Connect wallet</button>
+                    ) : mine ? (
+                      <button onClick={() => delistListing(listing)} disabled={busy} style={{ padding: '9px 14px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: '12.5px', fontWeight: 800, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+                        {busy ? 'Cancelling…' : 'Delist'}
                       </button>
                     ) : (
-                      <button onClick={() => buyListing(listing)} disabled={!!busyId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId ? 0.6 : 1 }}>
-                        <ShoppingCart size={14} /> {busyId === listing.listingId ? 'Buying…' : 'Buy'}
+                      <button onClick={() => buyListing(listing)} disabled={!!busyId} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', fontSize: '12.5px', fontWeight: 800, cursor: busyId ? 'default' : 'pointer', opacity: busyId ? 0.6 : 1 }}>
+                        <ShoppingCart size={14} /> {busy ? 'Buying…' : 'Buy'}
                       </button>
                     )}
                   </div>
                 </article>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
