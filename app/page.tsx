@@ -13,6 +13,7 @@ import { FileListItem } from '@/components/FileListItem';
 import { HomeBackground } from '@/components/HomeBackground';
 import { MarketplaceView } from '@/components/MarketplaceView';
 import { ContentCoinsView } from '@/components/ContentCoinsView';
+import { remember, recallText, restoreFromWalrus, looksMemorable } from '@/lib/walrusMemory';
 import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { cleanEnv, envFlag } from '@/lib/env';
@@ -180,6 +181,9 @@ export default function Home() {
 
   useEffect(() => { setVault(loadVault()); setLoaded(true); setAiConfig(loadAiConfig()); }, []);
   // Refresh the sidebar when the vault changes elsewhere (e.g. a marketplace
+  // Restore this wallet's Walrus-backed agent memory (portable across devices).
+  useEffect(() => { if (account?.address) void restoreFromWalrus(account.address); }, [account?.address]);
+
   // purchase writes the bought item to localStorage and fires this event).
   useEffect(() => {
     const onVaultUpdated = () => setVault(loadVault());
@@ -575,6 +579,14 @@ export default function Home() {
   const filtered = vault;
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
   const memoryContext = selectMemoryContext(vault);
+  // Walrus-backed agent memory: remember durable things the user says, and
+  // recall the most relevant ones into the agent's memory context per question.
+  const buildAgentMemory = (question: string) => {
+    const addr = account?.address;
+    if (addr && looksMemorable(question)) void remember(addr, question);
+    const recalled = addr ? recallText(addr, question) : '';
+    return [memoryContext, recalled && `What you remember about this user (stored on Walrus):\n${recalled}`].filter(Boolean).join('\n\n');
+  };
   const sidebarExpanded = isMobile || sidebarOpen;
   const hasVault = vault.length > 0;
   const sidebarEase = 'cubic-bezier(0.32, 0.72, 0, 1)';
@@ -806,7 +818,7 @@ export default function Home() {
                   greetingIcon="/logo.png"
                   endpoint="/api/ask-vault"
                   agent
-                  buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), owner: account?.address, memory: memoryContext, question, history })}
+                  buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), owner: account?.address, memory: buildAgentMemory(question), question, history })}
                   suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
                   aiLabel="ChainMind"
@@ -1030,7 +1042,7 @@ export default function Home() {
                     docs: [agentDoc(selected)],
                     currentFile: agentDoc(selected),
                     owner: account?.address,
-                    memory: memoryContext,
+                    memory: buildAgentMemory(question),
                     question,
                     history,
                   })}
