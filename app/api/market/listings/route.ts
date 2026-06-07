@@ -12,6 +12,7 @@ const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) ||
 // Listed events carry the id of the package VERSION that emitted them, so query
 // the current + prior marketplace versions and merge (listings survive upgrades).
 const PRIOR_MARKET_PKGS = [
+  '0x1cda0706986565fe10bcee1e0e8e76063e4d2c3c62775227f72e75fff4c8aebd', // v5
   '0x0ce4fdc1d2c0d9b90301e65b8cb3651dd65b7935644a2aecc5a79138659c026d',
   '0x370bd880fdd2dcb8d07613087a41bb88caa393db33d5b48834dcf798cfb9ecdc',
   '0xfcfed53bef2f64ed3a5550e1f1c75cdfab0f4a12a8517e8aca44562454311af9',
@@ -142,6 +143,18 @@ async function listingMetadata() {
   return metadata;
 }
 
+// A LicenseOffer (sell-many) holds the file metadata directly — the seller keeps
+// the original VaultEntry, so there's no Listing object to read.
+async function readLicenseOffer(offerId: string) {
+  try {
+    const obj = await rpc<{ data?: { content?: { fields?: {
+      blob_id?: string; filename?: string; file_type?: string; size_bytes?: string | number;
+      price?: string | number; seller?: string; copies_sold?: string | number;
+    } } } }>('sui_getObject', [offerId, { showContent: true }]);
+    return obj?.data?.content?.fields ?? null;
+  } catch { return null; }
+}
+
 export async function GET(req: NextRequest) {
   if (!PACKAGE_ID) return NextResponse.json({ listings: [] });
   try {
@@ -197,6 +210,41 @@ export async function GET(req: NextRequest) {
         sealPolicyId: seal?.policyId,
         category: meta?.category || listingCategory(filename, fileType),
         teaser: meta?.teaser || meta?.description || listingTeaser(filename, fileType, isEncrypted),
+      });
+    }
+
+    // License offers (sell-many): seller keeps the original; each buy mints a copy.
+    const licenseEvents: Ev[] = [];
+    for (const pkg of MARKET_PKGS) {
+      try { licenseEvents.push(...await queryEvents<Ev>(`${pkg}::vault::LicenseListed`, 200)); } catch { /* pkg predates licenses */ }
+    }
+    for (const event of licenseEvents) {
+      const p = event.parsedJson ?? {};
+      const offerId = String(p.offer_id ?? '');
+      if (!offerId || seen.has(offerId)) continue;
+      seen.add(offerId);
+      const f = await readLicenseOffer(offerId);
+      if (!f) continue; // closed / unavailable
+      const offerSeller = String(f.seller ?? p.seller ?? '');
+      if (seller && offerSeller.toLowerCase() !== seller) continue;
+      const priceMist = String(f.price ?? p.price ?? '0');
+      const filename = String(f.filename ?? p.filename ?? 'Untitled');
+      const fileType = f.file_type ? String(f.file_type) : (p.file_type ? String(p.file_type) : undefined);
+      listings.push({
+        listingId: offerId,
+        entryId: '',
+        filename,
+        fileType,
+        blobId: f.blob_id ? String(f.blob_id) : (p.blob_id ? String(p.blob_id) : undefined),
+        sizeBytes: f.size_bytes != null ? Number(f.size_bytes) : undefined,
+        seller: offerSeller,
+        priceMist,
+        priceSui: mistToSui(priceMist),
+        createdTx: event.id?.txDigest,
+        saleType: 'license',
+        copiesSold: f.copies_sold != null ? Number(f.copies_sold) : 0,
+        category: listingCategory(filename, fileType),
+        teaser: listingTeaser(filename, fileType, false),
       });
     }
 
