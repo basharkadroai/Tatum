@@ -324,4 +324,65 @@ module chainmind::vault {
         transfer::public_transfer(payout, ctx.sender());
         event::emit(Claimed { vault_id, holder: ctx.sender(), amount: accrued });
     }
+
+    // ── License sales (sell-many) ────────────────────────────────────────────
+    // The creator KEEPS their VaultEntry and sells unlimited COPIES. Each buy
+    // mints a fresh VaultEntry (same Walrus blob) to the buyer and pays the
+    // seller; the offer stays open. (NFT `list`/`buy` above = unique, sells once.)
+    public struct LicenseOffer has key {
+        id: UID,
+        blob_id: String,
+        filename: String,
+        file_type: String,
+        size_bytes: u64,
+        price: u64,
+        seller: address,
+        copies_sold: u64,
+    }
+
+    public struct LicenseListed has copy, drop { offer_id: ID, blob_id: String, filename: String, file_type: String, size_bytes: u64, price: u64, seller: address }
+    public struct LicenseSold has copy, drop { offer_id: ID, buyer: address, price: u64, copies_sold: u64 }
+    public struct LicenseClosed has copy, drop { offer_id: ID, seller: address }
+
+    /// Open a license sale for a file (the seller keeps their own copy).
+    public entry fun open_license_sale(blob_id: String, filename: String, file_type: String, size_bytes: u64, price: u64, ctx: &mut TxContext) {
+        assert!(price > 0, EBadPrice);
+        let offer = LicenseOffer {
+            id: object::new(ctx),
+            blob_id, filename, file_type, size_bytes, price,
+            seller: ctx.sender(),
+            copies_sold: 0,
+        };
+        let offer_id = object::id(&offer);
+        event::emit(LicenseListed { offer_id, blob_id: offer.blob_id, filename: offer.filename, file_type: offer.file_type, size_bytes: offer.size_bytes, price, seller: offer.seller });
+        transfer::share_object(offer);
+    }
+
+    /// Buy a license: mint a fresh VaultEntry copy to the buyer + pay the seller.
+    /// The offer stays open so it keeps selling.
+    public entry fun buy_license(offer: &mut LicenseOffer, payment: Coin<SUI>, ctx: &mut TxContext) {
+        assert!(coin::value(&payment) == offer.price, EWrongPrice);
+        let buyer = ctx.sender();
+        let new_entry = VaultEntry {
+            id: object::new(ctx),
+            blob_id: offer.blob_id,
+            filename: offer.filename,
+            file_type: offer.file_type,
+            size_bytes: offer.size_bytes,
+            owner: buyer,
+        };
+        transfer::public_transfer(new_entry, buyer);
+        transfer::public_transfer(payment, offer.seller);
+        offer.copies_sold = offer.copies_sold + 1;
+        event::emit(LicenseSold { offer_id: object::id(offer), buyer, price: offer.price, copies_sold: offer.copies_sold });
+    }
+
+    /// Close a license sale (seller only).
+    public entry fun close_license_sale(offer: LicenseOffer, ctx: &mut TxContext) {
+        let LicenseOffer { id, blob_id: _, filename: _, file_type: _, size_bytes: _, price: _, seller, copies_sold: _ } = offer;
+        assert!(seller == ctx.sender(), ENotSeller);
+        let offer_id = object::uid_to_inner(&id);
+        event::emit(LicenseClosed { offer_id, seller });
+        object::delete(id);
+    }
 }
