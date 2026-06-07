@@ -156,6 +156,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [vaultListScrolled, setVaultListScrolled] = useState(false); // show a divider under the nav once the file list scrolls
   const [loaded, setLoaded] = useState(false);
   const [homeEmpty, setHomeEmpty] = useState(true);
   const [restoreOpen, setRestoreOpen] = useState(false);
@@ -693,7 +694,7 @@ export default function Home() {
         <div className="sidebar-middle" data-expanded={sidebarExpanded ? 'true' : 'false'}>
           {/* New chat — clears the main conversation and returns home */}
           <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
-            <div style={{ padding: '4px 14px 6px' }}>
+            <div style={{ padding: '4px 14px 6px', borderBottom: vaultListScrolled ? '1px solid var(--border)' : '1px solid transparent', transition: 'border-color 0.16s ease' }}>
               <button onClick={newChat} title="Start a new chat"
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-1)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; }}
@@ -720,6 +721,7 @@ export default function Home() {
 
           {/* File list section with sticky header */}
           <div
+            onScroll={e => setVaultListScrolled(e.currentTarget.scrollTop > 2)}
             style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 0', display: 'flex', flexDirection: 'column' }}
           >
             {/* Vault section title — a quiet label that sits with the file list (Claude "Recents" style) */}
