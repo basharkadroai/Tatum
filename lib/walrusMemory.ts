@@ -22,11 +22,24 @@ function tokenize(s: string): string[] {
 function tokenMatch(a: string, b: string): boolean {
   return a === b || (a.length >= 4 && b.length >= 4 && (a.startsWith(b.slice(0, 4)) || b.startsWith(a.slice(0, 4))));
 }
-function score(q: string[], docTokens: string[]): number {
-  if (!docTokens.length) return 0;
-  let hits = 0;
-  for (const w of q) if (docTokens.some(x => tokenMatch(w, x))) hits++;
-  return hits / Math.sqrt(docTokens.length);
+// BM25 relevance over the memory set: rewards rare query terms (IDF) and
+// saturates repeated hits — far better ranking than raw overlap, no API needed.
+function bm25Scores(queryTokens: string[], docs: string[][]): number[] {
+  const N = docs.length || 1;
+  const avgdl = docs.reduce((s, d) => s + d.length, 0) / N || 1;
+  const k1 = 1.5, b = 0.75;
+  const df: Record<string, number> = {};
+  for (const t of queryTokens) df[t] = docs.reduce((n, d) => n + (d.some(x => tokenMatch(t, x)) ? 1 : 0), 0);
+  return docs.map(d => {
+    let s = 0;
+    for (const t of queryTokens) {
+      const f = d.filter(x => tokenMatch(t, x)).length;
+      if (!f) continue;
+      const idf = Math.log(1 + (N - df[t] + 0.5) / (df[t] + 0.5));
+      s += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * (d.length / avgdl)));
+    }
+    return s;
+  });
 }
 
 export function loadMemories(addr?: string): MemoryItem[] {
@@ -71,9 +84,10 @@ export function recall(addr: string, query: string, k = 5): MemoryItem[] {
   const items = loadMemories(addr);
   if (!items.length) return [];
   if (!query.trim()) return items.slice(0, k);
-  const q = tokenize(query);
-  const scored = items.map(m => ({ m, s: score(q, tokenize(m.text)) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s);
-  return (scored.length ? scored.map(x => x.m) : items).slice(0, k);
+  const q = Array.from(new Set(tokenize(query)));
+  const scores = bm25Scores(q, items.map(m => tokenize(m.text)));
+  const ranked = items.map((m, i) => ({ m, s: scores[i] })).filter(x => x.s > 0).sort((a, b) => b.s - a.s);
+  return (ranked.length ? ranked.map(x => x.m) : items).slice(0, k);
 }
 
 export function recallText(addr: string, query: string, k = 5): string {

@@ -63,11 +63,11 @@ function splitChunks(text: string, size = 1100): Chunk[] {
   return chunks;
 }
 
-function scoreChunk(chunk: Chunk, terms: string[]) {
+function scoreChunk(chunk: Chunk, terms: string[], idf?: Record<string, number>) {
   const body = chunk.text.toLowerCase();
   let score = 0;
   for (const term of terms) {
-    score += Math.min(countTerm(body, term), 8);
+    score += Math.min(countTerm(body, term), 8) * (idf?.[term] ?? 1);
   }
   return score / Math.max(1, chunk.text.length / 900);
 }
@@ -89,6 +89,16 @@ export function selectVaultDocs(vault: VaultItem[], question: string, k = 5): Re
   const terms = termsFor(question);
   const totalBudget = 16000;
 
+  // IDF: weight rarer query terms higher — a term in few files is far more
+  // discriminating than one in every file (lexical stand-in for semantics).
+  const N = Math.max(1, vault.length);
+  const idf: Record<string, number> = {};
+  for (const t of terms) {
+    const df = vault.reduce((n, v) => n + (`${v.filename} ${v.summary || ''} ${(v.tags || []).join(' ')} ${v.content || ''}`.toLowerCase().includes(t) ? 1 : 0), 0);
+    idf[t] = Math.log(1 + N / (df + 0.5));
+  }
+  const w = (t: string) => idf[t] ?? 1;
+
   const score = (v: VaultItem): ScoredVaultItem => {
     const fn = v.filename.toLowerCase();
     const sum = (v.summary || '').toLowerCase();
@@ -96,13 +106,13 @@ export function selectVaultDocs(vault: VaultItem[], question: string, k = 5): Re
     const body = (v.content || '').toLowerCase();
     let fileScore = 0;
     for (const t of terms) {
-      if (fn.includes(t)) fileScore += 8;
-      if (tags.includes(t)) fileScore += 6;
-      fileScore += countTerm(sum, t) * 4;
-      fileScore += Math.min(countTerm(body, t), 12);
+      if (fn.includes(t)) fileScore += 8 * w(t);
+      if (tags.includes(t)) fileScore += 6 * w(t);
+      fileScore += countTerm(sum, t) * 4 * w(t);
+      fileScore += Math.min(countTerm(body, t), 12) * w(t);
     }
     const chunks = splitChunks(v.content || '')
-      .map(chunk => ({ ...chunk, score: scoreChunk(chunk, terms) }))
+      .map(chunk => ({ ...chunk, score: scoreChunk(chunk, terms, idf) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 3)
       .filter(c => c.score > 0 || fileScore > 0)
