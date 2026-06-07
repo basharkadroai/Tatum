@@ -726,9 +726,6 @@ export default function Home() {
               <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--mint-dark)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <Database size={12} strokeWidth={2} /> {formatBytes(totalBytes)} on decentralized Walrus storage
-              </div>
             </div>
             </div>
           )}
