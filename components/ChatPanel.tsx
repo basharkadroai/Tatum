@@ -4,7 +4,7 @@ import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic, Datab
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
-import { AgentRunInspector, type AgentRunEvent } from './AgentRunInspector';
+import type { AgentRunEvent } from './AgentRunInspector';
 import { ModelMenu } from './ModelMenu';
 import AgentMascot from './AgentMascot';
 import { useDictation, Waveform } from './dictation';
@@ -653,7 +653,6 @@ export function ChatPanel({
                   whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
                   {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} />}
-                  {m.role === 'ai' && (m.agentEvents?.length || m.trace) && <AgentRunInspector events={m.agentEvents} trace={m.trace} />}
                   {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} onCitation={onCitation} /> : null) : m.text}
                   {m.role === 'ai' && streaming && i === messages.length - 1 && !(m.steps && m.steps.length) && (
                     <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
