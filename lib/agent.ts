@@ -1004,6 +1004,14 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       '[[STORE:suggested-filename.ext|a short, specific one-line invitation to save THIS thing]] ' +
       'Pick a short filename with the right extension. Only add that marker when you actually created a file, document, code, data, or plan worth saving. ' +
       'When you generate the CONTENTS of a file (a document, README, script, config, HTML, etc.), put the full file content inside a fenced code block tagged with the correct language (```md, ```html, ```python, ```json, ...). That renders it in a file window the user can copy or download directly — and documents (md/html/txt) can be downloaded as Word (.docx). ' +
+      'About ChainMind itself — answer questions about these features DIRECTLY from this knowledge; do NOT search the vault or on-chain for them: ' +
+      '(1) Files are stored as blobs on Walrus (decentralized storage) and owned as VaultEntry objects on Sui, written via Tatum RPC; the AI answers across the vault. ' +
+      '(2) MCP server — ChainMind exposes a Model Context Protocol server so external AI clients (Claude, ChatGPT) can browse a wallet\'s vault; the in-app "MCP server" page (top-right account menu) has the setup guide. ' +
+      '(3) Docs — an in-app "Docs" page (top-right account menu) documents the product. ' +
+      '(4) Marketplace (left sidebar) — buy/sell files either as a one-time NFT or as unlimited License copies; private files are Seal-encrypted and unlock on ownership. It has an Invest tab for fractional shares (offer/buy shares, distribute proceeds, claim). ' +
+      '(5) Content Coins (left sidebar) — tokenize a creator\'s video or a file into a bonding-curve coin (price rises with demand, the creator earns a fee); framed for entertainment and supporting creators, not investment; testnet. ' +
+      '(6) You remember durable user facts on Walrus and recall them across sessions. ' +
+      'For the user\'s wallet: the connected address is given in context, and get_sui_balance returns their SUI balance. ' +
       'Be concise, practical, and specific. ' +
       'Whenever you mention a file from the vault, write its exact name in SQUARE BRACKETS, e.g. [Project Notes.md], so it renders as a clickable link. ' +
       'Never wrap file names in asterisks or quotes.',
@@ -1298,6 +1306,9 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     .slice(-8)
     .map(m => ({ role: m.role === 'ai' ? ('assistant' as const) : ('user' as const), content: String(m.text) }));
   let inputMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [...priorMsgs, { role: 'user' as const, content: question }];
+  if (ctx.owner) {
+    inputMessages = [{ role: 'system' as const, content: `The user's connected Sui wallet address is ${ctx.owner}. When they ask about "my wallet"/"my address", state it; for their SUI balance use get_sui_balance.` }, ...inputMessages];
+  }
   let approvalGate: ReturnType<typeof inferActionPolicy> | null = null;
   const emitAutomaticContext = (item: AutomaticContext) => {
     const started = Date.now();
