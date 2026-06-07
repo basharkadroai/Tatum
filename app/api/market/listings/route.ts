@@ -25,16 +25,21 @@ type SuiPage<T> = { data?: T[]; nextCursor?: unknown; hasNextPage?: boolean };
 
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
-  for (const url of [RPC, PUBLIC_FULLNODE]) {
-    try {
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      if (!res.ok) continue;
-      const data = (await res.json()) as RpcResult<T>;
-      if (data.error) continue;
-      if (data.result != null) return data.result;
-    } catch {
-      // try next upstream
+  const urls = Array.from(new Set([RPC, PUBLIC_FULLNODE]));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const url of urls) {
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 12000);
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: ctl.signal });
+        clearTimeout(timer);
+        if (!res.ok) continue;
+        const data = (await res.json()) as RpcResult<T>;
+        if (data.error) continue;
+        if (data.result != null) return data.result;
+      } catch { /* try next upstream */ }
     }
+    if (attempt === 0) await new Promise(r => setTimeout(r, 600));
   }
   throw new Error('Sui RPC unavailable');
 }

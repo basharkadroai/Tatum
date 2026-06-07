@@ -601,15 +601,21 @@ async function runAutomaticReadTools(question: string, ctx: AgentContext): Promi
       add('get_sui_balance', 'Checking your SUI balance via Tatum', 'Balance lookup is temporarily unavailable — ask the user to retry in a moment.');
     }
   }
+  // Each on-chain/marketplace read is isolated: one failing read must not abort
+  // the whole batch or surface a scary "tool check hit an issue" step.
   if (owner && /\b(on-chain|onchain|chain|restore|wallet|vaultentry|owned on sui|sui object|walrus proof)\b/.test(q)) {
-    add('list_onchain_vault', 'Reading your on-chain vault through Tatum', await listOnchainVaultReport(owner));
+    try { add('list_onchain_vault', 'Reading your on-chain vault through Tatum', await listOnchainVaultReport(owner)); }
+    catch { add('list_onchain_vault', 'Reading your on-chain vault through Tatum', 'On-chain vault read is temporarily unavailable — retry shortly.'); }
   }
   if (owner && /\b(on-chain|onchain|chain|vaultentry|owned on sui|sui object|walrus proof)\b/.test(q) && /\b(search|find|where|mentions|keyword)\b/.test(q)) {
-    add('search_onchain_vault', `Searching Sui + Walrus for "${compactQuestionQuery(question)}"`, await searchOnchainVaultReport(compactQuestionQuery(question), owner));
+    try { add('search_onchain_vault', `Searching Sui + Walrus for "${compactQuestionQuery(question)}"`, await searchOnchainVaultReport(compactQuestionQuery(question), owner)); }
+    catch { add('search_onchain_vault', `Searching Sui + Walrus for "${compactQuestionQuery(question)}"`, 'On-chain + Walrus search is temporarily unavailable — retry shortly.'); }
   }
   if (/\b(marketplace|for sale|listings|listed items|buyable)\b/.test(q) && !/\b(list|sell|buy|purchase|delist)\s+[\w.-]/.test(q)) {
-    const listings = await listMarketplace(undefined, 20);
-    add('list_marketplace', 'Reading marketplace listings', JSON.stringify(listings, null, 2));
+    try {
+      const listings = await listMarketplace(undefined, 20);
+      add('list_marketplace', 'Reading marketplace listings', JSON.stringify(listings, null, 2));
+    } catch { add('list_marketplace', 'Reading marketplace listings', 'Marketplace read is temporarily unavailable — retry shortly.'); }
   }
 
   return out.slice(0, 5);
@@ -1356,8 +1362,10 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
   }
   try {
     for (const item of await runAutomaticReadTools(question, ctx)) emitAutomaticContext(item);
-  } catch (err) {
-    emitAutomaticContext({ tool: 'automatic_tool_error', label: 'Automatic tool check hit an issue', content: String(err).slice(0, 500) });
+  } catch {
+    // Per-tool failures are already handled inside runAutomaticReadTools; if the
+    // whole batch still fails, proceed without auto-context rather than surfacing
+    // a scary "tool check hit an issue" step to the user.
   }
   if (automaticContexts.length) {
     inputMessages = [
