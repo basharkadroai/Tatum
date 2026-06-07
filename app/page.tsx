@@ -156,7 +156,6 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [vaultListScrolled, setVaultListScrolled] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [homeEmpty, setHomeEmpty] = useState(true);
   const [restoreOpen, setRestoreOpen] = useState(false);
@@ -721,24 +720,12 @@ export default function Home() {
 
           {/* File list section with sticky header */}
           <div
-            onScroll={e => setVaultListScrolled(e.currentTarget.scrollTop > 2)}
-            style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 0', marginTop: '10px', display: 'flex', flexDirection: 'column' }}
+            style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 0', display: 'flex', flexDirection: 'column' }}
           >
-            {/* Vault section header - sticky at top of scrollable area */}
+            {/* Vault section title — a quiet label that sits with the file list (Claude "Recents" style) */}
             {hasVault && (
-              <div 
-                className="sidebar-expanded-panel" 
-                data-expanded={sidebarExpanded ? 'true' : 'false'}
-                style={{ 
-                  position: 'sticky', 
-                  top: 0, 
-                  zIndex: 1, 
-                  background: 'var(--sidebar-bg)',
-                  borderBottom: vaultListScrolled ? '1px solid var(--border)' : '1px solid transparent',
-                  transition: 'border-color 0.16s ease'
-                }}
-              >
-                <div style={{ padding: '12px 16px 9px' }}>
+              <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
+                <div style={{ padding: '10px 16px 6px' }}>
                   <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.02em' }}>
                     Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
                   </div>
