@@ -722,7 +722,7 @@ export default function Home() {
           {/* File list section with sticky header */}
           <div
             onScroll={e => setVaultListScrolled(e.currentTarget.scrollTop > 2)}
-            style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 0', display: 'flex', flexDirection: 'column' }}
+            style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 0', marginTop: '10px', display: 'flex', flexDirection: 'column' }}
           >
             {/* Vault section header - sticky at top of scrollable area */}
             {hasVault && (
@@ -739,7 +739,7 @@ export default function Home() {
                 }}
               >
                 <div style={{ padding: '12px 16px 9px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.02em' }}>
                     Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
                   </div>
                 </div>
