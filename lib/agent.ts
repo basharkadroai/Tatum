@@ -1028,6 +1028,7 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
       '(5) Content Coins (left sidebar) — tokenize a creator\'s video or a file into a bonding-curve coin (price rises with demand, the creator earns a fee); framed for entertainment and supporting creators, not investment; testnet. ' +
       '(6) You remember durable user facts on Walrus and recall them across sessions. ' +
       'For the user\'s wallet: the connected address is given in context, and get_sui_balance returns their SUI balance. ' +
+      'When the user explicitly asks you to LIST one of their own vault files for sale, or to LAUNCH a content coin for a file, confirm the exact filename (and, for a listing, the price in SUI) in your answer, then on the VERY LAST line add exactly one marker: "[[ACTION:list|<exact filename>|<price in SUI>]]" to list it for sale, or "[[ACTION:coin|<exact filename>]]" to launch a content coin. That shows a one-click confirm button the user\'s wallet runs. Only add it when they clearly asked for that action on a file you can identify — never speculatively, and never for buying or spending. ' +
       'Be concise, practical, and specific. ' +
       'Whenever you mention a file from the vault, write its exact name in SQUARE BRACKETS, e.g. [Project Notes.md], so it renders as a clickable link. ' +
       'Never wrap file names in asterisks or quotes.',
@@ -1051,7 +1052,8 @@ export type AgentEvent =
   | { type: 'answer'; text: string }
   | { type: 'error'; message: string }
   | { type: 'trace'; summary: AgentTraceSummary }
-  | { type: 'offer'; kind: 'store'; filename: string; question: string; content: string; message?: string };
+  | { type: 'offer'; kind: 'store'; filename: string; question: string; content: string; message?: string }
+  | { type: 'offer'; kind: 'action'; action: 'list' | 'coin'; filename: string; price?: string; message?: string };
 
 function stepLabel(toolName: string, args: Record<string, unknown>): string {
   const q = String(args.query ?? args.input ?? '');
@@ -1086,6 +1088,14 @@ function parseStoreMarker(answer: string): { filename: string | null; message?: 
   const m = answer.match(/\[\[STORE:\s*([^\]|]+?)\s*(?:\|\s*([^\]]*?))?\s*\]\]\s*$/i);
   if (!m) return { filename: null, text: answer };
   return { filename: m[1].trim(), message: m[2]?.trim() || undefined, text: answer.slice(0, m.index).trimEnd() };
+}
+
+// [[ACTION:list|<filename>|<priceSui>]]  or  [[ACTION:coin|<filename>]] — the agent
+// proposes an on-chain action; the client confirms + the wallet executes it.
+function parseActionMarker(answer: string): { action: 'list' | 'coin'; filename: string; price?: string; text: string } | null {
+  const m = answer.match(/\[\[ACTION:\s*(list|coin)\s*\|\s*([^\]|]+?)\s*(?:\|\s*([^\]]*?))?\s*\]\]\s*$/i);
+  if (!m) return null;
+  return { action: m[1].toLowerCase() as 'list' | 'coin', filename: m[2].trim(), price: m[3]?.trim() || undefined, text: answer.slice(0, m.index).trimEnd() };
 }
 
 function normalizeCitationLabel(label: string) {
@@ -1493,7 +1503,8 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
             const piece = typeof chunk?.content === 'string' ? chunk.content : '';
             if (!isTool && piece && !markerHit) {
               streamAcc += piece;
-              const markerIndex = streamAcc.indexOf('[[STORE');
+              const candidates = [streamAcc.indexOf('[[STORE'), streamAcc.indexOf('[[ACTION')].filter(i => i >= 0);
+              const markerIndex = candidates.length ? Math.min(...candidates) : -1;
               const safeEnd = markerIndex >= 0 ? markerIndex : Math.max(emitted, streamAcc.length - 24);
               if (markerIndex >= 0) markerHit = true;
               if (safeEnd > emitted) {
@@ -1514,7 +1525,28 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
             durationMs: Date.now() - pending.started,
           });
         }
-        const parsed = parseStoreMarker(restoreExactVaultCitations(finalText, ctx.docs ?? [], ctx.currentFile));
+        const restored = restoreExactVaultCitations(finalText, ctx.docs ?? [], ctx.currentFile);
+        // Action proposal (list / launch coin) — emit a confirm offer the wallet executes.
+        const action = parseActionMarker(restored);
+        if (action && action.text.trim()) {
+          trace.answer(action.text.length, true);
+          queue.push({ type: 'answer', text: action.text });
+          queue.push({
+            type: 'offer',
+            kind: 'action',
+            action: action.action,
+            filename: action.filename,
+            price: action.price,
+            message: action.action === 'list'
+              ? `List "${action.filename}" for sale${action.price ? ` at ${action.price} SUI` : ''}`
+              : `Launch a content coin for "${action.filename}"`,
+          });
+          trace.finish();
+          queue.push({ type: 'trace', summary: trace.summary() });
+          queue.close();
+          return;
+        }
+        const parsed = parseStoreMarker(restored);
         if (!parsed.text.trim()) {
           const fallback = synthesizeAutomaticAnswer(question, automaticContexts, ctx);
           if (fallback) {

@@ -30,6 +30,7 @@ const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // package id; `register` + all TYPE filters stay on the original id (type identity
 // is preserved across upgrades). Falls back to the original id if unset.
 const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
+const CONTENTCOIN = cleanEnv(process.env.NEXT_PUBLIC_CONTENTCOIN_PACKAGE);
 const SEAL_UPLOADS_ENABLED = envFlag(process.env.NEXT_PUBLIC_SEAL_UPLOADS);
 
 const STORAGE_KEY = 'chainmind_vault';
@@ -571,6 +572,42 @@ export default function Home() {
     }
   }
 
+  // Execute an action the agent proposed in chat (confirm-gated), with the wallet.
+  async function onAgentAction({ action, filename, price }: { action: 'list' | 'coin'; filename: string; price?: string }): Promise<string> {
+    if (!account?.address) throw new Error('Connect a wallet first.');
+    const q = filename.toLowerCase();
+    const file = vault.find(v => v.filename.toLowerCase() === q) || vault.find(v => v.filename.toLowerCase().includes(q));
+    if (!file) throw new Error(`Couldn't find "${filename}" in your vault.`);
+    if (action === 'list') {
+      if (!PACKAGE_LATEST) throw new Error('Marketplace not configured.');
+      if (!file.entryId) throw new Error(`"${file.filename}" isn't registered on-chain yet — open it and restore/claim first.`);
+      const priceMist = suiToMist(price || marketPrice);
+      if (!priceMist) throw new Error('Enter a valid price in SUI.');
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${PACKAGE_LATEST}::vault::list_with_metadata`,
+        arguments: [
+          tx.object(file.entryId), tx.pure.u64(priceMist),
+          tx.pure.string(file.filename.slice(0, 120)), tx.pure.string(''),
+          tx.pure.string(listingCategory(file.filename, file.fileType).slice(0, 40)),
+          tx.pure.string(listingTeaser(file.filename, file.fileType, !!file.encrypted)),
+        ],
+      });
+      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      updateItem(file.id, { listed: true, priceMist, txDigest: res.digest });
+      return `Listed "${file.filename}" for ${price || marketPrice} SUI on the marketplace.`;
+    }
+    if (action === 'coin') {
+      if (!CONTENTCOIN) throw new Error('Content coins not configured.');
+      if (!file.blobId) throw new Error(`"${file.filename}" has no Walrus blob yet.`);
+      const tx = new Transaction();
+      tx.moveCall({ target: `${CONTENTCOIN}::market::create_market`, arguments: [tx.pure.string(file.blobId), tx.pure.string(file.filename.slice(0, 120))] });
+      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      return `Launched a content coin for "${file.filename}" — open Content Coins to trade it.`;
+    }
+    throw new Error('Unknown action.');
+  }
+
   async function delistFromMarket(item: VaultItem) {
     if (!account || !PACKAGE_ID || marketBusy) return;
     if (!item.listingId) {
@@ -848,6 +885,7 @@ export default function Home() {
                   greetingIcon="/logo.png"
                   endpoint="/api/ask-vault"
                   agent
+                  onAgentAction={onAgentAction}
                   buildBody={(question, history) => ({ docs: selectVaultDocs(vault, question), owner: account?.address, memory: buildAgentMemory(question), question, history })}
                   suggestions={vault.length === 0 ? [] : ['What are the common themes across my files?', 'Find anything about deadlines or dates', 'Give me a 3-point summary of everything']}
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
@@ -1077,6 +1115,7 @@ export default function Home() {
                   aiConfig={aiConfig}
                   onAiConfigChange={updateAiConfig}
                   agent
+                  onAgentAction={onAgentAction}
                   buildBody={(question, history) => ({
                     docs: [agentDoc(selected)],
                     currentFile: agentDoc(selected),

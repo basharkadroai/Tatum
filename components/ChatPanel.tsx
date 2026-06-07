@@ -19,7 +19,10 @@ export type ChatMessage = {
   steps?: UploadStep[];
   agentEvents?: AgentRunEvent[];
   trace?: { runId?: string; startedAt?: string; durationMs?: number; eventCount?: number; tools?: string[]; ok?: boolean };
-  offer?: { kind: 'store'; filename: string; question: string; content?: string; message?: string; resolved?: boolean };
+  offer?: (
+    | { kind: 'store'; filename: string; question: string; content?: string }
+    | { kind: 'action'; action: 'list' | 'coin'; filename: string; price?: string }
+  ) & { message?: string; resolved?: boolean };
 };
 
 interface Props {
@@ -44,12 +47,13 @@ interface Props {
   agent?: boolean;                              // route through the LangChain agent (/api/agent) + show its activity chain
   persistKey?: string;                          // when set, this chat's messages are saved/restored (per-file history)
   owner?: string;                               // wallet address — when set, chat history is also backed up on-chain (Walrus + Sui) for portability
+  onAgentAction?: (a: { action: 'list' | 'coin'; filename: string; price?: string }) => Promise<string>; // run a wallet action the agent proposed
 }
 
 export function ChatPanel({
   resetKey, endpoint, buildBody, suggestions, placeholder,
   aiLabel = 'ChainMind AI', greeting, greetingIcon, centered, mobile, disabled,
-  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange, agent, persistKey, owner,
+  uploadRunner, onUploaded, onEmptyChange, onCitation, aiConfig, onAiConfigChange, agent, persistKey, owner, onAgentAction,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -243,7 +247,9 @@ export function ChatPanel({
             requiredUserStep?: string;
             text?: string;
             message?: string;
-            kind?: 'store';
+            kind?: 'store' | 'action';
+            action?: 'list' | 'coin';
+            price?: string;
             filename?: string;
             question?: string;
             content?: string;
@@ -296,6 +302,9 @@ export function ChatPanel({
             else if (ev.type === 'offer' && ev.kind === 'store' && uploadRunner) {
               steps.push({ label: `Created ${ev.filename ?? 'file'}`, status: 'done' });
               last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content, message: ev.message };
+            }
+            else if (ev.type === 'offer' && ev.kind === 'action' && ev.action && ev.filename && onAgentAction) {
+              last.offer = { kind: 'action', action: ev.action, filename: ev.filename, price: ev.price, message: ev.message };
             }
             last.steps = steps;
             last.agentEvents = agentEvents;
@@ -352,10 +361,25 @@ export function ChatPanel({
   // on the generated content, reusing the same narrated flow as a file upload.
   function storeGenerated(i: number) {
     const m = messages[i];
-    if (!m?.offer || !uploadRunner || busy) return;
+    if (!m?.offer || m.offer.kind !== 'store' || !uploadRunner || busy) return;
     resolveOffer(i);
     const body = m.offer.content ?? m.text; // the specific artifact (code block) or the whole answer
     handleAttach(new File([body], m.offer.filename, { type: 'text/markdown' }));
+  }
+
+  // Confirm an agent-proposed on-chain action (list / launch coin) — runs it with
+  // the user's wallet via onAgentAction and appends the result to the message.
+  async function runAgentAction(i: number) {
+    const m = messages[i];
+    if (!m?.offer || m.offer.kind !== 'action' || !onAgentAction || busy) return;
+    const off = m.offer;
+    resolveOffer(i);
+    try {
+      const result = await onAgentAction({ action: off.action, filename: off.filename, price: off.price });
+      setMessages(ms => ms.map((mm, idx) => (idx === i ? { ...mm, text: `${mm.text}\n\n_${result}_` } : mm)));
+    } catch (e) {
+      setMessages(ms => ms.map((mm, idx) => (idx === i ? { ...mm, text: `${mm.text}\n\n_Action failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}_` } : mm)));
+    }
   }
 
   // Attach a file from the chat and narrate the upload pipeline as an animated
@@ -665,7 +689,7 @@ export function ChatPanel({
                     </button>
                   </div>
                 )}
-                {m.role === 'ai' && m.offer && !m.offer.resolved && uploadRunner && !busy && (
+                {m.role === 'ai' && m.offer && m.offer.kind === 'store' && !m.offer.resolved && uploadRunner && !busy && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '11px', marginTop: '8px', padding: '9px 10px 9px 12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--off-white)', maxWidth: '460px' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
                       <Database size={15} strokeWidth={2} />
@@ -675,6 +699,19 @@ export function ChatPanel({
                       <div style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.filename} · Walrus + Sui</div>
                     </div>
                     <button onClick={() => storeGenerated(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer', flexShrink: 0 }}>Store</button>
+                    <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; }}><X size={14} strokeWidth={2} /></button>
+                  </div>
+                )}
+                {m.role === 'ai' && m.offer && m.offer.kind === 'action' && !m.offer.resolved && onAgentAction && !busy && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '11px', marginTop: '8px', padding: '9px 10px 9px 12px', borderRadius: '12px', border: '1px solid var(--purple-bg)', background: 'var(--off-white)', maxWidth: '460px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
+                      <Database size={15} strokeWidth={2} />
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.message || (m.offer.action === 'list' ? 'List this file for sale' : 'Launch a content coin')}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-3)' }}>Runs with your wallet · {m.offer.action === 'list' ? 'Marketplace (Sui)' : 'Content coin (Sui)'}</div>
+                    </div>
+                    <button onClick={() => runAgentAction(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer', flexShrink: 0 }}>Confirm</button>
                     <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; }}><X size={14} strokeWidth={2} /></button>
                   </div>
                 )}
