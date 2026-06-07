@@ -36,12 +36,23 @@ export type AgentContext = {
 
 const GROQ_TOOL_MODEL = 'openai/gpt-oss-120b';
 
+type ToolPermission = 'read' | 'external' | 'guardrail' | 'approval_required' | 'write_offer' | 'internal';
 type ToolLifecycleEvent =
-  | { type: 'tool_start'; id: string; tool: string; label: string }
-  | { type: 'tool_done'; id: string; tool: string; label: string; detail?: string; durationMs: number }
-  | { type: 'tool_error'; id: string; tool: string; label: string; detail?: string; durationMs: number };
+  | { type: 'tool_start'; id: string; tool: string; label: string; permission: ToolPermission; automatic?: boolean }
+  | { type: 'tool_done'; id: string; tool: string; label: string; permission: ToolPermission; automatic?: boolean; detail?: string; durationMs: number }
+  | { type: 'tool_error'; id: string; tool: string; label: string; permission: ToolPermission; automatic?: boolean; detail?: string; durationMs: number };
 type ToolLifecycleSink = (event: ToolLifecycleEvent) => void;
 let toolRunSeq = 0;
+
+function toolPermission(toolName: string): ToolPermission {
+  if (toolName === 'assess_action_policy') return 'guardrail';
+  if (toolName === 'plan_vault_work') return 'internal';
+  if (toolName === 'draft_memory_note') return 'write_offer';
+  if (toolName === 'automatic_tool_error') return 'internal';
+  if (toolName.includes('tavily') || toolName === 'crypto_price') return 'external';
+  if (/\b(delete|remove|wipe|clear|buy|purchase|sell|list|delist|transfer|send|swap|claim|register|restore|decrypt|share|publish)\b/i.test(toolName)) return 'approval_required';
+  return 'read';
+}
 
 function cleanOwner(owner?: string | null) {
   return typeof owner === 'string' && owner.startsWith('0x') ? owner : '';
@@ -225,6 +236,12 @@ function inferActionPolicy(request: string) {
     ].filter(Boolean).join('; ') || 'the action changes user-owned state',
     requiredUserStep: 'Explain the exact proposed action and wait for the user to confirm through app controls or an approval flow before anything is signed or changed.',
   };
+}
+
+function shouldHardStopForApproval(question: string) {
+  const q = question.toLowerCase();
+  if (/\b(how|what|why|explain|tell me|can i|should i|guide|docs|documentation)\b/.test(q)) return false;
+  return /\b(delete|remove|wipe|clear|buy|purchase|sell|list|delist|transfer|send|swap|claim|register|restore|decrypt|share|publish)\b/.test(q);
 }
 
 function inferWorkPlan(goal: string, ctx: AgentContext, docs: VaultDoc[]) {
@@ -612,7 +629,8 @@ function createTool<TInput>(
       const started = Date.now();
       const humanLabel = label(input);
       const id = `${name}-${Date.now()}-${++toolRunSeq}`;
-      sink?.({ type: 'tool_start', id, tool: name, label: humanLabel });
+      const permission = toolPermission(name);
+      sink?.({ type: 'tool_start', id, tool: name, label: humanLabel, permission });
       try {
         const result = await run(input);
         sink?.({
@@ -620,6 +638,7 @@ function createTool<TInput>(
           id,
           tool: name,
           label: humanLabel,
+          permission,
           detail: `${resultDetail(result)} in ${Date.now() - started}ms`,
           durationMs: Date.now() - started,
         });
@@ -630,6 +649,7 @@ function createTool<TInput>(
           id,
           tool: name,
           label: humanLabel,
+          permission,
           detail: errorDetail(err),
           durationMs: Date.now() - started,
         });
@@ -993,6 +1013,7 @@ export async function runVaultAgent(docs: VaultDoc[], question: string): Promise
 export type AgentEvent =
   | { type: 'step'; tool: string; label: string }
   | ToolLifecycleEvent
+  | { type: 'permission_gate'; decision: string; reason: string; requiredUserStep?: string }
   | { type: 'token'; text: string }
   | { type: 'reset' }
   | { type: 'answer'; text: string }
@@ -1268,17 +1289,21 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     .slice(-8)
     .map(m => ({ role: m.role === 'ai' ? ('assistant' as const) : ('user' as const), content: String(m.text) }));
   let inputMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [...priorMsgs, { role: 'user' as const, content: question }];
+  let approvalGate: ReturnType<typeof inferActionPolicy> | null = null;
   const emitAutomaticContext = (item: AutomaticContext) => {
     const started = Date.now();
     const id = `${item.tool}-${Date.now()}-${++toolRunSeq}`;
+    const permission = toolPermission(item.tool);
     automaticContexts.push(item);
     trace.toolCall(item.tool, { label: item.label, automatic: true });
-    queue.push({ type: 'tool_start', id, tool: item.tool, label: item.label });
+    queue.push({ type: 'tool_start', id, tool: item.tool, label: item.label, permission, automatic: true });
     queue.push({
       type: 'tool_done',
       id,
       tool: item.tool,
       label: item.label,
+      permission,
+      automatic: true,
       detail: `${resultDetail(item.content)} in ${Date.now() - started}ms`,
       durationMs: Date.now() - started,
     });
@@ -1292,8 +1317,10 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
     ];
   }
   if (shouldAutoPolicy(question)) {
-    const policy = JSON.stringify(inferActionPolicy(question), null, 2);
+    const policyObject = inferActionPolicy(question);
+    const policy = JSON.stringify(policyObject, null, 2);
     emitAutomaticContext({ tool: 'assess_action_policy', label: 'Checking action policy', content: policy });
+    if (policyObject.decision === 'approval_required' && shouldHardStopForApproval(question)) approvalGate = policyObject;
     inputMessages = [
       { role: 'system' as const, content: `Internal ChainMind action policy for this request:\n${policy}\nFollow this policy exactly. If approval is required, do not imply the action has been done.` },
       ...inputMessages,
@@ -1324,6 +1351,20 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
 
   const MAX_ATTEMPTS = 3;
   const produce = async () => {
+    if (approvalGate) {
+      const answer = [
+        'I can prepare that, but I cannot execute it automatically.',
+        approvalGate.reason ? `Reason: ${approvalGate.reason}.` : '',
+        approvalGate.requiredUserStep || 'Confirm the exact action in the app before anything is signed or changed.',
+      ].filter(Boolean).join('\n');
+      queue.push({ type: 'permission_gate', decision: approvalGate.decision, reason: approvalGate.reason, requiredUserStep: approvalGate.requiredUserStep });
+      trace.answer(answer.length, false);
+      queue.push({ type: 'answer', text: restoreExactVaultCitations(answer, ctx.docs ?? [], ctx.currentFile) });
+      trace.finish();
+      queue.push({ type: 'trace', summary: trace.summary() });
+      queue.close();
+      return;
+    }
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let answered = false;
       let finalText = '';
@@ -1333,7 +1374,7 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
       let emitted = 0;
       let markerHit = false;
       let memoryDraft: { filename: string; content: string; message?: string } | null = null;
-      const thirdPartyCalls = new Map<string, { id: string; tool: string; label: string; started: number }>();
+      const thirdPartyCalls = new Map<string, { id: string; tool: string; label: string; permission: ToolPermission; started: number }>();
       if (attempt > 1) queue.push({ type: 'reset' });
       try {
         const agent = buildVaultAgent(ctx, attempt === 1 ? 0 : 0.4, lifecycle);
@@ -1355,10 +1396,11 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                     const id = `${tc.name}-${Date.now()}-${++toolRunSeq}`;
                     const callKey = String((tc as { id?: string }).id ?? tc.name);
                     const label = stepLabel(tc.name, tc.args);
-                    thirdPartyCalls.set(callKey, { id, tool: tc.name, label, started: Date.now() });
-                    thirdPartyCalls.set(tc.name, { id, tool: tc.name, label, started: Date.now() });
+                    const permission = toolPermission(tc.name);
+                    thirdPartyCalls.set(callKey, { id, tool: tc.name, label, permission, started: Date.now() });
+                    thirdPartyCalls.set(tc.name, { id, tool: tc.name, label, permission, started: Date.now() });
                     trace.toolCall(tc.name, tc.args);
-                    queue.push({ type: 'tool_start', id, tool: tc.name, label });
+                    queue.push({ type: 'tool_start', id, tool: tc.name, label, permission });
                   }
                 }
                 const type = m._getType?.() ?? m.constructor?.name ?? '';
@@ -1384,6 +1426,7 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
                       id: pending.id,
                       tool: pending.tool,
                       label: pending.label,
+                      permission: pending.permission,
                       detail: `${resultDetail(toolContent)} in ${Date.now() - pending.started}ms`,
                       durationMs: Date.now() - pending.started,
                     });
@@ -1426,6 +1469,7 @@ export async function* streamVaultAgentEvents(ctx: AgentContext, question: strin
             id: pending.id,
             tool: pending.tool,
             label: pending.label,
+            permission: pending.permission,
             detail: `Completed in ${Date.now() - pending.started}ms`,
             durationMs: Date.now() - pending.started,
           });

@@ -4,6 +4,7 @@ import { Copy, RotateCcw, Square, ArrowUp, ArrowUpRight, Check, Plus, Mic, Datab
 import { MotionIcon } from './MotionIcon';
 import { FormattedText } from './FormattedText';
 import { UploadSteps } from './UploadSteps';
+import { AgentRunInspector, type AgentRunEvent } from './AgentRunInspector';
 import { ModelMenu } from './ModelMenu';
 import AgentMascot from './AgentMascot';
 import { useDictation, Waveform } from './dictation';
@@ -16,6 +17,7 @@ export type ChatMessage = {
   role: 'user' | 'ai';
   text: string;
   steps?: UploadStep[];
+  agentEvents?: AgentRunEvent[];
   trace?: { runId?: string; startedAt?: string; durationMs?: number; eventCount?: number; tools?: string[]; ok?: boolean };
   offer?: { kind: 'store'; filename: string; question: string; content?: string; message?: string; resolved?: boolean };
 };
@@ -233,6 +235,12 @@ export function ChatPanel({
             label?: string;
             detail?: string;
             durationMs?: number;
+            tool?: string;
+            permission?: string;
+            automatic?: boolean;
+            decision?: string;
+            reason?: string;
+            requiredUserStep?: string;
             text?: string;
             message?: string;
             kind?: 'store';
@@ -247,23 +255,37 @@ export function ChatPanel({
           if (isFirst) { setLoading(false); setStreaming(true); }
           setMessages(m => {
             const c = [...m];
-            if (isFirst) c.push({ role: 'ai', text: '', steps: [] });
+            if (isFirst) c.push({ role: 'ai', text: '', steps: [], agentEvents: [] });
             const last = { ...c[c.length - 1] };
             const steps = [...(last.steps ?? [])];
-            if (ev.type === 'step') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'done', detail: ev.detail }); }
-            else if (ev.type === 'tool_start') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'running' }); }
+            const agentEvents = [...(last.agentEvents ?? [])];
+            if (ev.type === 'tool_start' || ev.type === 'tool_done' || ev.type === 'tool_error' || ev.type === 'permission_gate') {
+              agentEvents.push({
+                type: ev.type,
+                id: ev.id,
+                tool: ev.tool,
+                label: ev.label ?? (ev.type === 'permission_gate' ? 'Permission gate' : undefined),
+                detail: ev.detail ?? ev.reason,
+                durationMs: ev.durationMs,
+                permission: ev.permission ?? (ev.type === 'permission_gate' ? 'approval_required' : undefined),
+                automatic: ev.automatic,
+              });
+            }
+            if (ev.type === 'step') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'done', detail: ev.detail, tool: ev.tool }); }
+            else if (ev.type === 'tool_start') { steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'running', tool: ev.tool, permission: ev.permission, automatic: ev.automatic }); }
             else if (ev.type === 'tool_done') {
-              if (!updateStep(steps, ev.id, { status: 'done', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Completed in ${ev.durationMs}ms` : undefined) })) {
-                steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'done', detail: ev.detail });
+              if (!updateStep(steps, ev.id, { status: 'done', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Completed in ${ev.durationMs}ms` : undefined), tool: ev.tool, permission: ev.permission, automatic: ev.automatic, durationMs: ev.durationMs })) {
+                steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'done', detail: ev.detail, tool: ev.tool, permission: ev.permission, automatic: ev.automatic, durationMs: ev.durationMs });
               }
             }
             else if (ev.type === 'tool_error') {
-              if (!updateStep(steps, ev.id, { status: 'error', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Failed after ${ev.durationMs}ms` : undefined) })) {
-                steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'error', detail: ev.detail });
+              if (!updateStep(steps, ev.id, { status: 'error', detail: ev.detail ?? (typeof ev.durationMs === 'number' ? `Failed after ${ev.durationMs}ms` : undefined), tool: ev.tool, permission: ev.permission, automatic: ev.automatic, durationMs: ev.durationMs })) {
+                steps.push({ id: ev.id, label: ev.label ?? 'Working', status: 'error', detail: ev.detail, tool: ev.tool, permission: ev.permission, automatic: ev.automatic, durationMs: ev.durationMs });
               }
             }
             else if (ev.type === 'token') { last.text = (last.text ?? '') + (ev.text ?? ''); }  // live streaming
             else if (ev.type === 'reset') { finishRunningSteps(steps, 'error', 'Retrying'); last.text = ''; }
+            else if (ev.type === 'permission_gate') { steps.push({ label: 'Permission gate', status: 'done', detail: ev.reason, tool: 'permission_gate', permission: 'approval_required', automatic: true }); }
             else if (ev.type === 'answer') { receivedAnswer = true; last.text = ev.text ?? ''; }
             else if (ev.type === 'error') { receivedAnswer = true; finishRunningSteps(steps, 'error', 'Stopped'); last.text = `The agent hit an error: ${ev.message ?? ''}`; }
             else if (ev.type === 'trace') {
@@ -276,6 +298,7 @@ export function ChatPanel({
               last.offer = { kind: 'store', filename: ev.filename ?? 'chainmind-note.md', question: ev.question ?? 'Store this on-chain?', content: ev.content, message: ev.message };
             }
             last.steps = steps;
+            last.agentEvents = agentEvents;
             c[c.length - 1] = last;
             return c;
           });
@@ -630,6 +653,7 @@ export function ChatPanel({
                   whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
                   {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} />}
+                  {m.role === 'ai' && (m.agentEvents?.length || m.trace) && <AgentRunInspector events={m.agentEvents} trace={m.trace} />}
                   {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} onCitation={onCitation} /> : null) : m.text}
                   {m.role === 'ai' && streaming && i === messages.length - 1 && !(m.steps && m.steps.length) && (
                     <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />

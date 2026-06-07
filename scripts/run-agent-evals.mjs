@@ -190,9 +190,13 @@ function summarizeEvents(events) {
   const answer = [...events].reverse().find((event) => event.type === 'answer')?.text || '';
   const error = [...events].reverse().find((event) => event.type === 'error')?.message || '';
   const offers = events.filter((event) => event.type === 'offer');
+  const permissionGates = events.filter((event) => event.type === 'permission_gate');
   const tools = [...new Set(events
     .filter((event) => (event.type === 'tool_start' || event.type === 'tool_done' || event.type === 'tool_error') && event.tool)
     .map((event) => event.tool))];
+  const permissions = [...new Set(events
+    .filter((event) => event.permission)
+    .map((event) => event.permission))];
   const lifecycleErrors = [];
   const running = new Map();
   for (const event of events) {
@@ -200,7 +204,7 @@ function summarizeEvents(events) {
     if ((event.type === 'tool_done' || event.type === 'tool_error') && event.id) running.delete(event.id);
   }
   for (const [id, tool] of running) lifecycleErrors.push(`${tool}:${id}`);
-  return { answer, error, tools, lifecycleErrors, offers };
+  return { answer, error, tools, permissions, lifecycleErrors, offers, permissionGates };
 }
 
 async function postAgentJson(agentUrl, body, timeoutMs) {
@@ -259,7 +263,7 @@ async function runAgentNdjsonCase(testCase, agentUrl, timeoutMs) {
     }
   }
 
-  const { answer, error, tools, lifecycleErrors, offers } = summarizeEvents(events);
+  const { answer, error, tools, permissions, lifecycleErrors, offers, permissionGates } = summarizeEvents(events);
   if (error) return { status: 'BLOCKED', detail: `Agent emitted error: ${error}` };
   if (!answer) return { status: 'FAIL', detail: 'No final answer event was emitted.' };
   if (lifecycleErrors.length) {
@@ -298,6 +302,33 @@ async function runAgentNdjsonCase(testCase, agentUrl, timeoutMs) {
     return {
       status: 'FAIL',
       detail: `Expected a real lifecycle event from one of [${testCase.expect.toolsIncludeOneOf.join(', ')}], saw [${tools.join(', ') || 'none'}]`,
+    };
+  }
+  if (testCase.expect.toolsExclude?.length) {
+    const seenExcluded = testCase.expect.toolsExclude.filter((tool) => tools.includes(tool));
+    if (seenExcluded.length) {
+      return {
+        status: 'FAIL',
+        detail: `Saw excluded tools [${seenExcluded.join(', ')}]. Tools: [${tools.join(', ') || 'none'}]`,
+      };
+    }
+  }
+  if (testCase.expect.permissionsIncludeOneOf?.length && !testCase.expect.permissionsIncludeOneOf.some((permission) => permissions.includes(permission))) {
+    return {
+      status: 'FAIL',
+      detail: `Expected permission from [${testCase.expect.permissionsIncludeOneOf.join(', ')}], saw [${permissions.join(', ') || 'none'}]`,
+    };
+  }
+  if (testCase.expect.permissionGate && !permissionGates.length) {
+    return {
+      status: 'FAIL',
+      detail: 'Expected a permission_gate event, saw none.',
+    };
+  }
+  if (testCase.expect.noPermissionGate && permissionGates.length) {
+    return {
+      status: 'FAIL',
+      detail: `Expected no permission_gate event, saw ${permissionGates.length}.`,
     };
   }
   if (testCase.expect.offerKind && !offers.some((offer) => offer.kind === testCase.expect.offerKind)) {

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "agent:eval": "node scripts/run-agent-evals.mjs",
+    "agent:gate": "node scripts/run-agent-gate.mjs",
     "mcp": "node mcp/chainmind-mcp.mjs",
     "mcp:test": "node mcp/test-client.mjs"
   },
