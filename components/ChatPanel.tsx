@@ -676,7 +676,41 @@ export function ChatPanel({
                   maxWidth: m.role === 'user' ? '80%' : undefined,
                   whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
-                  {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} />}
+                  {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} continues={!!(m.offer && !m.offer.resolved && !busy && ((m.offer.kind === 'store' && uploadRunner) || (m.offer.kind === 'action' && onAgentAction)))} />}
+                  {m.role === 'ai' && m.offer && m.offer.kind === 'store' && !m.offer.resolved && uploadRunner && !busy && (
+                    <div style={{ display: 'flex', gap: '11px', animation: 'fadeUp 0.25s ease', marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '16px' }}>
+                        <div style={{ width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--purple)' }}><Database size={13} strokeWidth={2.25} /></div>
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', lineHeight: '16px', fontWeight: 600, color: 'var(--text-1)' }}>{m.offer.message || 'Store this on-chain'}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '3px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.filename} · Walrus + Sui</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button onClick={() => storeGenerated(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '6px 13px', borderRadius: '8px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer' }}>Store</button>
+                          <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><X size={13} strokeWidth={2} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {m.role === 'ai' && m.offer && m.offer.kind === 'action' && !m.offer.resolved && onAgentAction && !busy && (
+                    <div style={{ display: 'flex', gap: '11px', animation: 'fadeUp 0.25s ease', marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '16px' }}>
+                        <div style={{ width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--purple)' }}><Database size={13} strokeWidth={2.25} /></div>
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', lineHeight: '16px', fontWeight: 600, color: 'var(--text-1)' }}>{m.offer.message || (m.offer.action === 'list' ? 'List this file for sale' : 'Launch a content coin')}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '3px' }}>Runs with your wallet · {m.offer.action === 'list' ? 'Marketplace (Sui)' : 'Content coin (Sui)'}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button onClick={() => runAgentAction(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '6px 13px', borderRadius: '8px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer' }}>Confirm</button>
+                          <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><X size={13} strokeWidth={2} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} onCitation={onCitation} /> : null) : m.text}
                   {m.role === 'ai' && streaming && i === messages.length - 1 && !(m.steps && m.steps.length) && (
                     <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
@@ -687,32 +721,6 @@ export function ChatPanel({
                     <button onClick={() => copyMsg(m.text, i)} style={copiedIdx === i ? { ...actionBtn, color: '#65ca9d' } : actionBtn}>
                       {copiedIdx === i ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={2} /> Copy</>}
                     </button>
-                  </div>
-                )}
-                {m.role === 'ai' && m.offer && m.offer.kind === 'store' && !m.offer.resolved && uploadRunner && !busy && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '11px', marginTop: '8px', padding: '9px 10px 9px 12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--off-white)', maxWidth: '460px' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
-                      <Database size={15} strokeWidth={2} />
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.message || 'Store this on-chain'}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.filename} · Walrus + Sui</div>
-                    </div>
-                    <button onClick={() => storeGenerated(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer', flexShrink: 0 }}>Store</button>
-                    <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; }}><X size={14} strokeWidth={2} /></button>
-                  </div>
-                )}
-                {m.role === 'ai' && m.offer && m.offer.kind === 'action' && !m.offer.resolved && onAgentAction && !busy && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '11px', marginTop: '8px', padding: '9px 10px 9px 12px', borderRadius: '12px', border: '1px solid var(--purple-bg)', background: 'var(--off-white)', maxWidth: '460px' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', background: 'var(--purple-bg)', color: 'var(--purple)', flexShrink: 0 }}>
-                      <Database size={15} strokeWidth={2} />
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.offer.message || (m.offer.action === 'list' ? 'List this file for sale' : 'Launch a content coin')}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-3)' }}>Runs with your wallet · {m.offer.action === 'list' ? 'Marketplace (Sui)' : 'Content coin (Sui)'}</div>
-                    </div>
-                    <button onClick={() => runAgentAction(i)} style={{ fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', cursor: 'pointer', flexShrink: 0 }}>Confirm</button>
-                    <button onClick={() => resolveOffer(i)} title="Dismiss" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px', borderRadius: '9px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; }}><X size={14} strokeWidth={2} /></button>
                   </div>
                 )}
                 {m.role === 'ai' && m.text && !(streaming && i === messages.length - 1) && (

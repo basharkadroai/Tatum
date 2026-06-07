@@ -4,7 +4,9 @@ import type { UploadStep } from '@/lib/upload';
 
 // Lean, monochrome pipeline timeline — a thin chain of nodes, each showing a
 // live spinner while running then a quiet checkmark when done.
-export function UploadSteps({ steps }: { steps: UploadStep[] }) {
+// `continues` keeps the connector flowing past the last step (so a following
+// chain node — e.g. a human-interaction prompt — joins the same thread).
+export function UploadSteps({ steps, continues }: { steps: UploadStep[]; continues?: boolean }) {
   if (!steps.length) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', margin: '0 0 6px' }}>
@@ -28,12 +30,12 @@ export function UploadSteps({ steps }: { steps: UploadStep[] }) {
                 {done && <span style={{ display: 'inline-flex', animation: 'pop 0.25s ease' }}><Check size={13} strokeWidth={2.5} /></span>}
                 {error && <AlertCircle size={13} strokeWidth={2.25} />}
               </div>
-              {!last && (
+              {(!last || continues) && (
                 <div style={{ width: '1px', flex: 1, minHeight: '15px', margin: '3px 0', background: 'var(--border)' }} />
               )}
             </div>
             {/* label + detail */}
-            <div style={{ paddingBottom: last ? 0 : '11px', minWidth: 0 }}>
+            <div style={{ paddingBottom: last && !continues ? 0 : '11px', minWidth: 0 }}>
               <div style={{
                 fontSize: '13px', lineHeight: '16px', fontWeight: 450,
                 color: error ? 'var(--error)' : running ? 'var(--text-1)' : 'var(--text-2)',
