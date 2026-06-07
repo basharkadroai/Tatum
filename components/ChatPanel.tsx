@@ -676,9 +676,14 @@ export function ChatPanel({
                   maxWidth: m.role === 'user' ? '80%' : undefined,
                   whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
-                  {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} continues={!!(m.offer && !m.offer.resolved && !busy && ((m.offer.kind === 'store' && uploadRunner) || (m.offer.kind === 'action' && onAgentAction)))} />}
+                  {m.role === 'ai' && m.steps && m.steps.length > 0 && <UploadSteps steps={m.steps} />}
+                  {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} onCitation={onCitation} /> : null) : m.text}
+                  {m.role === 'ai' && streaming && i === messages.length - 1 && !(m.steps && m.steps.length) && (
+                    <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
+                  )}
+                  {/* Human-interaction node — continues the chain AFTER the generated content */}
                   {m.role === 'ai' && m.offer && m.offer.kind === 'store' && !m.offer.resolved && uploadRunner && !busy && (
-                    <div style={{ display: 'flex', gap: '11px', animation: 'fadeUp 0.25s ease', marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', gap: '11px', animation: 'fadeUp 0.25s ease', marginTop: '12px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '16px' }}>
                         <div style={{ width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--purple)' }}><Database size={13} strokeWidth={2.25} /></div>
                       </div>
@@ -695,7 +700,7 @@ export function ChatPanel({
                     </div>
                   )}
                   {m.role === 'ai' && m.offer && m.offer.kind === 'action' && !m.offer.resolved && onAgentAction && !busy && (
-                    <div style={{ display: 'flex', gap: '11px', animation: 'fadeUp 0.25s ease', marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', gap: '11px', animation: 'fadeUp 0.25s ease', marginTop: '12px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '16px' }}>
                         <div style={{ width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--purple)' }}><Database size={13} strokeWidth={2.25} /></div>
                       </div>
@@ -710,10 +715,6 @@ export function ChatPanel({
                         </div>
                       </div>
                     </div>
-                  )}
-                  {m.role === 'ai' ? (m.text ? <FormattedText text={m.text} onCitation={onCitation} /> : null) : m.text}
-                  {m.role === 'ai' && streaming && i === messages.length - 1 && !(m.steps && m.steps.length) && (
-                    <span style={{ display: 'inline-block', width: '8px', height: '15px', background: 'var(--text-2)', marginLeft: '2px', borderRadius: '1px', animation: 'blink 1s step-start infinite', verticalAlign: 'text-bottom' }} />
                   )}
                 </div>
                 {m.role === 'user' && (
