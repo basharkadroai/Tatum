@@ -24,16 +24,35 @@ export type VaultEntryOnchain = {
 
 async function rpc(method: string, params: unknown[]): Promise<unknown> {
   const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
-  for (const url of [RPC, PUBLIC_FULLNODE]) {
-    try {
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.error) continue;
-      if (data.result != null) return data.result;
-    } catch { /* next upstream */ }
+  const urls = Array.from(new Set([RPC, PUBLIC_FULLNODE]));
+  // Two passes with a short backoff + per-try timeout, so a transient blip
+  // doesn't immediately read as "Sui RPC unavailable".
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const url of urls) {
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 12000);
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: ctl.signal });
+        clearTimeout(timer);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data.error) continue;
+        if (data.result != null) return data.result;
+      } catch { /* next upstream */ }
+    }
+    if (attempt === 0) await new Promise(r => setTimeout(r, 600));
   }
   throw new Error('Sui RPC unavailable');
+}
+
+// The connected wallet's SUI balance (for the agent's "how much SUI" tool).
+export async function getSuiBalance(owner: string): Promise<{ sui: string; mist: string }> {
+  const r = await rpc('suix_getBalance', [owner]) as { totalBalance?: string } | null;
+  const mist = String(r?.totalBalance ?? '0');
+  const whole = BigInt(mist) / BigInt(1_000_000_000);
+  const frac = BigInt(mist) % BigInt(1_000_000_000);
+  const sui = frac === BigInt(0) ? whole.toString() : `${whole}.${frac.toString().padStart(9, '0').replace(/0+$/, '').slice(0, 4)}`;
+  return { sui, mist };
 }
 
 type SuiPage<T> = { data?: T[]; nextCursor?: unknown; hasNextPage?: boolean };

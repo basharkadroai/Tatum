@@ -2,7 +2,7 @@ import { createAgent, tool } from 'langchain';
 import { ChatGroq } from '@langchain/groq';
 import { makeWebSearchTool } from '@/lib/webSearch';
 import { getExchangeRate } from '@/lib/tatum';
-import { fetchBlobText, listMarketplace, listVaultEntries } from '@/lib/onchain';
+import { fetchBlobText, listMarketplace, listVaultEntries, getSuiBalance } from '@/lib/onchain';
 import { AgentTraceRecorder, type AgentTraceSummary } from '@/lib/agentTrace';
 import * as z from 'zod';
 
@@ -593,6 +593,14 @@ async function runAutomaticReadTools(question: string, ctx: AgentContext): Promi
   if (/\b(audit|health|improve|debug|clean up|cleanup|what should i do first)\b/.test(q)) {
     add('audit_vault_health', 'Auditing vault health', await auditVaultReport(ctx, owner));
   }
+  if (owner && /\b(balance|how much sui|how much do i have|my sui|wallet balance|funds|sui do i have)\b/.test(q)) {
+    try {
+      const bal = await getSuiBalance(owner);
+      add('get_sui_balance', 'Checking your SUI balance via Tatum', `Wallet ${owner} holds ${bal.sui} SUI (${bal.mist} MIST). Answer the user with this balance directly.`);
+    } catch {
+      add('get_sui_balance', 'Checking your SUI balance via Tatum', 'Balance lookup is temporarily unavailable — ask the user to retry in a moment.');
+    }
+  }
   if (owner && /\b(on-chain|onchain|chain|restore|wallet|vaultentry|owned on sui|sui object|walrus proof)\b/.test(q)) {
     add('list_onchain_vault', 'Reading your on-chain vault through Tatum', await listOnchainVaultReport(owner));
   }
@@ -1036,6 +1044,7 @@ function stepLabel(toolName: string, args: Record<string, unknown>): string {
   if (toolName === 'draft_memory_note') return 'Drafting a memory note';
   if (toolName === 'read_current_file') return 'Reading the open file';
   if (toolName === 'search_vault') return `Searching loaded files for "${q}"`;
+  if (toolName === 'get_sui_balance') return 'Checking your SUI balance via Tatum';
   if (toolName === 'list_onchain_vault') return 'Reading your on-chain vault through Tatum';
   if (toolName === 'search_onchain_vault') return `Searching Sui + Walrus for "${q}"`;
   if (toolName === 'read_walrus_blob') return `Fetching Walrus blob ${String(args.blobId ?? '').slice(0, 14)}...`;
