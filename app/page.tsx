@@ -164,6 +164,7 @@ export default function Home() {
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
   const [marketPrice, setMarketPrice] = useState('0.1');
+  const [saleKind, setSaleKind] = useState<'nft' | 'license'>('nft'); // sell once (NFT) vs sell copies (license)
   const [marketTitle, setMarketTitle] = useState('');
   const [marketCategory, setMarketCategory] = useState('Knowledge');
   const [marketDescription, setMarketDescription] = useState('');
@@ -535,6 +536,36 @@ export default function Home() {
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       setMarketMsg(`List failed: ${raw.slice(0, 120)}`);
+    } finally {
+      setMarketBusy(false);
+    }
+  }
+
+  // Sell-many: open a license offer (seller keeps the original; each buy mints a
+  // copy). Doesn't need an on-chain entry — references the Walrus blob directly.
+  async function openLicenseSale(item: VaultItem) {
+    if (!account || !PACKAGE_LATEST || marketBusy) return;
+    if (!item.blobId) { setMarketMsg('This file has no Walrus blob yet.'); return; }
+    const priceMist = suiToMist(marketPrice);
+    if (!priceMist) { setMarketMsg('Enter a price greater than 0 SUI.'); return; }
+    setMarketBusy(true);
+    setMarketMsg('');
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${PACKAGE_LATEST}::vault::open_license_sale`,
+        arguments: [
+          tx.pure.string(item.blobId),
+          tx.pure.string((item.filename || 'file').slice(0, 120)),
+          tx.pure.string(item.fileType || 'application/octet-stream'),
+          tx.pure.u64(BigInt(item.sizeBytes || 0)),
+          tx.pure.u64(priceMist),
+        ],
+      });
+      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      setMarketMsg('Listed as licenses — sells unlimited copies; you keep the original.');
+    } catch (err) {
+      setMarketMsg(`License listing failed: ${(err instanceof Error ? err.message : String(err)).slice(0, 120)}`);
     } finally {
       setMarketBusy(false);
     }
@@ -916,15 +947,24 @@ export default function Home() {
                             rows={3}
                             style={{ resize: 'vertical', minHeight: '66px', padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', lineHeight: 1.45, outline: 'none' }}
                           />
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            {([['nft', 'Sell once (NFT)'], ['license', 'Sell licenses']] as const).map(([k, label]) => (
+                              <button key={k} onClick={() => setSaleKind(k)}
+                                title={k === 'license' ? 'Sell unlimited copies — you keep the original' : 'Sell the unique item once'}
+                                style={{ padding: '5px 9px', borderRadius: '7px', border: `1px solid ${saleKind === k ? 'var(--purple)' : 'var(--border)'}`, background: saleKind === k ? 'var(--purple)' : 'transparent', color: saleKind === k ? 'var(--base)' : 'var(--text-2)', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{selected.encrypted ? 'Seal-private sale' : 'Public ownership sale'}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{saleKind === 'license' ? 'Sells unlimited copies' : selected.encrypted ? 'Seal-private sale' : 'Public ownership sale'}</span>
                             <button
-                              onClick={() => listOnMarket(selected)}
-                              disabled={marketBusy || !selected.entryId}
-                              title={selected.entryId ? 'List this owned vault entry for sale' : 'Restore or claim first to get the on-chain entry ID'}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', cursor: marketBusy || !selected.entryId ? 'default' : 'pointer', opacity: marketBusy || !selected.entryId ? 0.55 : 1 }}
+                              onClick={() => (saleKind === 'license' ? openLicenseSale(selected) : listOnMarket(selected))}
+                              disabled={marketBusy || (saleKind === 'license' ? !selected.blobId : !selected.entryId)}
+                              title={saleKind === 'license' ? 'Sell unlimited license copies of this file' : selected.entryId ? 'List this owned vault entry for sale' : 'Restore or claim first to get the on-chain entry ID'}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', cursor: marketBusy ? 'default' : 'pointer', opacity: marketBusy || (saleKind === 'license' ? !selected.blobId : !selected.entryId) ? 0.55 : 1 }}
                             >
-                              <ShoppingCart size={13} strokeWidth={2} /> {marketBusy ? 'Listing...' : 'List for sale'}
+                              <ShoppingCart size={13} strokeWidth={2} /> {marketBusy ? 'Listing...' : saleKind === 'license' ? 'Sell licenses' : 'List for sale'}
                             </button>
                           </div>
                         </>
