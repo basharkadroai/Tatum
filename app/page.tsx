@@ -719,23 +719,22 @@ export default function Home() {
             </div>
           </div>
 
-          {/* File list label + storage stat */}
-          {hasVault && (
-            <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
-            <div style={{ padding: '4px 16px 9px', borderBottom: vaultListScrolled ? '1px solid var(--border)' : '1px solid transparent', transition: 'border-color 0.16s ease' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
-              </div>
-            </div>
-            </div>
-          )}
-
           {/* File list — only when expanded. No right padding so the scrollbar sits
               flush against the sidebar's right edge (rows keep their own inner padding). */}
           <div
             onScroll={e => setVaultListScrolled(e.currentTarget.scrollTop > 2)}
             style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 0 12px 8px' }}
           >
+            {/* File list label */}
+            {hasVault && (
+              <div className="sidebar-expanded-panel" data-expanded={sidebarExpanded ? 'true' : 'false'}>
+                <div style={{ padding: '12px 16px 9px 8px', borderBottom: vaultListScrolled ? '1px solid var(--border)' : '1px solid transparent', transition: 'border-color 0.16s ease' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Vault · {vault.length} file{vault.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              </div>
+            )}
             {hasVault && filtered.map(item => (
               <FileListItem
                 key={item.id}
