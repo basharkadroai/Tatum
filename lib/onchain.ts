@@ -55,6 +55,71 @@ export async function getSuiBalance(owner: string): Promise<{ sui: string; mist:
   return { sui, mist };
 }
 
+function fmtSui(mist: string | number | bigint): string {
+  try {
+    const raw = BigInt(mist), whole = raw / BigInt(1_000_000_000), frac = raw % BigInt(1_000_000_000);
+    return frac === BigInt(0) ? whole.toString() : `${whole}.${frac.toString().padStart(9, '0').replace(/0+$/, '').slice(0, 4)}`;
+  } catch { return '0'; }
+}
+
+const CONTENTCOIN = cleanEnv(process.env.NEXT_PUBLIC_CONTENTCOIN_PACKAGE);
+const CC_BASE = BigInt(1_000_000), CC_SLOPE = BigInt(10_000); // must match content_coin.move
+
+// Full wallet portfolio — every coin type the wallet holds, via Tatum.
+export async function getPortfolio(owner: string): Promise<{ coins: Array<{ symbol: string; amount: string; coinType: string }> }> {
+  const r = await rpc('suix_getAllBalances', [owner]) as Array<{ coinType: string; totalBalance: string }> | null;
+  const coins = (r ?? [])
+    .filter(b => BigInt(b.totalBalance || '0') > BigInt(0))
+    .map(b => ({
+      symbol: (b.coinType.split('::').pop() || b.coinType),
+      coinType: b.coinType,
+      amount: /::sui::SUI$/.test(b.coinType) ? `${fmtSui(b.totalBalance)} SUI` : b.totalBalance,
+    }));
+  return { coins };
+}
+
+// The wallet's ChainMind investments: content-coin holdings (valued on the
+// current bonding curve) and fractional-share positions.
+export async function getInvestments(owner: string): Promise<{
+  contentCoins: Array<{ marketId: string; coins: number; pricePerCoinSui: string; valueSui: string }>;
+  shares: Array<{ vaultId: string; shares: number }>;
+}> {
+  const contentCoins: Array<{ marketId: string; coins: number; pricePerCoinSui: string; valueSui: string }> = [];
+  const shares: Array<{ vaultId: string; shares: number }> = [];
+
+  if (CONTENTCOIN) {
+    try {
+      const owned = await rpc('suix_getOwnedObjects', [owner, { filter: { StructType: `${CONTENTCOIN}::market::ContentShare` }, options: { showContent: true } }, null, 50]) as { data?: Array<{ data?: { content?: { fields?: { market_id?: string; amount?: string | number } } } }> };
+      const byMarket = new Map<string, number>();
+      for (const o of owned?.data ?? []) {
+        const f = o.data?.content?.fields; if (!f?.market_id) continue;
+        byMarket.set(String(f.market_id), (byMarket.get(String(f.market_id)) ?? 0) + Number(f.amount ?? 0));
+      }
+      for (const [marketId, coins] of byMarket) {
+        let priceMist = CC_BASE;
+        try {
+          const m = await rpc('sui_getObject', [marketId, { showContent: true }]) as { data?: { content?: { fields?: { supply?: string | number } } } };
+          const supply = Number(m?.data?.content?.fields?.supply ?? 0);
+          priceMist = CC_BASE + CC_SLOPE * BigInt(supply);
+        } catch { /* use base price */ }
+        contentCoins.push({ marketId, coins, pricePerCoinSui: fmtSui(priceMist), valueSui: fmtSui(priceMist * BigInt(coins)) });
+      }
+    } catch { /* skip content coins */ }
+  }
+
+  if (PACKAGE_ID) {
+    try {
+      const owned = await rpc('suix_getOwnedObjects', [owner, { filter: { StructType: `${PACKAGE_ID}::vault::Share` }, options: { showContent: true } }, null, 50]) as { data?: Array<{ data?: { content?: { fields?: { vault_id?: string; amount?: string | number } } } }> };
+      for (const o of owned?.data ?? []) {
+        const f = o.data?.content?.fields; if (!f?.vault_id) continue;
+        shares.push({ vaultId: String(f.vault_id), shares: Number(f.amount ?? 0) });
+      }
+    } catch { /* skip shares */ }
+  }
+
+  return { contentCoins, shares };
+}
+
 type SuiPage<T> = { data?: T[]; nextCursor?: unknown; hasNextPage?: boolean };
 
 async function queryEvents(moveEventType: string, totalLimit = 500): Promise<Array<{ parsedJson?: Record<string, unknown> }>> {

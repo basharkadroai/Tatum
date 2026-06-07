@@ -2,7 +2,7 @@ import { createAgent, tool } from 'langchain';
 import { ChatGroq } from '@langchain/groq';
 import { makeWebSearchTool } from '@/lib/webSearch';
 import { getExchangeRate } from '@/lib/tatum';
-import { fetchBlobText, listMarketplace, listVaultEntries, getSuiBalance } from '@/lib/onchain';
+import { fetchBlobText, listMarketplace, listVaultEntries, getSuiBalance, getPortfolio, getInvestments } from '@/lib/onchain';
 import { AgentTraceRecorder, type AgentTraceSummary } from '@/lib/agentTrace';
 import * as z from 'zod';
 
@@ -601,6 +601,16 @@ async function runAutomaticReadTools(question: string, ctx: AgentContext): Promi
       add('get_sui_balance', 'Checking your SUI balance via Tatum', 'Balance lookup is temporarily unavailable — ask the user to retry in a moment.');
     }
   }
+  if (owner && /\b(portfolio|holdings|net.?worth|what (tokens|coins) do i|my tokens|all my (coins|tokens|holdings)|everything i (own|hold))\b/.test(q)) {
+    try { add('get_portfolio', 'Reading your full portfolio via Tatum', JSON.stringify(await getPortfolio(owner))); }
+    catch { add('get_portfolio', 'Reading your full portfolio via Tatum', 'Portfolio lookup is temporarily unavailable — retry shortly.'); }
+  }
+  if (owner && /\b(investments?|how (are|is) my (investment|coin|share|content)|content coins?|my shares?|claimable|profit|p&?l|returns?|am i (up|down))\b/.test(q)) {
+    try {
+      const inv = await getInvestments(owner);
+      add('get_my_investments', 'Reading your content coins + share investments', JSON.stringify(inv) + '\nSummarize the holdings and their current value; note it is testnet and speculative.');
+    } catch { add('get_my_investments', 'Reading your content coins + share investments', 'Investment lookup is temporarily unavailable — retry shortly.'); }
+  }
   // Each on-chain/marketplace read is isolated: one failing read must not abort
   // the whole batch or surface a scary "tool check hit an issue" step.
   if (owner && /\b(on-chain|onchain|chain|restore|wallet|vaultentry|owned on sui|sui object|walrus proof)\b/.test(q)) {
@@ -1059,6 +1069,8 @@ function stepLabel(toolName: string, args: Record<string, unknown>): string {
   if (toolName === 'read_current_file') return 'Reading the open file';
   if (toolName === 'search_vault') return `Searching loaded files for "${q}"`;
   if (toolName === 'get_sui_balance') return 'Checking your SUI balance via Tatum';
+  if (toolName === 'get_portfolio') return 'Reading your full portfolio via Tatum';
+  if (toolName === 'get_my_investments') return 'Reading your content coins + share investments';
   if (toolName === 'list_onchain_vault') return 'Reading your on-chain vault through Tatum';
   if (toolName === 'search_onchain_vault') return `Searching Sui + Walrus for "${q}"`;
   if (toolName === 'read_walrus_blob') return `Fetching Walrus blob ${String(args.blobId ?? '').slice(0, 14)}...`;
