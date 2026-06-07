@@ -257,6 +257,7 @@ function inferWorkPlan(goal: string, ctx: AgentContext, docs: VaultDoc[]) {
   if (/\b(marketplace|for sale|listings|listed items|buyable)\b/.test(q)) tools.push('list_marketplace');
   if (/\b(remember|preference|project direction|strategy|context|what do you know)\b/.test(q)) tools.push('search_memory');
   if (/\b(current price|live price|price of|exchange rate|rate for|worth|btc|eth|sui price)\b/.test(q)) tools.push('crypto_price');
+  if (/\b(balance|portfolio|holdings|investments?|how much sui|net.?worth|funds|p&?l|my coins|my tokens|my shares)\b/.test(q)) tools.push('get_sui_balance', 'get_portfolio', 'get_my_investments');
   const policy = inferActionPolicy(goal);
   return {
     inferredIntent: q.length > 180 ? 'multi-step vault request' : goal,
@@ -991,8 +992,54 @@ export function buildVaultAgent(ctx: AgentContext, temperature = 0, lifecycle?: 
     },
   );
 
+  const getSuiBalanceTool = createTool(
+    lifecycle,
+    'get_sui_balance',
+    () => 'Checking your SUI balance via Tatum',
+    async ({ owner }: { owner?: string | null }) => {
+      const address = cleanOwner(owner) || defaultOwner;
+      if (!address) return 'No wallet connected.';
+      const b = await getSuiBalance(address);
+      return `Wallet ${address} holds ${b.sui} SUI.`;
+    },
+    {
+      description: "Get a wallet's SUI balance from Sui via Tatum. Use whenever the user asks how much SUI they have, their balance, or their funds.",
+      schema: z.object({ owner: optionalOwnerSchema }),
+    },
+  );
+
+  const getPortfolioTool = createTool(
+    lifecycle,
+    'get_portfolio',
+    () => 'Reading your full portfolio via Tatum',
+    async ({ owner }: { owner?: string | null }) => {
+      const address = cleanOwner(owner) || defaultOwner;
+      if (!address) return 'No wallet connected.';
+      return JSON.stringify(await getPortfolio(address), null, 2);
+    },
+    {
+      description: "List every coin/token a wallet holds (full portfolio) from Sui via Tatum. Use for 'what's my portfolio', 'what tokens/coins do I hold', or net worth.",
+      schema: z.object({ owner: optionalOwnerSchema }),
+    },
+  );
+
+  const getInvestmentsTool = createTool(
+    lifecycle,
+    'get_my_investments',
+    () => 'Reading your content coins + share investments',
+    async ({ owner }: { owner?: string | null }) => {
+      const address = cleanOwner(owner) || defaultOwner;
+      if (!address) return 'No wallet connected.';
+      return JSON.stringify(await getInvestments(address), null, 2);
+    },
+    {
+      description: "Read the wallet's ChainMind investments: content-coin holdings (valued on the bonding curve) and fractional-share positions. Use for 'how are my investments doing', content coins, shares, or P&L.",
+      schema: z.object({ owner: optionalOwnerSchema }),
+    },
+  );
+
   const model = new ChatGroq({ model: GROQ_TOOL_MODEL, temperature });
-  const firstPartyTools = [planVaultWork, assessActionPolicy, inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, searchMemory, draftMemoryNote, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice, listMarketplaceTool];
+  const firstPartyTools = [planVaultWork, assessActionPolicy, inspectLoadedVault, vaultStats, findDuplicates, findLargeFiles, findMissingContent, compareFiles, inspectMemory, searchMemory, draftMemoryNote, readCurrentFile, searchVault, listOnchainVault, searchOnchainVault, readWalrusBlob, auditVault, cryptoPrice, listMarketplaceTool, getSuiBalanceTool, getPortfolioTool, getInvestmentsTool];
   const tools = process.env.TAVILY_API_KEY
     ? [...firstPartyTools, makeWebSearchTool()]
     : firstPartyTools;
