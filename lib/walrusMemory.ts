@@ -104,6 +104,9 @@ export async function restoreFromWalrus(addr: string): Promise<void> {
 // Heuristic: does a user message state a durable fact/preference worth remembering?
 export function looksMemorable(text: string): boolean {
   const t = text.trim();
-  if (t.length < 8 || t.length > 400 || t.endsWith('?')) return false;
+  if (t.length < 8 || t.length > 400 || t.includes('?')) return false;
+  // Don't store questions or commands as "memories" (e.g. "What do you know about my wallet",
+  // "check our mcp") — only genuine statements of fact/preference.
+  if (/^(what|how|why|when|where|who|which|whose|can|could|would|should|do|does|did|is|are|am|was|were|will|tell me|show me|find|search|list|check|give me|explain|help|describe)\b/i.test(t)) return false;
   return /\b(i\s?am|i'?m|my|we\s?are|we'?re|our|i\s(like|prefer|use|want|need|love|hate|own|build|work)|call me|remember (that|this)|note that|always|never|favorite|favourite)\b/i.test(t);
 }
