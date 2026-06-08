@@ -18,7 +18,6 @@ import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
 import { cleanEnv } from '@/lib/env';
 import { listingCategory, listingTeaser } from '@/lib/marketListing';
-import type { MarketTxEvent } from '@/types/market';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
 import {
   Database, Link2, X, Check,
@@ -163,14 +162,6 @@ export default function Home() {
   const [restoreAddr, setRestoreAddr] = useState('');
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
-  const [marketPrice, setMarketPrice] = useState('0.1');
-  const [saleKind, setSaleKind] = useState<'nft' | 'license'>('nft'); // sell once (NFT) vs sell copies (license)
-  const [marketTitle, setMarketTitle] = useState('');
-  const [marketCategory, setMarketCategory] = useState('Knowledge');
-  const [marketDescription, setMarketDescription] = useState('');
-  const [marketTeaser, setMarketTeaser] = useState('');
-  const [marketBusy, setMarketBusy] = useState(false);
-  const [marketMsg, setMarketMsg] = useState('');
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [aiConfig, setAiConfig] = useState<AiConfig | null>(null);
   const [chatRestoreTick, setChatRestoreTick] = useState(0); // bumped after chat history is restored from chain → remount the home chat
@@ -215,7 +206,7 @@ export default function Home() {
     window.addEventListener('resize', apply);
     return () => window.removeEventListener('resize', apply);
   }, []);
-  useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); setMarketMsg(''); }, [selected?.id]);
+  useEffect(() => { setSummaryExpanded(true); setProofExpanded(false); setClaimMsg(''); }, [selected?.id]);
   // Auto-read a file with AI when opened if it has no real summary yet (e.g. just
   // restored from chain) — so it's ready before the user reads or asks anything.
   useEffect(() => {
@@ -478,99 +469,6 @@ export default function Home() {
     }
   }
 
-  async function marketEvents(digest: string): Promise<MarketTxEvent[]> {
-    try {
-      const res = await fetch(`/api/market/tx?digest=${encodeURIComponent(digest)}`);
-      const data = await res.json();
-      return Array.isArray(data.events) ? data.events : [];
-    } catch {
-      return [];
-    }
-  }
-
-  async function listOnMarket(item: VaultItem) {
-    if (!account || !PACKAGE_ID || marketBusy) return;
-    if (!item.entryId) {
-      setMarketMsg('Claim or restore this file first so ChainMind knows its on-chain object.');
-      return;
-    }
-    const priceMist = suiToMist(marketPrice);
-    if (!priceMist) {
-      setMarketMsg('Enter a price greater than 0 SUI.');
-      return;
-    }
-    const title = marketTitle.trim() || item.filename;
-    const category = marketCategory.trim() || listingCategory(item.filename, item.fileType);
-    const description = marketDescription.trim().slice(0, 500);
-    const teaser = marketTeaser.trim().slice(0, 220) || listingTeaser(item.filename, item.fileType, !!item.encrypted);
-    setMarketBusy(true);
-    setMarketMsg('');
-    try {
-      await preflightMarket({
-        action: 'market.list',
-        owner: account.address,
-        entryId: item.entryId,
-        priceMist,
-      });
-      const tx = new Transaction();
-      tx.moveCall({
-        target: `${PACKAGE_LATEST}::vault::list_with_metadata`,
-        arguments: [
-          tx.object(item.entryId),
-          tx.pure.u64(priceMist),
-          tx.pure.string(title.slice(0, 120)),
-          tx.pure.string(description),
-          tx.pure.string(category.slice(0, 40)),
-          tx.pure.string(teaser),
-        ],
-      });
-      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
-      const listed = (await marketEvents(res.digest)).find(e => e.kind === 'listed');
-      updateItem(item.id, {
-        listed: true,
-        listingId: listed?.listingId,
-        priceMist,
-        txDigest: res.digest,
-      });
-      setMarketMsg('Listed on the marketplace.');
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      setMarketMsg(`List failed: ${raw.slice(0, 120)}`);
-    } finally {
-      setMarketBusy(false);
-    }
-  }
-
-  // Sell-many: open a license offer (seller keeps the original; each buy mints a
-  // copy). Doesn't need an on-chain entry — references the Walrus blob directly.
-  async function openLicenseSale(item: VaultItem) {
-    if (!account || !PACKAGE_LATEST || marketBusy) return;
-    if (!item.blobId) { setMarketMsg('This file has no Walrus blob yet.'); return; }
-    const priceMist = suiToMist(marketPrice);
-    if (!priceMist) { setMarketMsg('Enter a price greater than 0 SUI.'); return; }
-    setMarketBusy(true);
-    setMarketMsg('');
-    try {
-      const tx = new Transaction();
-      tx.moveCall({
-        target: `${PACKAGE_LATEST}::vault::open_license_sale`,
-        arguments: [
-          tx.pure.string(item.blobId),
-          tx.pure.string((item.filename || 'file').slice(0, 120)),
-          tx.pure.string(item.fileType || 'application/octet-stream'),
-          tx.pure.u64(BigInt(item.sizeBytes || 0)),
-          tx.pure.u64(priceMist),
-        ],
-      });
-      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
-      setMarketMsg('Listed as licenses — sells unlimited copies; you keep the original.');
-    } catch (err) {
-      setMarketMsg(`License listing failed: ${(err instanceof Error ? err.message : String(err)).slice(0, 120)}`);
-    } finally {
-      setMarketBusy(false);
-    }
-  }
-
   // Execute an action the agent proposed in chat (confirm-gated), with the wallet.
   async function onAgentAction({ action, filename, price }: { action: 'list' | 'coin'; filename: string; price?: string }): Promise<string> {
     if (!account?.address) throw new Error('Connect a wallet first.');
@@ -580,7 +478,7 @@ export default function Home() {
     if (action === 'list') {
       if (!PACKAGE_LATEST) throw new Error('Marketplace not configured.');
       if (!file.entryId) throw new Error(`"${file.filename}" isn't registered on-chain yet — open it and restore/claim first.`);
-      const priceMist = suiToMist(price || marketPrice);
+      const priceMist = suiToMist(price || '0.1');
       if (!priceMist) throw new Error('Enter a valid price in SUI.');
       const tx = new Transaction();
       tx.moveCall({
@@ -594,7 +492,7 @@ export default function Home() {
       });
       const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
       updateItem(file.id, { listed: true, priceMist, txDigest: res.digest });
-      return `Listed "${file.filename}" for ${price || marketPrice} SUI on the marketplace.`;
+      return `Listed "${file.filename}" for ${price || '0.1'} SUI on the marketplace.`;
     }
     if (action === 'coin') {
       if (!CONTENTCOIN) throw new Error('Content coins not configured.');
@@ -607,41 +505,6 @@ export default function Home() {
     throw new Error('Unknown action.');
   }
 
-  async function delistFromMarket(item: VaultItem) {
-    if (!account || !PACKAGE_ID || marketBusy) return;
-    if (!item.listingId) {
-      setMarketMsg('No listing ID saved for this file yet.');
-      return;
-    }
-    setMarketBusy(true);
-    setMarketMsg('');
-    try {
-      await preflightMarket({
-        action: 'market.delist',
-        owner: account.address,
-        listingId: item.listingId,
-      });
-      const tx = new Transaction();
-      tx.moveCall({
-        target: `${PACKAGE_LATEST}::vault::delist`,
-        arguments: [tx.object(item.listingId)],
-      });
-      const res = await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
-      const delisted = (await marketEvents(res.digest)).find(e => e.kind === 'delisted');
-      updateItem(item.id, {
-        listed: false,
-        listingId: undefined,
-        entryId: delisted?.entryId || item.entryId,
-        txDigest: res.digest,
-      });
-      setMarketMsg('Listing cancelled and returned to your vault.');
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      setMarketMsg(`Delist failed: ${raw.slice(0, 120)}`);
-    } finally {
-      setMarketBusy(false);
-    }
-  }
 
   const filtered = vault;
   const totalBytes = vault.reduce((sum, i) => sum + (i.sizeBytes || 0), 0);
