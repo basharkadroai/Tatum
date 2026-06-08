@@ -932,96 +932,18 @@ export default function Home() {
                   {claimMsg && (
                     <p style={{ fontSize: '11px', marginTop: '4px', color: claimMsg.startsWith('Claimed') ? 'var(--mint-dark)' : 'var(--error)' }}>{claimMsg}</p>
                   )}
-                  {marketMsg && (
-                    <p style={{ fontSize: '11px', marginTop: '4px', color: marketMsg.startsWith('Listed') || marketMsg.startsWith('Listing cancelled') ? 'var(--mint-dark)' : 'var(--error)' }}>{marketMsg}</p>
-                  )}
                   {selectedOwnedByWallet && (
-                    <div style={{ display: 'grid', gap: '8px', marginTop: '9px' }}>
-                      {!selected.listed ? (
-                        <>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 92px', gap: '8px' }}>
-                            <input
-                              value={marketTitle}
-                              onChange={e => setMarketTitle(e.target.value)}
-                              title="Marketplace title"
-                              placeholder="Listing title"
-                              maxLength={120}
-                              style={{ minWidth: 0, padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
-                            />
-                            <input
-                              value={marketPrice}
-                              onChange={e => setMarketPrice(e.target.value)}
-                              title="Sale price in SUI"
-                              inputMode="decimal"
-                              style={{ width: '92px', padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
-                            />
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '126px minmax(0, 1fr)', gap: '8px' }}>
-                            <select
-                              value={marketCategory}
-                              onChange={e => setMarketCategory(e.target.value)}
-                              title="Marketplace category"
-                              style={{ minWidth: 0, padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', fontWeight: 700, outline: 'none' }}
-                            >
-                              {['AI skill', 'Prompt', 'Dataset', 'Template', 'Knowledge', 'Code', 'Media', 'Image'].map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                            <input
-                              value={marketTeaser}
-                              onChange={e => setMarketTeaser(e.target.value)}
-                              title="Short buyer teaser"
-                              placeholder="Short buyer teaser"
-                              maxLength={220}
-                              style={{ minWidth: 0, padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', outline: 'none' }}
-                            />
-                          </div>
-                          <textarea
-                            value={marketDescription}
-                            onChange={e => setMarketDescription(e.target.value)}
-                            title="Marketplace description"
-                            placeholder="Describe what the buyer gets"
-                            maxLength={500}
-                            rows={3}
-                            style={{ resize: 'vertical', minHeight: '66px', padding: '8px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--off-white)', color: 'var(--text-1)', fontSize: '12px', lineHeight: 1.45, outline: 'none' }}
-                          />
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            {([['nft', 'Sell once (NFT)'], ['license', 'Sell licenses']] as const).map(([k, label]) => (
-                              <button key={k} onClick={() => setSaleKind(k)}
-                                title={k === 'license' ? 'Sell unlimited copies — you keep the original' : 'Sell the unique item once'}
-                                style={{ padding: '5px 9px', borderRadius: '7px', border: `1px solid ${saleKind === k ? 'var(--purple)' : 'var(--border)'}`, background: saleKind === k ? 'var(--purple)' : 'transparent', color: saleKind === k ? 'var(--base)' : 'var(--text-2)', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>{saleKind === 'license' ? 'Sells unlimited copies' : selected.encrypted ? 'Seal-private sale' : 'Public ownership sale'}</span>
-                            <button
-                              onClick={() => (saleKind === 'license' ? openLicenseSale(selected) : listOnMarket(selected))}
-                              disabled={marketBusy || (saleKind === 'license' ? !selected.blobId : !selected.entryId)}
-                              title={saleKind === 'license' ? 'Sell unlimited license copies of this file' : selected.entryId ? 'List this owned vault entry for sale' : 'Restore or claim first to get the on-chain entry ID'}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', cursor: marketBusy ? 'default' : 'pointer', opacity: marketBusy || (saleKind === 'license' ? !selected.blobId : !selected.entryId) ? 0.55 : 1 }}
-                            >
-                              <ShoppingCart size={13} strokeWidth={2} /> {marketBusy ? 'Listing...' : saleKind === 'license' ? 'Sell licenses' : 'List for sale'}
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => delistFromMarket(selected)}
-                          disabled={marketBusy || !selected.listingId}
-                          title="Cancel this marketplace listing"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: marketBusy || !selected.listingId ? 'default' : 'pointer', opacity: marketBusy || !selected.listingId ? 0.55 : 1 }}
-                        >
-                          <X size={13} strokeWidth={2} /> {marketBusy ? 'Cancelling...' : 'Delist'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {selectedOwnedByWallet && !selected.listed && (
-                    <p style={{ fontSize: '11px', lineHeight: 1.45, margin: '7px 0 0', color: selected.encrypted ? 'var(--mint-dark)' : 'var(--text-3)' }}>
-                      {selected.encrypted
-                        ? 'Seal-gated: the buyer receives decrypt access when ownership transfers.'
-                        : 'Public Walrus file: buyers receive on-chain ownership, but the raw blob is already readable. For private paid knowledge, upload with Seal encryption first.'}
-                    </p>
+                    selected.listed ? (
+                      <p style={{ fontSize: '11px', margin: '9px 0 0', color: 'var(--mint-dark)' }}>Listed on the marketplace · manage it from the Marketplace.</p>
+                    ) : (
+                      <button
+                        onClick={() => { setShowMarket(true); setShowCoins(false); setSelected(null); }}
+                        title="Sell this file from the Marketplace"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '9px', padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', cursor: 'pointer' }}
+                      >
+                        <ShoppingCart size={13} strokeWidth={2} /> Sell in the Marketplace
+                      </button>
+                    )
                   )}
                 </div>
                 {/* Optional: claim under your own wallet */}

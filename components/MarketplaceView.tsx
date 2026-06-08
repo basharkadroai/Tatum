@@ -7,7 +7,28 @@ import { Database, ShoppingCart, MoreHorizontal, LockKeyhole } from 'lucide-reac
 import { SUI_CHAIN_ID, WALRUS_AGGREGATOR } from '@/lib/network';
 import { cleanEnv } from '@/lib/env';
 import type { MarketListing } from '@/types/market';
+import { listingCategory, listingTeaser } from '@/lib/marketListing';
 import { InvestView } from './InvestView';
+
+type SellableFile = { id: string; filename: string; entryId?: string; blobId?: string; fileType?: string; sizeBytes?: number; encrypted?: boolean; owner?: string; listed?: boolean };
+
+function suiToMistStr(input: string): string | null {
+  const c = input.trim();
+  if (!/^\d+(\.\d{0,9})?$/.test(c)) return null;
+  const [w, f = ''] = c.split('.');
+  const m = BigInt(w) * BigInt(1_000_000_000) + BigInt((f + '000000000').slice(0, 9));
+  return m > BigInt(0) ? m.toString() : null;
+}
+
+function markListedLocal(id: string, priceMist: string) {
+  try {
+    const raw = localStorage.getItem('chainmind_vault');
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return;
+    localStorage.setItem('chainmind_vault', JSON.stringify(list.map((v: Record<string, unknown>) => (v.id === id ? { ...v, listed: true, priceMist } : v))));
+    window.dispatchEvent(new Event('chainmind:vault-updated'));
+  } catch { /* best-effort */ }
+}
 
 const TEXTUAL_EXT = ['txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'html', 'htm', 'xml', 'yaml', 'yml', 'js', 'ts', 'tsx', 'jsx', 'py', 'sol', 'move', 'css', 'log'];
 
@@ -220,8 +241,52 @@ export function MarketplaceView() {
   const [actionMsg, setActionMsg] = useState('');
   const [busyId, setBusyId] = useState('');
   const [tab, setTab] = useState<'buy' | 'invest'>('buy');
+  const [sellOpen, setSellOpen] = useState(false);
+  const [myFiles, setMyFiles] = useState<SellableFile[]>([]);
+  const [sellId, setSellId] = useState('');
+  const [sellPrice, setSellPrice] = useState('0.1');
+  const [sellKind, setSellKind] = useState<'nft' | 'license'>('nft');
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+
+  // Your sellable vault files (read from localStorage when the sell panel opens).
+  useEffect(() => {
+    if (!sellOpen) return;
+    try {
+      const raw = localStorage.getItem('chainmind_vault');
+      const list: SellableFile[] = raw ? JSON.parse(raw) : [];
+      const mine = (Array.isArray(list) ? list : []).filter(v => !v.listed && (v.entryId || v.blobId) && (!v.owner || v.owner.toLowerCase() === account?.address?.toLowerCase()));
+      setMyFiles(mine);
+      setSellId(prev => prev || mine[0]?.id || '');
+    } catch { setMyFiles([]); }
+  }, [sellOpen, account?.address]);
+
+  async function listFile() {
+    const file = myFiles.find(f => f.id === sellId);
+    if (!account?.address || !PACKAGE_LATEST) { setActionMsg('Connect a wallet first.'); return; }
+    if (!file) { setActionMsg('Pick a file to sell.'); return; }
+    const priceMist = suiToMistStr(sellPrice);
+    if (!priceMist) { setActionMsg('Enter a price greater than 0 SUI.'); return; }
+    setBusyId('sell'); setActionMsg('');
+    try {
+      const tx = new Transaction();
+      if (sellKind === 'license') {
+        if (!file.blobId) throw new Error('This file has no Walrus blob yet.');
+        tx.moveCall({ target: `${PACKAGE_LATEST}::vault::open_license_sale`, arguments: [tx.pure.string(file.blobId), tx.pure.string(file.filename.slice(0, 120)), tx.pure.string(file.fileType || 'application/octet-stream'), tx.pure.u64(BigInt(file.sizeBytes || 0)), tx.pure.u64(priceMist)] });
+      } else {
+        if (!file.entryId) throw new Error(`"${file.filename}" isn't registered on-chain yet — open it and restore/claim first.`);
+        await preflightMarket({ action: 'market.list', owner: account.address, entryId: file.entryId, priceMist });
+        tx.moveCall({ target: `${PACKAGE_LATEST}::vault::list_with_metadata`, arguments: [tx.object(file.entryId), tx.pure.u64(priceMist), tx.pure.string(file.filename.slice(0, 120)), tx.pure.string(''), tx.pure.string(listingCategory(file.filename, file.fileType).slice(0, 40)), tx.pure.string(listingTeaser(file.filename, file.fileType, !!file.encrypted))] });
+      }
+      await signAndExecute({ transaction: tx, chain: SUI_CHAIN_ID });
+      if (sellKind === 'nft') markListedLocal(file.id, priceMist);
+      setActionMsg(sellKind === 'license' ? `Listed "${file.filename}" as licenses — it sells unlimited copies.` : `Listed "${file.filename}" for ${sellPrice} SUI.`);
+      setSellOpen(false);
+      setTimeout(() => loadListings(true), 2500);
+    } catch (e) {
+      setActionMsg(`List failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 140)}`);
+    } finally { setBusyId(''); }
+  }
 
   async function loadListings(silent = false) {
     if (!silent) setLoading(true);
@@ -329,6 +394,47 @@ export function MarketplaceView() {
             </button>
           ))}
         </div>
+
+        {tab === 'buy' && account?.address && (
+          <div style={{ marginTop: '14px' }}>
+            <button onClick={() => { setSellOpen(o => !o); setActionMsg(''); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', borderRadius: '9px', border: '1px solid var(--purple-bg)', background: 'var(--purple-bg)', color: 'var(--purple)', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}>
+              <ShoppingCart size={14} /> Sell a file
+            </button>
+            {sellOpen && (
+              <div style={{ marginTop: '12px', maxWidth: '540px', border: '1px solid var(--border)', borderRadius: '14px', background: 'var(--off-white)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <strong style={{ fontSize: '14px', color: 'var(--text-1)' }}>List one of your files for sale</strong>
+                {myFiles.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-3)' }}>No files ready to list — upload a file first (it must be recorded on-chain).</p>
+                ) : (
+                  <>
+                    <select value={sellId} onChange={e => setSellId(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--base)', color: 'var(--text-1)', fontSize: '13px', outline: 'none' }}>
+                      {myFiles.map(f => <option key={f.id} value={f.id}>{f.filename}</option>)}
+                    </select>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {([['nft', 'Sell once (NFT)'], ['license', 'Sell licenses']] as const).map(([k, label]) => (
+                        <button key={k} onClick={() => setSellKind(k)}
+                          style={{ padding: '6px 11px', borderRadius: '8px', border: `1px solid ${sellKind === k ? 'var(--purple)' : 'var(--border)'}`, background: sellKind === k ? 'var(--purple)' : 'transparent', color: sellKind === k ? 'var(--base)' : 'var(--text-2)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>{label}</button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input value={sellPrice} onChange={e => setSellPrice(e.target.value)} inputMode="decimal" placeholder="Price (SUI)"
+                        style={{ width: '120px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--base)', color: 'var(--text-1)', fontSize: '13px', outline: 'none' }} />
+                      <button onClick={listFile} disabled={busyId === 'sell'}
+                        style={{ padding: '8px 15px', borderRadius: '9px', border: 'none', background: 'var(--purple)', color: 'var(--base)', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer', opacity: busyId === 'sell' ? 0.6 : 1 }}>
+                        {busyId === 'sell' ? 'Listing…' : sellKind === 'license' ? 'List as licenses' : 'List for sale'}
+                      </button>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-3)', lineHeight: 1.5 }}>
+                      {sellKind === 'license' ? 'Sells unlimited copies — you keep the original.' : 'Sells the unique item once. Private (Seal-encrypted) files unlock for the buyer on purchase.'}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {actionMsg && (
           <p style={{ margin: '20px 0 0', color: actionMsg.includes('failed') ? 'var(--error)' : 'var(--mint-dark)', fontSize: '13px', lineHeight: 1.5 }}>{actionMsg}</p>
