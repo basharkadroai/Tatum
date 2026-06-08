@@ -232,13 +232,13 @@ export async function runUpload(
     sealPolicyId = data.policyId;
   } catch (e) {
     emit({ kind: 'error', detail: `On-chain registration failed — ${String(e).slice(0, 100)}` });
-    emit({ kind: 'summary', text: shouldEncrypt
+    emit({ kind: 'summary', text: encrypted
       ? `The encrypted blob was stored, but I could not create its Seal access policy. Please try the upload again.`
       : `I couldn't record the file on Sui. Please try again in a moment.` });
     return null;
   }
   emit(txDigest
-    ? { kind: 'done', detail: shouldEncrypt
+    ? { kind: 'done', detail: encrypted
       ? `Registered encrypted vault access · tx ${txDigest.slice(0, 14)}...`
       : `Registered as a VaultEntry · tx ${txDigest.slice(0, 14)}...` }
     : { kind: 'done', detail: `Queued — the on-chain write will retry in the background` });
@@ -258,11 +258,11 @@ export async function runUpload(
     content: content.slice(0, 12000),
     txDigest,
     entryId,
-    encrypted: shouldEncrypt,
+    encrypted: encrypted,
     sealId,
     sealPolicyId,
     ciphertextSizeBytes,
-    decryptedAt: shouldEncrypt ? new Date().toISOString() : undefined,
+    decryptedAt: encrypted ? new Date().toISOString() : undefined,
     owner: txDigest && owner ? owner : undefined,
     tags,
     questions,
