@@ -176,29 +176,33 @@ export async function runUpload(
     return null;
   }
 
-  const shouldEncrypt = !!(owner && seal?.enabled && seal.packageId);
+  let encrypted = !!(owner && seal?.enabled && seal.packageId);
   let fileForWalrus = file;
   let sealId: string | undefined;
   let ciphertextSizeBytes: number | undefined;
 
-  if (shouldEncrypt) {
-    emit({ kind: 'start', label: `Encrypting ${file.name} with Seal` });
+  if (encrypted && seal) {
+    emit({ kind: 'start', label: `Encrypting ${file.name} with Seal (private)` });
     try {
       sealId = generateSealId();
       const plaintext = new Uint8Array(await file.arrayBuffer());
-      const ciphertext = await sealEncrypt(makeSealClient(seal.suiClient), seal.packageId, sealId, plaintext);
+      const ciphertext = await sealEncrypt(makeSealClient(seal.suiClient), seal.packageId!, sealId, plaintext);
       ciphertextSizeBytes = ciphertext.byteLength;
       fileForWalrus = new File([ciphertext.slice().buffer as ArrayBuffer], `${file.name}.seal`, { type: 'application/octet-stream' });
       emit({ kind: 'done', detail: `Encrypted before storage · Seal ID ${sealId.slice(0, 14)}...` });
     } catch (e) {
-      emit({ kind: 'error', detail: `Seal encryption failed — ${String(e).slice(0, 100)}` });
-      emit({ kind: 'summary', text: `I couldn't encrypt this file with Seal yet, so I did not upload it.` });
-      return null;
+      // Don't abort — fall back to a public upload so the file still saves.
+      console.warn('[upload] Seal encryption failed, storing public:', e);
+      emit({ kind: 'done', detail: 'Seal unavailable right now — stored as a public file.' });
+      encrypted = false;
+      sealId = undefined;
+      ciphertextSizeBytes = undefined;
+      fileForWalrus = file;
     }
   }
 
   // Step 1 — Walrus
-  emit({ kind: 'start', label: `Storing ${shouldEncrypt ? 'encrypted ciphertext' : file.name} on Walrus decentralized storage` });
+  emit({ kind: 'start', label: `Storing ${encrypted ? 'encrypted ciphertext' : file.name} on Walrus decentralized storage` });
   let blobId: string;
   try {
     blobId = await uploadToWalrus(fileForWalrus);

@@ -16,7 +16,7 @@ import { ContentCoinsView } from '@/components/ContentCoinsView';
 import { remember, recallText, restoreFromWalrus, looksMemorable } from '@/lib/walrusMemory';
 import { selectVaultDocs } from '@/lib/retrieve';
 import { loadAiConfig, type AiConfig } from '@/lib/aiConfig';
-import { cleanEnv, envFlag } from '@/lib/env';
+import { cleanEnv } from '@/lib/env';
 import { listingCategory, listingTeaser } from '@/lib/marketListing';
 import type { MarketTxEvent } from '@/types/market';
 import { PaperclipIcon, CodeXmlIcon } from '@animateicons/react/lucide';
@@ -31,7 +31,6 @@ const PACKAGE_ID = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_ID);
 // is preserved across upgrades). Falls back to the original id if unset.
 const PACKAGE_LATEST = cleanEnv(process.env.NEXT_PUBLIC_VAULT_PACKAGE_LATEST) || PACKAGE_ID;
 const CONTENTCOIN = cleanEnv(process.env.NEXT_PUBLIC_CONTENTCOIN_PACKAGE);
-const SEAL_UPLOADS_ENABLED = envFlag(process.env.NEXT_PUBLIC_SEAL_UPLOADS);
 
 const STORAGE_KEY = 'chainmind_vault';
 const TOMBSTONE_KEY = 'chainmind_vault_tombstones';
@@ -891,7 +890,7 @@ export default function Home() {
                   placeholder={vault.length === 0 ? 'Click + to upload your first file…' : 'Ask across your whole vault…'}
                   aiLabel="ChainMind"
                   disabled={vault.length === 0 && !account?.address}
-                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address, account?.address && PACKAGE_ID && SEAL_UPLOADS_ENABLED ? { enabled: true, suiClient, packageId: PACKAGE_ID } : undefined)}
+                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address, account?.address && PACKAGE_ID ? { enabled: true, suiClient, packageId: PACKAGE_ID } : undefined)}
                   onUploaded={addToVault}
                 />
             </div>
@@ -1129,7 +1128,7 @@ export default function Home() {
                     : ['Summarize this in 3 bullet points', 'What are the key takeaways?', 'Any action items, dates, or deadlines?']}
                   placeholder="Ask anything about this document…"
                   aiLabel="ChainMind AI"
-                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address, account?.address && PACKAGE_ID && SEAL_UPLOADS_ENABLED ? { enabled: true, suiClient, packageId: PACKAGE_ID } : undefined)}
+                  uploadRunner={(file, emit) => runUpload(file, emit, account?.address, account?.address && PACKAGE_ID ? { enabled: true, suiClient, packageId: PACKAGE_ID } : undefined)}
                   onUploaded={addToVault}
                 />
               </div>
