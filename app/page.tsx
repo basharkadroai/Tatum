@@ -84,15 +84,6 @@ function saveTombstone(item: VaultItem) {
 function isTombstoned(entry: { blobId?: string; entryId?: string }) {
   return loadTombstones().some(t => (entry.blobId && t.blobId === entry.blobId) || (entry.entryId && t.entryId === entry.entryId));
 }
-async function preflightMarket(body: Record<string, unknown>) {
-  const res = await fetch('/api/market/preflight', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Marketplace safety check failed.');
-}
 
 // Pull a text blob's content back from Walrus so restored files are queryable.
 async function fetchWalrusText(blobId: string, fileType: string, filename: string): Promise<string> {
@@ -292,14 +283,6 @@ export default function Home() {
     if (account?.address) restoreFromChain(account.address);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.address]);
-  useEffect(() => {
-    if (!selected) return;
-    const category = listingCategory(selected.filename, selected.fileType);
-    setMarketTitle(selected.filename.replace(/\.[^.]+$/, ''));
-    setMarketCategory(category);
-    setMarketDescription((selected.summary || '').slice(0, 280));
-    setMarketTeaser(listingTeaser(selected.filename, selected.fileType, !!selected.encrypted));
-  }, [selected?.id]);
 
   async function doRestore() {
     const addr = restoreAddr.trim();
